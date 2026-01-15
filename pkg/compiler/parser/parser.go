@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/zurustar/filly2exe/pkg/compiler/ast"
-	"github.com/zurustar/filly2exe/pkg/compiler/lexer"
-	"github.com/zurustar/filly2exe/pkg/compiler/token"
+	"github.com/zurustar/son-et/pkg/compiler/ast"
+	"github.com/zurustar/son-et/pkg/compiler/lexer"
+	"github.com/zurustar/son-et/pkg/compiler/token"
 )
 
 const (

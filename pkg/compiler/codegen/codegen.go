@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zurustar/filly2exe/pkg/compiler/ast"
-	"github.com/zurustar/filly2exe/pkg/compiler/token"
+	"github.com/zurustar/son-et/pkg/compiler/ast"
+	"github.com/zurustar/son-et/pkg/compiler/token"
 )
 
 type Generator struct {
@@ -18,6 +18,7 @@ type Generator struct {
 	signatures    map[string]*ast.FunctionStatement
 	assets        []string
 	arrayUsage    map[string]bool
+	vmVars        map[string]bool // Variables that need VM registration (used in mes() blocks)
 }
 
 func New(assets []string) *Generator {
@@ -55,7 +56,7 @@ func (g *Generator) Generate(program *ast.Program) string {
 	g.buf.WriteString("package main\n\n")
 	g.buf.WriteString("import (\n")
 	g.buf.WriteString("\t\"embed\"\n")
-	g.buf.WriteString("\t\"github.com/zurustar/filly2exe/pkg/engine\"\n")
+	g.buf.WriteString("\t\"github.com/zurustar/son-et/pkg/engine\"\n")
 	g.buf.WriteString(")\n\n")
 
 	// Emit go:embed directives from discovered assets
@@ -229,6 +230,9 @@ func (g *Generator) Generate(program *ast.Program) string {
 	g.buf.WriteString("\tengine.Init(assets, func() {\n")
 
 	if mainFunc != nil {
+		// Scan for variables used in mes() blocks - these need VM registration
+		g.vmVars = g.scanMesBlocksForVMVars(mainFunc.Body)
+
 		// Scan for locals in main - but declare them as globals
 		// This is because mes() blocks need to access main's variables
 		locals := g.scanLocals(mainFunc.Body)
@@ -398,6 +402,7 @@ func (g *Generator) scanArrayUsage(program *ast.Program) map[string]bool {
 
 // collectVariablesInBlock collects all variable references in a block
 // This is used to pass variables from parent scope to mes() blocks
+// Enhanced to detect variables in nested expressions, function arguments, and array subscripts
 func (g *Generator) collectVariablesInBlock(block *ast.BlockStatement) []string {
 	vars := make(map[string]bool)
 
@@ -408,7 +413,8 @@ func (g *Generator) collectVariablesInBlock(block *ast.BlockStatement) []string 
 			// Check if this is a variable reference (not a function name)
 			varName := strings.ToLower(n.Value)
 			// Skip known constants and functions
-			if varName != "time" && varName != "midi_time" {
+			if varName != "time" && varName != "midi_time" && varName != "user" &&
+				varName != "midi_end" && !g.userFuncs[varName] {
 				vars[varName] = true
 			}
 		case *ast.BlockStatement:
@@ -418,24 +424,33 @@ func (g *Generator) collectVariablesInBlock(block *ast.BlockStatement) []string 
 		case *ast.ExpressionStatement:
 			walker(n.Expression)
 		case *ast.CallExpression:
-			// Don't collect the function name itself
+			// Don't collect the function name itself, but DO collect arguments
 			for _, arg := range n.Arguments {
 				walker(arg)
 			}
 		case *ast.InfixExpression:
+			// Collect variables from both sides of infix expressions (e.g., winW-320)
 			walker(n.Left)
 			walker(n.Right)
 		case *ast.PrefixExpression:
+			// Collect variables from prefix expressions (e.g., -x)
 			walker(n.Right)
 		case *ast.AssignStatement:
+			// Collect variables from the value being assigned
 			walker(n.Value)
+			// Also collect from index if it's an array assignment
+			if n.Index != nil {
+				walker(n.Index)
+			}
 		case *ast.IfStatement:
+			// Collect from condition and both branches
 			walker(n.Condition)
 			walker(n.Consequence)
 			if n.Alternative != nil {
 				walker(n.Alternative)
 			}
 		case *ast.ForStatement:
+			// Collect from all parts of for loop
 			if n.Init != nil {
 				walker(n.Init)
 			}
@@ -447,10 +462,29 @@ func (g *Generator) collectVariablesInBlock(block *ast.BlockStatement) []string 
 			}
 			walker(n.Body)
 		case *ast.WhileStatement:
+			// Collect from condition and body
 			walker(n.Condition)
 			walker(n.Body)
+		case *ast.DoWhileStatement:
+			// Collect from body and condition
+			walker(n.Body)
+			walker(n.Condition)
+		case *ast.SwitchStatement:
+			// Collect from switch value and all cases
+			walker(n.Value)
+			for _, c := range n.Cases {
+				walker(c.Value)
+				walker(c.Body)
+			}
+			if n.Default != nil {
+				walker(n.Default)
+			}
 		case *ast.StepBlockStatement:
 			walker(n.Body)
+		case *ast.IndexExpression:
+			// Collect from both the array and the index (e.g., arr[i])
+			walker(n.Left)
+			walker(n.Index)
 		}
 	}
 
@@ -463,6 +497,94 @@ func (g *Generator) collectVariablesInBlock(block *ast.BlockStatement) []string 
 	}
 	sort.Strings(result)
 	return result
+}
+
+// scanMesBlocksForVMVars scans all mes() blocks in a function body
+// and collects all variables that are referenced inside them.
+// These variables need to be registered with the VM using engine.Assign()
+func (g *Generator) scanMesBlocksForVMVars(block *ast.BlockStatement) map[string]bool {
+	vmVars := make(map[string]bool)
+
+	var walker func(node ast.Node)
+	walker = func(node ast.Node) {
+		switch n := node.(type) {
+		case *ast.MesBlockStatement:
+			// Collect all variables used in this mes() block
+			vars := g.collectVariablesInBlock(n.Body)
+			for _, v := range vars {
+				vmVars[v] = true
+			}
+			// Don't recurse into the mes block body - we already collected its variables
+		case *ast.BlockStatement:
+			for _, s := range n.Statements {
+				walker(s)
+			}
+		case *ast.IfStatement:
+			walker(n.Consequence)
+			if n.Alternative != nil {
+				walker(n.Alternative)
+			}
+		case *ast.ForStatement:
+			walker(n.Body)
+		case *ast.WhileStatement:
+			walker(n.Body)
+		case *ast.DoWhileStatement:
+			walker(n.Body)
+		case *ast.SwitchStatement:
+			for _, c := range n.Cases {
+				walker(c.Body)
+			}
+			if n.Default != nil {
+				walker(n.Default)
+			}
+		case *ast.StepBlockStatement:
+			walker(n.Body)
+		}
+	}
+
+	walker(block)
+	return vmVars
+}
+
+// inferType attempts to infer the type of an expression
+func (g *Generator) inferType(expr ast.Expression) string {
+	switch e := expr.(type) {
+	case *ast.StringLiteral:
+		return "string"
+	case *ast.IntegerLiteral:
+		return "int"
+	case *ast.CallExpression:
+		// Check for known string-returning functions
+		funcName := strings.ToLower(e.Function.Value)
+		if funcName == "strcode" || funcName == "substr" || funcName == "strprint" ||
+			funcName == "strinput" || funcName == "strup" || funcName == "strlow" ||
+			funcName == "getinistr" || funcName == "strreadf" || funcName == "getcwd" {
+			return "string"
+		}
+		// Default to int for most engine functions
+		return "int"
+	case *ast.InfixExpression:
+		// If either operand is a string, result is string (for concatenation)
+		leftType := g.inferType(e.Left)
+		rightType := g.inferType(e.Right)
+		if leftType == "string" || rightType == "string" {
+			return "string"
+		}
+		return "int"
+	case *ast.IndexExpression:
+		// Array access returns int
+		return "int"
+	case *ast.Identifier:
+		// Check if it's a known array
+		varName := strings.ToLower(e.Value)
+		if g.arrayUsage[varName] {
+			return "[]int"
+		}
+		// Default to int
+		return "int"
+	default:
+		return "int"
+	}
 }
 
 func (g *Generator) scanLocals(block *ast.BlockStatement) map[string]string {
@@ -594,17 +716,38 @@ func (g *Generator) genStatement(stmt ast.Statement) {
 		g.buf.WriteString("\n")
 	case *ast.AssignStatement:
 		g.buf.WriteString("\t")
-		g.buf.WriteString(strings.ToLower(s.Name.Value))
+		varName := strings.ToLower(s.Name.Value)
+		g.buf.WriteString(varName)
 		if s.Index != nil {
 			g.buf.WriteString("[")
 			g.genExpression(s.Index)
 			g.buf.WriteString("]")
 			g.buf.WriteString(" = ") // Accessing existing array
+			g.genExpression(s.Value)
 		} else {
-			// ALWAYS use = because we pre-declare everything
-			g.buf.WriteString(" = ")
+			// Check if this variable needs VM registration
+			if g.vmVars != nil && g.vmVars[varName] {
+				// Generate engine.Assign() call for VM registration
+				g.buf.WriteString(" = engine.Assign(")
+				g.buf.WriteString(fmt.Sprintf("%q, ", s.Name.Value))
+				g.genExpression(s.Value)
+				g.buf.WriteString(")")
+
+				// Add type assertion based on inferred type
+				typ := g.inferType(s.Value)
+				if typ == "string" {
+					g.buf.WriteString(".(string)")
+				} else if typ == "[]int" {
+					g.buf.WriteString(".([]int)")
+				} else {
+					g.buf.WriteString(".(int)")
+				}
+			} else {
+				// Normal assignment for variables not used in mes() blocks
+				g.buf.WriteString(" = ")
+				g.genExpression(s.Value)
+			}
 		}
-		g.genExpression(s.Value)
 		g.buf.WriteString("\n")
 
 	case *ast.WaitStatement:
