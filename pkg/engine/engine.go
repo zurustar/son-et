@@ -2491,9 +2491,9 @@ func (e *EngineState) PutCast(args ...any) int {
 
 	// Draw the cast immediately to the destination picture
 	destPicture := e.pictures[destPic]
-	if destPicture != nil {
+	if destPicture != nil && destPicture.Image != nil {
 		castPic := e.pictures[castPicID]
-		if castPic != nil {
+		if castPic != nil && castPic.Image != nil {
 			// Determine the region to draw
 			var imgToDraw *ebiten.Image = castPic.Image
 
