@@ -1,4 +1,4 @@
-module github.com/zurustar/filly2exe
+module github.com/zurustar/son-et
 
 go 1.24.2
 

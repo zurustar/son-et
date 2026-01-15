@@ -32,7 +32,7 @@ To build a FILLY project, it is recommended to work in a directory containing yo
    ```bash
    cd build_work
    go mod init mygame
-   go get github.com/zurustar/filly2exe/pkg/engine
+   go get github.com/zurustar/son-et/pkg/engine
    go build -o game main.go
    ```
 

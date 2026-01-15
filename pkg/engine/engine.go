@@ -37,6 +37,12 @@ func init() {
 	}
 }
 
+// Timing mode constants
+const (
+	Time     = 0 // TIME mode (frame-based timing)
+	MidiTime = 1 // MIDI_TIME mode (MIDI-synchronized timing)
+)
+
 // Picture represents a loaded or created image
 type Picture struct {
 	ID         int
@@ -292,11 +298,11 @@ var (
 	currentFont      font.Face                        // Current loaded font
 
 	// Mock state - deprecated, use globalEngine instead
-	MidiTime = 1 // 1 = MIDI Sync Mode (0 = TIME Mode)
-	MesP1    = 0
-	MesP2    = 0
-	MesP3    = 0
-	MesP4    = 0
+	// Note: MidiTime is now a constant (0=TIME, 1=MIDI_TIME)
+	MesP1 = 0
+	MesP2 = 0
+	MesP3 = 0
+	MesP4 = 0
 
 	// Event handlers for mes() blocks
 	midiEndHandler   func() // Handler for mes(MIDI_END)

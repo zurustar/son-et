@@ -3,8 +3,8 @@ package parser
 import (
 	"testing"
 
-	"github.com/zurustar/filly2exe/pkg/compiler/ast"
-	"github.com/zurustar/filly2exe/pkg/compiler/lexer"
+	"github.com/zurustar/son-et/pkg/compiler/ast"
+	"github.com/zurustar/son-et/pkg/compiler/lexer"
 )
 
 func TestIfStatement(t *testing.T) {

@@ -429,28 +429,28 @@ This implementation plan covers the son-et core engine, including both the trans
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 14. Implement Variable Scope & VM Architecture (Phase 2)
-  - [ ] 14.1 Analyze variable usage in mes() blocks
+  - [x] 14.1 Analyze variable usage in mes() blocks
     - Scan all mes() blocks in a function during code generation
     - Collect all variables referenced inside mes() blocks
     - Mark these variables as "needs VM registration"
     - Store marked variables for use during code generation
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 14.2 Modify transpiler to generate engine.Assign() calls
+  - [x] 14.2 Modify transpiler to generate engine.Assign() calls
     - For variables marked as "needs VM registration", generate: `varname = engine.Assign("varname", value).(type)`
     - For unmarked variables, generate normal: `varname = value`
     - Maintain type safety with appropriate type assertions (.(int), .(string), etc.)
     - Ensure case-insensitive variable names (lowercase in Assign calls)
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 14.3 Update collectVariablesInBlock to detect all variable references
+  - [x] 14.3 Update collectVariablesInBlock to detect all variable references
     - Enhance variable collection to handle nested expressions
     - Detect variables in infix expressions (e.g., winW-320)
     - Detect variables in function call arguments
     - Detect variables in array subscripts
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 14.4 Test with sample scenario
+  - [x] 14.4 Test with sample scenario
     - Transpile a sample scenario with new variable registration
     - Verify generated code uses engine.Assign() for variables used in mes() blocks
     - Build and run the executable
@@ -458,14 +458,14 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify all visual elements render correctly
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 14.5 Write unit tests for variable scope
+  - [x] 14.5 Write unit tests for variable scope
     - Test that variables defined outside mes() blocks are accessible inside
     - Test that variables defined inside mes() blocks are local to that block
     - Test case-insensitive variable lookup (winW, winw, WINW all refer to same variable)
     - Test parent scope chain lookup (nested mes() blocks)
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 14.6 Update documentation
+  - [x] 14.6 Update documentation
     - Update design.md with Phase 2 completion status
     - Document the Assign() helper function usage
     - Add examples of generated code with variable registration

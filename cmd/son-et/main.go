@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zurustar/filly2exe/pkg/compiler/ast"
-	"github.com/zurustar/filly2exe/pkg/compiler/codegen"
-	"github.com/zurustar/filly2exe/pkg/compiler/lexer"
-	"github.com/zurustar/filly2exe/pkg/compiler/parser"
-	"github.com/zurustar/filly2exe/pkg/compiler/token"
+	"github.com/zurustar/son-et/pkg/compiler/ast"
+	"github.com/zurustar/son-et/pkg/compiler/codegen"
+	"github.com/zurustar/son-et/pkg/compiler/lexer"
+	"github.com/zurustar/son-et/pkg/compiler/parser"
+	"github.com/zurustar/son-et/pkg/compiler/token"
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )

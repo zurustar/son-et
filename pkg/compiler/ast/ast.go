@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/zurustar/filly2exe/pkg/compiler/token"
+	"github.com/zurustar/son-et/pkg/compiler/token"
 )
 
 type Node interface {
