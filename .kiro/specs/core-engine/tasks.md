@@ -473,58 +473,66 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 1.1, 1.2, 1.4_
 
 - [ ] 15. Checkpoint - Verify variable scope implementation
-  - Ensure all tests pass, ask the user if questions arise.
-  - Verify sample scenarios run correctly with proper window positions
-  - Verify no regressions in other samples
+  - [ ] 15.1 Run all existing unit tests
+    - Execute all test suites to ensure no regressions
+    - Verify all property-based tests pass
+    - Check test coverage for variable scope functionality
+    - _Requirements: 1.1, 1.2, 1.4_
 
-- [ ] 16. Implement multimedia functions
-  - [ ] 16.1 Implement AVI video playback
-    - Add AVI decoder support
-    - Implement PlayAVI with position/size parameters
-    - Generate AVI_START and AVI_END events
-    - _Requirements: 33.1, 33.2, 33.3, 33.4, 33.5_
+  - [ ] 15.2 Test with sample scenarios using variable scope
+    - Transpile sample scenarios that use variables in mes() blocks
+    - Verify generated code includes proper engine.Assign() calls
+    - Build executables and verify they compile without errors
+    - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 16.2 Write unit tests for AVI playback
-    - Test video loading
-    - Test playback events
-    - _Requirements: 33.1, 33.5_
+  - [ ] 15.3 Verify window positioning correctness
+    - Run sample scenarios and verify windows appear at correct positions
+    - Test scenarios with calculated positions (e.g., winW-320, winH/2)
+    - Ensure no windows appear off-screen due to variable scope issues
+    - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 16.3 Implement audio resource management
-    - Implement LoadRsc (preload WAV)
-    - Implement PlayRsc (play preloaded)
-    - Implement DelRsc (release resource)
-    - _Requirements: 36.1, 36.2, 36.3, 36.4, 36.5_
+  - [ ] 15.4 Verify visual elements render correctly
+    - Test sprite positioning and movement
+    - Verify cast operations work with scoped variables
+    - Check that all visual elements appear as expected
+    - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 16.4 Write unit tests for resource management
-    - Test resource loading and playback
-    - Test resource cleanup
-    - Test concurrent playback
-    - _Requirements: 36.1, 36.2, 36.3, 36.4_
+  - [ ] 15.5 Run regression tests on other samples
+    - Test samples that don't use variable scope features
+    - Verify no regressions in basic functionality
+    - Ensure backward compatibility is maintained
+    - _Requirements: All_
 
-- [ ] 15. Implement advanced message system
-  - [ ] 15.1 Implement message pause/resume
+  - [ ] 15.6 Ask user for verification if issues arise
+    - Report any test failures or unexpected behavior
+    - Request user guidance on any ambiguous results
+    - Document any limitations or edge cases discovered
+    - _Requirements: 1.1, 1.2, 1.4_
+
+- [ ] 16. Implement advanced message system
+  - [ ] 16.1 Implement message pause/resume
     - Implement FreezeMes
     - Implement ActivateMes
     - Queue messages while frozen
     - _Requirements: 37.1, 37.2, 37.3, 37.4, 37.5_
 
-- [ ] 15.2 Write unit tests for message control
-  - Test message freezing
-  - Test message queueing
-  - Test message activation
-  - _Requirements: 37.1, 37.2, 37.3, 37.4_
+  - [ ] 16.2 Write unit tests for message control
+    - Test message freezing
+    - Test message queueing
+    - Test message activation
+    - _Requirements: 37.1, 37.2, 37.3, 37.4_
 
-- [ ] 15.3 Complete PostMes implementation
+  - [ ] 16.3 Complete PostMes implementation
     - Support all message types
     - Support message parameters (MesP1-MesP4)
     - Deliver messages asynchronously
     - _Requirements: 38.1, 38.2, 38.3, 38.4, 38.5_
 
-- [ ] 15.4 Write unit tests for message generation
-  - Test message delivery
-  - Test message parameters
-  - Test async delivery
-  - _Requirements: 38.1, 38.2, 38.3, 38.4_
+  - [ ] 16.4 Write unit tests for message generation
+    - Test message delivery
+    - Test message parameters
+    - Test async delivery
+    - _Requirements: 38.1, 38.2, 38.3, 38.4_
 
 - [ ] 17. Implement system integration functions
   - [ ] 17.1 Implement Shell function
@@ -665,7 +673,31 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify CoreAudio integration
     - Test asset embedding in built executables
 
-- [ ] 20. Final checkpoint - Complete system validation
+- [ ] 20. Implement multimedia functions (Future Implementation)
+  - [ ] 20.1 Implement AVI video playback
+    - Add AVI decoder support
+    - Implement PlayAVI with position/size parameters
+    - Generate AVI_START and AVI_END events
+    - _Requirements: 33.1, 33.2, 33.3, 33.4, 33.5_
+
+  - [ ] 20.2 Write unit tests for AVI playback
+    - Test video loading
+    - Test playback events
+    - _Requirements: 33.1, 33.5_
+
+  - [ ] 20.3 Implement audio resource management
+    - Implement LoadRsc (preload WAV)
+    - Implement PlayRsc (play preloaded)
+    - Implement DelRsc (release resource)
+    - _Requirements: 36.1, 36.2, 36.3, 36.4, 36.5_
+
+  - [ ] 20.4 Write unit tests for resource management
+    - Test resource loading and playback
+    - Test resource cleanup
+    - Test concurrent playback
+    - _Requirements: 36.1, 36.2, 36.3, 36.4_
+
+- [ ] 21. Final checkpoint - Complete system validation
   - Ensure all tests pass, ask the user if questions arise.
   - Verify all requirements are implemented
   - Review code coverage (aim for >80% on critical paths)
