@@ -1,7 +1,7 @@
 # Build Workflow
 
 ## Overview
-This document describes the proper workflow for building and testing FILLY programs during development.
+This document describes the comprehensive workflow for building, testing, and debugging FILLY programs during development. For high-level development workflow, see `development-workflow.md`.
 
 ## Build Process
 
@@ -61,16 +61,142 @@ cd ..
 ./output/my_game
 ```
 
-## Troubleshooting
+## Troubleshooting and Debugging
+
+### Build Errors
+- Make sure you're building from within the directory containing the generated `.go` file and assets.
+- Verify all asset files are present before building.
 
 ### Images Not Loading
 - Verify assets are in the same directory as the generated Go file (for `//go:embed`).
 - Check that `//go:embed` directive in generated code lists the assets.
 - Ensure file extensions match (case-insensitive).
 
-### Build Errors
-- Make sure you're building from within the directory containing the generated `.go` file and assets.
-- Verify all asset files are present before building.
+### Debugging Build Issues
+
+**Check Generated Go Code:**
+```bash
+cat samples/xxx/game.go
+```
+
+**Look for Syntax Errors:**
+```bash
+go build samples/xxx/game.go 2>&1 | head -20
+```
+
+**Check Asset Embedding:**
+```bash
+grep "//go:embed" samples/xxx/game.go
+```
+
+**Enable Debug Output:**
+```bash
+DEBUG_LEVEL=2 ./game 2>&1 | while IFS= read -r line; do 
+  echo "$(date '+%H:%M:%S.%3N') $line"
+done | tee debug.log
+```
+
+**Check for Race Conditions:**
+```bash
+go build -race -o game main.go
+./game
+```
+
+**Verify Asset Embedding:**
+```bash
+# Check generated code for go:embed directives
+grep "//go:embed" build_work/main.go
+```
+
+### Runtime Issues
+
+**Enable Debug Logging:**
+```bash
+DEBUG_LEVEL=2 ./game 2>&1 | tee debug.log
+```
+./game
+```
+
+**Review Timing Mode:**
+- Check if `mes(MIDI_TIME)` or `mes(TIME)` is used
+- Verify correct blocking/non-blocking behavior
+
+### Common Issues
+
+**Issue**: Images not loading
+- **Check**: Assets in same directory as `game.go`
+- **Check**: `//go:embed` directives in generated code
+- **Check**: Case-insensitive filename matching
+
+**Issue**: MIDI not playing
+- **Check**: SoundFont file (`.sf2`) exists
+- **Check**: MIDI file embedded correctly
+- **Check**: `PlayMIDI()` called after `mes(MIDI_TIME)` block
+
+**Issue**: Deadlock or freeze
+- **Check**: Mutex double-locking (see `dev_guidelines.md`)
+- **Check**: MIDI_TIME mode is non-blocking
+- **Check**: TIME mode is blocking correctly
+
+### Quick Build Commands
+
+**One-liner for Quick Testing:**
+```bash
+go run cmd/son-et/main.go samples/xxx/script.tfy > samples/xxx/game.go && \
+cd samples/xxx && \
+go build -o game game.go && \
+echo "Build successful. Run ./game to test."
+```
+
+## User Verification Commands
+
+When requesting user verification, always provide commands that:
+- Execute from repository root directory
+- Include timestamped logging
+- Use only macOS default commands
+- Capture both stdout and stderr
+
+### Standard Verification Command Template
+
+For sample in `samples/[SAMPLE_NAME]/`:
+
+```bash
+# Build and run with timestamped logging
+go run cmd/son-et/main.go samples/[SAMPLE_NAME]/[SCRIPT_NAME].tfy > samples/[SAMPLE_NAME]/game.go && \
+cd samples/[SAMPLE_NAME] && \
+go build -o game game.go && \
+echo "$(date '+%Y-%m-%d %H:%M:%S') Build completed successfully" && \
+DEBUG_LEVEL=2 ./game 2>&1 | while IFS= read -r line; do 
+  echo "$(date '+%H:%M:%S.%3N') $line"
+done | tee ../../game_execution.log && \
+cd ../.. && \
+echo "$(date '+%Y-%m-%d %H:%M:%S') Execution completed. Log saved to game_execution.log"
+```
+
+### Example Usage
+
+For `samples/kuma2/KUMA2.TFY`:
+
+```bash
+go run cmd/son-et/main.go samples/kuma2/KUMA2.TFY > samples/kuma2/game.go && \
+cd samples/kuma2 && \
+go build -o game game.go && \
+echo "$(date '+%Y-%m-%d %H:%M:%S') Build completed successfully" && \
+DEBUG_LEVEL=2 ./game 2>&1 | while IFS= read -r line; do 
+  echo "$(date '+%H:%M:%S.%3N') $line"
+done | tee ../../game_execution.log && \
+cd ../.. && \
+echo "$(date '+%Y-%m-%d %H:%M:%S') Execution completed. Log saved to game_execution.log"
+```
+
+### Log Analysis
+
+After user provides the log, analyze:
+1. **Build phase**: Check for compilation errors
+2. **Startup phase**: Verify engine initialization
+3. **Runtime phase**: Look for errors, warnings, or unexpected behavior
+4. **Asset loading**: Confirm images, MIDI, and audio files load correctly
+5. **Execution flow**: Verify the program follows expected logic
 
 ## Testing During Development
 

@@ -8,6 +8,8 @@ inclusion: always
 
 This document describes the step-by-step workflow for implementing features in the son-et project using Kiro. This workflow is designed for incremental feature development driven by sample scenarios.
 
+For detailed build procedures, debugging, and asset management, see `build-workflow.md`.
+
 ## Feature Implementation Workflow
 
 ### 0. Branch Management (CRITICAL)
@@ -91,33 +93,45 @@ When receiving a feature request:
 
 **CRITICAL: Always follow this sequence**
 
-1. **Transpile the sample**
-   ```bash
-   go run cmd/son-et/main.go samples/xxx/script.tfy > samples/xxx/game.go
-   ```
+1. **Build the implementation**
+   - Follow the detailed build process in `build-workflow.md`
+   - Ensure all assets are properly embedded
 
-2. **Build the executable**
-   ```bash
-   cd samples/xxx
-   go build -o game game.go
-   ```
+2. **Provide execution commands to user**
+   - Generate the complete command sequence for the user
+   - Include timestamped logging for debugging
+   - Commands must be executable from repository root
+   - Use only macOS default commands
 
-3. **Check for build errors**
-   - If compilation fails, fix the generated code or transpiler
-   - If build succeeds, proceed to next step
+3. **User executes and reports completion**
+   - User runs the provided commands
+   - User reports completion and optionally describes the sample behavior
 
-4. **Request user verification**
-   - Inform the user: "ビルドが完了しました。`./game` を実行して動作確認をお願いします"
-   - Wait for user feedback
+4. **Analyze execution results**
+   - Read the generated log file to review execution
+   - Identify any runtime problems from the log
+   - Confirm successful execution or diagnose failures
+
+5. **Request user verification**
+   - Ask user to confirm the behavior is correct
+   - Wait for user feedback on functionality
 
 ### 5. Feedback Loop
 
-Based on user feedback:
+Based on log analysis and user completion report:
 
-- **Success**: Move to next feature or task
-- **Runtime error**: Debug using logs, fix implementation
-- **Incorrect behavior**: Review requirements, adjust implementation
-- **Build error**: Fix transpiler or code generation
+- **Build Success + Correct Behavior**: Move to next feature or task
+- **Build Errors**: Fix transpiler or code generation issues
+- **Runtime Errors**: Debug using log timestamps, fix implementation
+- **Incorrect Behavior**: Review requirements, adjust implementation
+- **Asset Loading Issues**: Check file paths and embedding directives
+
+**Log Analysis Process:**
+1. Read the generated log file (e.g., `game_execution.log`)
+2. Review timestamped log for error patterns
+3. Identify the failure point (build, startup, runtime)
+4. Cross-reference with known issues in `build-workflow.md`
+5. Implement fixes and repeat verification cycle
 
 ## Important Constraints
 
@@ -137,75 +151,13 @@ Based on user feedback:
 
 ### Build Constraints
 
-- Must build from within the sample directory (for `//go:embed`)
-- Assets (BMP, MIDI, WAV) must be in same directory as generated Go file
-- SoundFont file (`.sf2`) must be available for MIDI playback
+- Refer to `build-workflow.md` for detailed build requirements and asset management
 
-## Debugging Workflow
+## Debugging and Build Issues
 
-When issues occur:
-
-### Transpiler Issues
-
-1. **Check generated Go code**
-   ```bash
-   cat samples/xxx/game.go
-   ```
-
-2. **Look for syntax errors**
-   ```bash
-   go build samples/xxx/game.go 2>&1 | head -20
-   ```
-
-3. **Check asset embedding**
-   ```bash
-   grep "//go:embed" samples/xxx/game.go
-   ```
-
-### Runtime Issues
-
-1. **Enable debug logging**
-   ```bash
-   DEBUG_LEVEL=2 ./game 2>&1 | tee debug.log
-   ```
-
-2. **Check for race conditions**
-   ```bash
-   go build -race -o game game.go
-   ./game
-   ```
-
-3. **Review timing mode**
-   - Check if `mes(MIDI_TIME)` or `mes(TIME)` is used
-   - Verify correct blocking/non-blocking behavior
-
-### Common Issues
-
-**Issue**: Images not loading
-- **Check**: Assets in same directory as `game.go`
-- **Check**: `//go:embed` directives in generated code
-- **Check**: Case-insensitive filename matching
-
-**Issue**: MIDI not playing
-- **Check**: SoundFont file (`.sf2`) exists
-- **Check**: MIDI file embedded correctly
-- **Check**: `PlayMIDI()` called after `mes(MIDI_TIME)` block
-
-**Issue**: Deadlock or freeze
-- **Check**: Mutex double-locking (see `dev_guidelines.md`)
-- **Check**: MIDI_TIME mode is non-blocking
-- **Check**: TIME mode is blocking correctly
+For detailed debugging procedures, build troubleshooting, and asset management, refer to `build-workflow.md`.
 
 ## Quick Reference Commands
-
-### Transpile and Build
-```bash
-# One-liner for quick testing
-go run cmd/son-et/main.go samples/xxx/script.tfy > samples/xxx/game.go && \
-cd samples/xxx && \
-go build -o game game.go && \
-echo "Build successful. Run ./game to test."
-```
 
 ### Run Tests
 ```bash
