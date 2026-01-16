@@ -102,49 +102,49 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Test error handling (directory not found, invalid TFY)
     - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 3. Implement Asset Management for Direct Mode
-  - [ ] 3.1 Implement FilesystemAssetLoader for direct mode
+- [x] 3. Implement Asset Management for Direct Mode
+  - [x] 3.1 Implement FilesystemAssetLoader for direct mode
     - Implement AssetLoader for filesystem access (direct mode)
     - Use os.ReadFile for file loading
     - Support case-insensitive filename matching
     - Handle relative paths from project directory
     - _Requirements: 1.4, C4.3_
 
-  - [ ] 3.2 Write unit tests for FilesystemAssetLoader
+  - [x] 3.2 Write unit tests for FilesystemAssetLoader
     - Test filesystem loading with test files
     - Test case-insensitive matching
     - Test relative path resolution
     - Test error handling (file not found)
     - _Requirements: C4.1, C4.2, C4.3_
 
-- [ ] 4. Implement Embedded Mode Build System
-  - [ ] 4.1 Create build tag structure
+- [x] 4. Implement Embedded Mode Build System
+  - [x] 4.1 Create build tag structure
     - Design build tag naming convention (e.g., embed_kuma2)
     - Create template for embedded project files
     - Document build tag usage
     - _Requirements: 3.4, 2.1, 2.4_
 
-  - [ ] 4.2 Implement embedded mode detection
+  - [x] 4.2 Implement embedded mode detection
     - Add build-time variable for embedded project name
     - Detect embedded mode in main.go
     - Route to embedded execution path
     - _Requirements: 2.5, 3.5_
 
-  - [ ] 4.3 Implement embedded mode execution
+  - [x] 4.3 Implement embedded mode execution
     - Load embedded OpCode at startup
     - Initialize engine with EmbeddedAssetLoader
     - Execute embedded OpCode through VM
     - Handle errors gracefully
     - _Requirements: 2.2, 2.3, 2.5_
 
-  - [ ] 4.4 Create example embedded build
+  - [x] 4.4 Create example embedded build
     - Create build file for sample project (e.g., kuma2)
     - Add //go:embed directives for assets
     - Test build process
     - Verify executable runs standalone
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [ ] 4.5 Write integration tests for embedded mode
+  - [x] 4.5 Write integration tests for embedded mode
     - Test embedded executable creation
     - Test embedded execution
     - Verify assets are embedded correctly
@@ -159,28 +159,28 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
   - Ask user if questions arise
 
 - [ ] 6. Write Property-Based Tests
-  - [ ] 6.1 Write property test for direct execution equivalence
+  - [~] 6.1 Write property test for direct execution equivalence
     - **Property 1: Direct Execution Equivalence**
     - For any TFY script, direct mode and embedded mode produce same behavior
     - **Validates: Requirements 2.1, 2.3**
 
-  - [ ] 6.2 Write property test for asset discovery completeness
+  - [~] 6.2 Write property test for asset discovery completeness
     - **Property 2: Asset Discovery Completeness**
     - For any TFY script, all asset references are discovered
     - **Validates: Requirements C4.1, C4.2**
 
-  - [ ] 6.3 Write property test for CLI argument handling
+  - [~] 6.3 Write property test for CLI argument handling
     - **Property 3: CLI Argument Handling**
     - For any valid directory path, son-et executes the project
     - **Validates: Requirements 3.1**
 
-  - [ ] 6.4 Write property test for embedded mode execution
+  - [~] 6.4 Write property test for embedded mode execution
     - **Property 4: Embedded Mode Execution**
     - For any embedded project, executable runs without arguments
     - **Validates: Requirements 2.5**
 
 - [ ] 7. Update Documentation
-  - [ ] 7.1 Update README.md
+  - [~] 7.1 Update README.md
     - Add interpreter usage section
     - Document direct mode: `son-et <directory>`
     - Document embedded mode build process
@@ -188,7 +188,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Remove transpiler-based workflow references
     - _Requirements: 4.1, 4.4_
 
-  - [ ] 7.2 Update build-workflow.md
+  - [~] 7.2 Update build-workflow.md
     - Replace transpiler workflow with interpreter workflow
     - Document direct mode development workflow
     - Document embedded mode build workflow
@@ -196,7 +196,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Add debugging tips for interpreter mode
     - _Requirements: 4.2, 4.4_
 
-  - [ ] 7.3 Update development-workflow.md
+  - [~] 7.3 Update development-workflow.md
     - Update feature implementation workflow for interpreter
     - Update build and verification phase
     - Update debugging procedures
@@ -204,7 +204,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Add interpreter-specific best practices
     - _Requirements: 4.3, 4.4_
 
-  - [ ] 7.4 Create interpreter usage guide
+  - [~] 7.4 Create interpreter usage guide
     - Document command-line options
     - Provide examples for common use cases
     - Document error messages and solutions
@@ -212,27 +212,27 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - _Requirements: 4.4, 4.5_
 
 - [ ] 8. Integration Testing and Validation
-  - [ ] 8.1 Test with all existing sample projects
+  - [~] 8.1 Test with all existing sample projects
     - Run direct mode on each sample project
     - Verify correct execution and output
     - Check for any regressions
     - _Requirements: All_
 
-  - [ ] 8.2 Build embedded executables for samples
+  - [~] 8.2 Build embedded executables for samples
     - Create embedded builds for key samples
     - Test standalone execution
     - Verify asset embedding
     - Check executable size and performance
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [ ] 8.3 Performance benchmarking
+  - [~] 8.3 Performance benchmarking
     - Benchmark direct mode startup time
     - Benchmark OpCode generation time
     - Compare with previous transpiler performance
     - Profile and optimize hot paths
     - _Requirements: All_
 
-  - [ ] 8.4 Cross-platform testing
+  - [~] 8.4 Cross-platform testing
     - Test on macOS (primary platform)
     - Verify asset loading on different filesystems
     - Test case-insensitive matching

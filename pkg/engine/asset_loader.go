@@ -6,6 +6,7 @@ import (
 	"image"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jsummers/gobmp"
@@ -80,10 +81,12 @@ func NewFilesystemAssetLoader(baseDir string) AssetLoader {
 func (f *FilesystemAssetLoader) ReadFile(name string) ([]byte, error) {
 	// First try exact match
 	fullPath := name
-	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, f.baseDir) {
-		fullPath = strings.TrimPrefix(name, "./")
-		fullPath = strings.TrimPrefix(fullPath, f.baseDir+"/")
-		fullPath = strings.Join([]string{f.baseDir, fullPath}, "/")
+	if !filepath.IsAbs(name) && !strings.HasPrefix(name, f.baseDir) {
+		// Clean the name and remove any leading "./"
+		cleanName := filepath.Clean(name)
+		cleanName = strings.TrimPrefix(cleanName, "./")
+		cleanName = strings.TrimPrefix(cleanName, f.baseDir+string(filepath.Separator))
+		fullPath = filepath.Join(f.baseDir, cleanName)
 	}
 
 	data, err := os.ReadFile(fullPath)
@@ -97,10 +100,12 @@ func (f *FilesystemAssetLoader) ReadFile(name string) ([]byte, error) {
 		return nil, err
 	}
 
-	lowerName := strings.ToLower(name)
+	// Extract just the filename for case-insensitive matching
+	searchName := filepath.Base(name)
+	lowerName := strings.ToLower(searchName)
 	for _, entry := range entries {
 		if strings.ToLower(entry.Name()) == lowerName {
-			return os.ReadFile(strings.Join([]string{f.baseDir, entry.Name()}, "/"))
+			return os.ReadFile(filepath.Join(f.baseDir, entry.Name()))
 		}
 	}
 
@@ -111,10 +116,11 @@ func (f *FilesystemAssetLoader) ReadFile(name string) ([]byte, error) {
 // ReadDir reads the named directory from the filesystem
 func (f *FilesystemAssetLoader) ReadDir(name string) ([]fs.DirEntry, error) {
 	fullPath := name
-	if !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, f.baseDir) {
-		fullPath = strings.TrimPrefix(name, "./")
-		fullPath = strings.TrimPrefix(fullPath, f.baseDir+"/")
-		fullPath = strings.Join([]string{f.baseDir, fullPath}, "/")
+	if !filepath.IsAbs(name) && !strings.HasPrefix(name, f.baseDir) {
+		cleanName := filepath.Clean(name)
+		cleanName = strings.TrimPrefix(cleanName, "./")
+		cleanName = strings.TrimPrefix(cleanName, f.baseDir+string(filepath.Separator))
+		fullPath = filepath.Join(f.baseDir, cleanName)
 	}
 	return os.ReadDir(fullPath)
 }
