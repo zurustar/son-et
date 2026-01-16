@@ -6,19 +6,215 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/zurustar/son-et/pkg/compiler/ast"
-	"github.com/zurustar/son-et/pkg/compiler/codegen"
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
 	"github.com/zurustar/son-et/pkg/compiler/parser"
-	"github.com/zurustar/son-et/pkg/compiler/token"
+	"github.com/zurustar/son-et/pkg/engine"
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
+
+func main() {
+	// Parse command-line flags
+	helpFlag := flag.Bool("help", false, "Display usage information")
+	flag.Parse()
+
+	// Display help if requested or no arguments provided
+	if *helpFlag || flag.NArg() == 0 {
+		displayHelp()
+		os.Exit(0)
+	}
+
+	// Get directory argument
+	directory := flag.Arg(0)
+
+	// Validate directory exists
+	info, err := os.Stat(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Error: Directory '%s' does not exist\n", directory)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Error: Cannot access directory '%s': %v\n", directory, err)
+		os.Exit(1)
+	}
+
+	if !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "Error: '%s' is not a directory\n", directory)
+		os.Exit(1)
+	}
+
+	// Execute in direct mode
+	if err := executeDirect(directory); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// displayHelp shows usage information
+func displayHelp() {
+	fmt.Println("son-et - FILLY Script Interpreter")
+	fmt.Println()
+	fmt.Println("USAGE:")
+	fmt.Println("  son-et <directory>    Execute TFY project in the specified directory")
+	fmt.Println("  son-et --help         Display this help message")
+	fmt.Println()
+	fmt.Println("DESCRIPTION:")
+	fmt.Println("  son-et executes FILLY language scripts (.tfy files) directly from a")
+	fmt.Println("  project directory. The interpreter will locate TFY files, convert them")
+	fmt.Println("  to OpCode at runtime, and execute the project immediately.")
+	fmt.Println()
+	fmt.Println("EXAMPLES:")
+	fmt.Println("  son-et samples/my_project   Run a sample project")
+	fmt.Println("  son-et my_game              Run project in my_game directory")
+	fmt.Println()
+	fmt.Println("ENVIRONMENT:")
+	fmt.Println("  DEBUG_LEVEL=0    Show only errors")
+	fmt.Println("  DEBUG_LEVEL=1    Show important operations (default)")
+	fmt.Println("  DEBUG_LEVEL=2    Show all debug information")
+	fmt.Println()
+}
+
+// executeDirect executes a TFY project from a directory (direct mode)
+func executeDirect(directory string) error {
+	// Convert to absolute path for consistent behavior
+	absDir, err := filepath.Abs(directory)
+	if err != nil {
+		return fmt.Errorf("failed to resolve directory path: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Executing project in: %s\n", absDir)
+
+	// Step 1: Locate TFY files in directory
+	tfyFiles, err := findTFYFiles(absDir)
+	if err != nil {
+		return fmt.Errorf("failed to find TFY files: %w", err)
+	}
+
+	if len(tfyFiles) == 0 {
+		return fmt.Errorf("no TFY files found in directory: %s", absDir)
+	}
+
+	fmt.Fprintf(os.Stderr, "Found %d TFY file(s)\n", len(tfyFiles))
+
+	// Step 2: Read and parse TFY files (with #include support)
+	// Use the first TFY file as entry point (or look for main.tfy)
+	entryFile := tfyFiles[0]
+	for _, f := range tfyFiles {
+		if strings.ToLower(filepath.Base(f)) == "main.tfy" {
+			entryFile = f
+			break
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Entry file: %s\n", filepath.Base(entryFile))
+
+	// Read and merge files (handling #include directives)
+	included := make(map[string]bool)
+	fullCode, err := recursiveRead(entryFile, included)
+	if err != nil {
+		return fmt.Errorf("failed to read TFY files: %w", err)
+	}
+
+	// Step 3: Parse the code
+	l := lexer.New(string(fullCode))
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 0 {
+		// Format parsing errors with helpful context
+		fmt.Fprintf(os.Stderr, "\n=== PARSING ERRORS ===\n")
+		fmt.Fprintf(os.Stderr, "File: %s\n\n", entryFile)
+		for i, msg := range p.Errors() {
+			fmt.Fprintf(os.Stderr, "Error %d: %s\n", i+1, msg)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+		return &ParseError{
+			File:   entryFile,
+			Errors: p.Errors(),
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Parsing successful\n")
+
+	// Step 4: Convert to OpCode using interpreter
+	interp := interpreter.NewInterpreter()
+	script, err := interp.Interpret(program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n=== INTERPRETATION ERROR ===\n")
+		fmt.Fprintf(os.Stderr, "Failed to convert TFY script to OpCode:\n")
+		fmt.Fprintf(os.Stderr, "%v\n\n", err)
+		return fmt.Errorf("failed to interpret script: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Interpreted script: %d globals, %d functions, %d assets\n",
+		len(script.Globals), len(script.Functions), len(script.Assets))
+
+	// Step 5: Initialize engine with FilesystemAssetLoader
+	assetLoader := engine.NewFilesystemAssetLoader(absDir)
+	imageDecoder := engine.NewBMPImageDecoder()
+
+	// Initialize the engine using the Init-like pattern
+	// We need to set up the global engine and game state
+	engine.InitDirect(assetLoader, imageDecoder, func() {
+		// This function will be called to execute the script
+		// Wrap in error handler to catch runtime errors
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "\n=== RUNTIME ERROR ===\n")
+				fmt.Fprintf(os.Stderr, "The program encountered a runtime error:\n")
+				fmt.Fprintf(os.Stderr, "%v\n\n", r)
+				fmt.Fprintf(os.Stderr, "This may be due to:\n")
+				fmt.Fprintf(os.Stderr, "  - Invalid function calls or arguments\n")
+				fmt.Fprintf(os.Stderr, "  - Missing or corrupted assets\n")
+				fmt.Fprintf(os.Stderr, "  - Unsupported operations\n\n")
+			}
+		}()
+
+		// Convert interpreter OpCode to engine OpCode format
+		engineOps := convertToEngineOpCodes(script.Main.Body)
+
+		// Register the main sequence
+		// Use TIME mode (0) for normal execution
+		engine.RegisterSequence(engine.Time, engineOps)
+	})
+
+	// Step 6: Start the engine (this will block until the game exits)
+	fmt.Fprintf(os.Stderr, "Starting engine...\n")
+	engine.Run()
+
+	return nil
+}
+
+// findTFYFiles locates all .tfy files in the given directory
+func findTFYFiles(directory string) ([]string, error) {
+	var tfyFiles []string
+
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+
+		// Look for .tfy or .fil files
+		if ext == ".tfy" || ext == ".fil" {
+			tfyFiles = append(tfyFiles, filepath.Join(directory, name))
+		}
+	}
+
+	return tfyFiles, nil
+}
 
 // recursiveRead reads a file and its includes recursively
 func recursiveRead(path string, included map[string]bool) ([]byte, error) {
@@ -53,7 +249,6 @@ func recursiveRead(path string, included map[string]bool) ([]byte, error) {
 
 		if strings.HasPrefix(trimmed, "#include") {
 			// Parse: #include "FILENAME"
-			// Simple parse: quote to quote
 			start := strings.Index(trimmed, "\"")
 			end := strings.LastIndex(trimmed, "\"")
 			if start != -1 && end != -1 && end > start {
@@ -68,7 +263,7 @@ func recursiveRead(path string, included map[string]bool) ([]byte, error) {
 				output.Write(inContent)
 				output.WriteString("\n")
 			} else {
-				// Malformed include, just keep line?
+				// Malformed include, just keep line
 				output.WriteString(line)
 				output.WriteString("\n")
 			}
@@ -81,226 +276,80 @@ func recursiveRead(path string, included map[string]bool) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-// scanAssetReferences walks the AST and collects all asset filenames from LoadPic, PlayMIDI, PlayWAVE calls
-func scanAssetReferences(program *ast.Program) []string {
-	var assets []string
-	seen := make(map[string]bool)
-
-	var walker func(node ast.Node)
-	walker = func(node ast.Node) {
-		switch n := node.(type) {
-		case *ast.Program:
-			for _, s := range n.Statements {
-				walker(s)
-			}
-		case *ast.FunctionStatement:
-			walker(n.Body)
-		case *ast.ExpressionStatement:
-			walker(n.Expression)
-		case *ast.AssignStatement:
-			walker(n.Value)
-		case *ast.MesBlockStatement:
-			walker(n.Body)
-		case *ast.StepBlockStatement:
-			walker(n.Body)
-		case *ast.BlockStatement:
-			for _, s := range n.Statements {
-				walker(s)
-			}
-		case *ast.IfStatement:
-			walker(n.Condition)
-			walker(n.Consequence)
-			if n.Alternative != nil {
-				walker(n.Alternative)
-			}
-		case *ast.ForStatement:
-			if n.Init != nil {
-				walker(n.Init)
-			}
-			if n.Condition != nil {
-				walker(n.Condition)
-			}
-			if n.Post != nil {
-				walker(n.Post)
-			}
-			walker(n.Body)
-		case *ast.CallExpression:
-			funcName := strings.ToLower(n.Function.Value)
-			// Check for asset loading functions
-			if funcName == "loadpic" || funcName == "playmidi" || funcName == "playwave" {
-				if len(n.Arguments) > 0 {
-					if strLit, ok := n.Arguments[0].(*ast.StringLiteral); ok {
-						if !seen[strLit.Value] {
-							assets = append(assets, strLit.Value)
-							seen[strLit.Value] = true
-						}
-					}
-				}
-			}
-			// Recursively check arguments
-			for _, arg := range n.Arguments {
-				walker(arg)
-			}
-		case *ast.InfixExpression:
-			walker(n.Left)
-			walker(n.Right)
-		case *ast.PrefixExpression:
-			walker(n.Right)
-		case *ast.IndexExpression:
-			walker(n.Left)
-			if n.Index != nil {
-				walker(n.Index)
-			}
+// convertToEngineOpCodes converts interpreter OpCodes to engine OpCodes
+func convertToEngineOpCodes(interpOps []interpreter.OpCode) []engine.OpCode {
+	engineOps := make([]engine.OpCode, len(interpOps))
+	for i, op := range interpOps {
+		engineOps[i] = engine.OpCode{
+			Cmd:  op.Cmd,
+			Args: convertOpCodeArgs(op.Args),
 		}
 	}
-
-	walker(program)
-	return assets
+	return engineOps
 }
 
-// findAssetFile performs case-insensitive file search in the given directory
-// Returns the actual filesystem name (preserving case) for proper go:embed
-func findAssetFile(dir, filename string) string {
-	// Always do directory listing to get the actual filesystem name
-	// This is necessary on case-insensitive filesystems (macOS, Windows)
-	// to ensure go:embed uses the correct case
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-
-	lowerFilename := strings.ToLower(filename)
-	for _, entry := range entries {
-		if strings.ToLower(entry.Name()) == lowerFilename {
-			// Return the actual filesystem name (with correct case)
-			return filepath.Join(dir, entry.Name())
+// convertOpCodeArgs recursively converts OpCode arguments
+func convertOpCodeArgs(args []any) []any {
+	result := make([]any, len(args))
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case interpreter.OpCode:
+			// Nested OpCode - convert recursively
+			result[i] = engine.OpCode{
+				Cmd:  v.Cmd,
+				Args: convertOpCodeArgs(v.Args),
+			}
+		case []interpreter.OpCode:
+			// Slice of OpCodes - convert each
+			result[i] = convertToEngineOpCodes(v)
+		case interpreter.Variable:
+			// Variable reference - keep as string
+			result[i] = string(v)
+		default:
+			// Primitive value - keep as-is
+			result[i] = arg
 		}
 	}
-
-	return ""
+	return result
 }
 
-func main() {
-	flag.Parse()
-	args := flag.Args()
+// ParseError represents a parsing error with file context
+type ParseError struct {
+	File   string
+	Errors []string
+}
 
-	if len(args) < 1 {
-		fmt.Println("Usage: son-et <input.fil>")
-		os.Exit(1)
+func (e *ParseError) Error() string {
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("Parse errors in %s:\n", e.File))
+	for _, msg := range e.Errors {
+		buf.WriteString(fmt.Sprintf("  %s\n", msg))
 	}
+	return buf.String()
+}
 
-	entryPath := args[0]
-	// Using map to prevent cycles
-	included := make(map[string]bool)
+// AssetLoadError represents an asset loading error
+type AssetLoadError struct {
+	Filename string
+	Err      error
+}
 
-	fullCode, err := recursiveRead(entryPath, included)
-	if err != nil {
-		log.Fatalf("Error processing files: %v", err)
+func (e *AssetLoadError) Error() string {
+	return fmt.Sprintf("Failed to load asset '%s': %v", e.Filename, e.Err)
+}
+
+// RuntimeError represents a runtime error with TFY line context
+type RuntimeError struct {
+	Message string
+	Line    int
+	File    string
+}
+
+func (e *RuntimeError) Error() string {
+	if e.File != "" && e.Line > 0 {
+		return fmt.Sprintf("Runtime error at %s:%d: %s", e.File, e.Line, e.Message)
+	} else if e.Line > 0 {
+		return fmt.Sprintf("Runtime error at line %d: %s", e.Line, e.Message)
 	}
-
-	os.WriteFile("debug_merged.fil", fullCode, 0644)
-
-	// 1. Lexing
-	// DEBUG
-	if false {
-		d := lexer.New(string(fullCode))
-		for {
-			tok := d.NextToken()
-			fmt.Printf("DEBUG TOKEN: %s (%q)\n", tok.Type, tok.Literal)
-			if tok.Type == token.EOF {
-				break
-			}
-		}
-	}
-	l := lexer.New(string(fullCode))
-
-	// 2. Parsing
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	// Debug: write merged content
-	err = os.WriteFile("debug_merged.fil", fullCode, 0644)
-	if err != nil {
-		log.Printf("Warning: couldn't write debug file: %v", err)
-	}
-
-	if len(p.Errors()) != 0 {
-		for _, msg := range p.Errors() {
-			fmt.Printf("Parser Error: %s\n", msg)
-		}
-		os.Exit(1)
-	}
-
-	// 3. Scan for assets referenced in the code
-	// First, scan the AST for LoadPic, PlayMIDI, PlayWAVE calls
-	fileDir := filepath.Dir(entryPath)
-	fmt.Fprintf(os.Stderr, "DEBUG: Scanning for asset references in code\n")
-
-	referencedAssets := scanAssetReferences(program)
-	fmt.Fprintf(os.Stderr, "DEBUG: Found %d asset references in code\n", len(referencedAssets))
-
-	// Now find the actual files (case-insensitive matching)
-	var assets []string
-	seenAssets := make(map[string]bool)
-
-	for _, assetRef := range referencedAssets {
-		// Try to find the file with case-insensitive matching
-		found := findAssetFile(fileDir, assetRef)
-		if found != "" {
-			rel, err := filepath.Rel(fileDir, found)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "DEBUG: Rel error for %s: %v\n", found, err)
-				continue
-			}
-			if !seenAssets[rel] {
-				assets = append(assets, rel)
-				seenAssets[rel] = true
-				fmt.Fprintf(os.Stderr, "DEBUG: Asset embedded: %s (referenced as: %s)\n", rel, assetRef)
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "WARNING: Asset not found: %s\n", assetRef)
-		}
-	}
-
-	// Also scan directory for common asset patterns (BMP, MID, WAV)
-	// This catches dynamically generated filenames like StrPrint("ROBOT%03d.BMP", i)
-	entries, err := os.ReadDir(fileDir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			ext := strings.ToLower(filepath.Ext(name))
-			// Include common asset types
-			if ext == ".bmp" || ext == ".mid" || ext == ".wav" {
-				if !seenAssets[name] {
-					assets = append(assets, name)
-					seenAssets[name] = true
-					fmt.Fprintf(os.Stderr, "DEBUG: Asset auto-detected: %s\n", name)
-				}
-			}
-		}
-	}
-
-	fmt.Fprintf(os.Stderr, "DEBUG: Total assets to embed: %d\n", len(assets))
-
-	// 4. Code Generation
-	gen := codegen.New(assets)
-	code := gen.Generate(program)
-
-	// Output to file
-	baseName := filepath.Base(entryPath)
-	ext := filepath.Ext(baseName)
-	paramName := strings.TrimSuffix(baseName, ext)
-	outName := filepath.Join(filepath.Dir(entryPath), strings.ToLower(paramName)+"_game.go")
-
-	err = os.WriteFile(outName, []byte(code), 0644)
-	if err != nil {
-		log.Fatalf("Failed to write output file: %v", err)
-	}
-	fmt.Fprintf(os.Stderr, "Generated %s\n", outName)
-
-	// 4. Output (Optional: Print to stdout too?)
-	// fmt.Println(code)
+	return fmt.Sprintf("Runtime error: %s", e.Message)
 }

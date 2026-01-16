@@ -485,6 +485,73 @@ func InitEngineState(fs embed.FS, opts ...EngineStateOption) *EngineState {
 	return NewEngineState(allOpts...)
 }
 
+// InitDirect initializes the engine for direct mode execution
+// This is used by the CLI when executing TFY projects from a directory
+func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc func()) {
+	script = scriptFunc
+
+	// Create the global EngineState instance with custom loaders
+	globalEngine = NewEngineState(
+		WithAssetLoader(assetLoader),
+		WithImageDecoder(imageDecoder),
+	)
+
+	// Create the game state using the global engine
+	gameState = &Game{
+		state:    globalEngine,
+		renderer: NewEbitenRenderer(),
+	}
+
+	ebiten.SetWindowSize(1280, 720)
+
+	// Try to load default font
+	SetFont(14, "MS UI Gothic", 0)
+
+	// Initialize Audio
+	fmt.Println("=== AUDIO INITIALIZATION START ===")
+	InitializeAudio()
+
+	// SoundFont loading logic
+	sfPath := "default.sf2"
+
+	// 1. Check command line args
+	for i, arg := range os.Args {
+		if (arg == "-sf" || arg == "-soundfont") && i+1 < len(os.Args) {
+			sfPath = os.Args[i+1]
+			break
+		}
+	}
+
+	// 2. If default not found and not specified, try to find a single .sf2 in CWD
+	if sfPath == "default.sf2" {
+		if _, err := os.Stat(sfPath); os.IsNotExist(err) {
+			// Check for other .sf2 files
+			matches, _ := filepath.Glob("*.sf2")
+			if len(matches) == 0 {
+				matches, _ = filepath.Glob("*.SF2") // Try uppercase
+			}
+
+			if len(matches) > 0 {
+				sfPath = matches[0]
+				if len(matches) > 1 {
+					fmt.Printf("Info: Multiple SoundFonts found, using %s\n", sfPath)
+				} else {
+					fmt.Printf("Info: Auto-detected SoundFont: %s\n", sfPath)
+				}
+			}
+		}
+	}
+
+	// Try to load SoundFont
+	if err := LoadSoundFont(sfPath); err != nil {
+		fmt.Printf("Warning: Could not load SoundFont (%s): %v\n", sfPath, err)
+		fmt.Println("Please provide a .sf2 file via -sf <path> or place a .sf2 file in the directory.")
+	} else {
+		fmt.Printf("Success: SoundFont loaded from %s\n", sfPath)
+	}
+	fmt.Println("=== AUDIO INITIALIZATION END ===")
+}
+
 func Close() {
 	fmt.Println("Engine Close")
 }

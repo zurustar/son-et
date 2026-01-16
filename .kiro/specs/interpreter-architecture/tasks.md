@@ -73,15 +73,15 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Test #include handling
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. Implement CLI Interface
-  - [ ] 2.1 Update cmd/son-et/main.go for direct mode
+- [x] 2. Implement CLI Interface
+  - [x] 2.1 Update cmd/son-et/main.go for direct mode
     - Parse command-line arguments
     - Detect direct mode: `son-et <directory>`
     - Display help: `son-et --help` or `son-et`
     - Validate directory exists
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ] 2.2 Implement direct mode execution
+  - [x] 2.2 Implement direct mode execution
     - Locate TFY files in specified directory
     - Read and parse TFY files
     - Convert to OpCode using interpreter
@@ -89,14 +89,14 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Execute OpCode through VM
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-  - [ ] 2.3 Implement error reporting for direct mode
+  - [x] 2.3 Implement error reporting for direct mode
     - Report parsing errors with file, line, column
     - Report asset loading errors with filename
     - Report runtime errors with TFY line numbers
     - Display helpful error messages
     - _Requirements: 1.5, C6.1, C6.2_
 
-  - [ ] 2.4 Write integration tests for CLI
+  - [x] 2.4 Write integration tests for CLI
     - Test direct mode with sample projects
     - Test help display
     - Test error handling (directory not found, invalid TFY)
