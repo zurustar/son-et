@@ -69,7 +69,7 @@ When receiving a feature request:
    - Check `.kiro/specs/core-engine/design.md` for implementation guidance
 
 3. **Determine implementation scope**
-   - Compiler changes (lexer/parser/codegen) in `pkg/compiler/`
+   - Interpreter changes (AST to OpCode conversion) in `pkg/compiler/interpreter/`
    - Runtime changes (engine functions) in `pkg/engine/`
    - Both if needed
 
@@ -93,9 +93,9 @@ When receiving a feature request:
 
 **CRITICAL: Always follow this sequence**
 
-1. **Build the implementation**
-   - Follow the detailed build process in `build-workflow.md`
-   - Ensure all assets are properly embedded
+1. **Run the implementation**
+   - Follow the detailed execution process in `build-workflow.md`
+   - Use direct mode for rapid iteration
 
 2. **Provide execution commands to user**
    - Generate the complete command sequence for the user
@@ -120,16 +120,16 @@ When receiving a feature request:
 
 Based on log analysis and user completion report:
 
-- **Build Success + Correct Behavior**: Move to next feature or task
-- **Build Errors**: Fix transpiler or code generation issues
+- **Execution Success + Correct Behavior**: Move to next feature or task
+- **Parsing Errors**: Fix interpreter or AST conversion issues
 - **Runtime Errors**: Debug using log timestamps, fix implementation
 - **Incorrect Behavior**: Review requirements, adjust implementation
-- **Asset Loading Issues**: Check file paths and embedding directives
+- **Asset Loading Issues**: Check file paths and directory structure
 
 **Log Analysis Process:**
-1. Read the generated log file (e.g., `game_execution.log`)
+1. Read the generated log file (e.g., `execution.log`)
 2. Review timestamped log for error patterns
-3. Identify the failure point (build, startup, runtime)
+3. Identify the failure point (parsing, startup, runtime)
 4. Cross-reference with known issues in `build-workflow.md`
 5. Implement fixes and repeat verification cycle
 
@@ -151,25 +151,36 @@ Based on log analysis and user completion report:
 
 ### Build Constraints
 
-- Refer to `build-workflow.md` for detailed build requirements and asset management
+- Refer to `build-workflow.md` for detailed execution requirements and asset management
 
-## Debugging and Build Issues
+## Debugging and Execution Issues
 
-For detailed debugging procedures, build troubleshooting, and asset management, refer to `build-workflow.md`.
+For detailed debugging procedures, execution troubleshooting, and asset management, refer to `build-workflow.md`.
 
 ## Quick Reference Commands
 
 ### Run Tests
+
+**CRITICAL RULE: Always set timeout when running tests**
+
 ```bash
-# Run all tests
-go test ./pkg/compiler/... ./pkg/engine/...
+# Run all tests with timeout (REQUIRED)
+go test -timeout=30s ./pkg/compiler/... ./pkg/engine/...
 
-# Run with race detector
-go test -race ./pkg/compiler/... ./pkg/engine/...
+# Run with race detector and timeout
+go test -timeout=30s -race ./pkg/compiler/... ./pkg/engine/...
 
-# Run specific test
-go test -v -run TestSpecificFunction ./pkg/engine/
+# Run specific test with timeout
+go test -v -timeout=20s -run TestSpecificFunction ./pkg/engine/
 ```
+
+**Why timeout is required:**
+- Tests may hang due to blocking operations (e.g., TIME mode in VM)
+- Timeout allows early detection of deadlocks or infinite loops
+- Default timeout is too long for development feedback
+- Recommended timeout: 20-30 seconds for unit tests
+
+**Never run tests without `-timeout` flag!**
 
 ### Check Implementation Status
 ```bash
@@ -184,8 +195,8 @@ grep -r "TODO\|FIXME" pkg/
 
 A feature implementation is complete when:
 
-1. ✅ Sample scenario transpiles without errors
-2. ✅ Generated Go code compiles without errors
+1. ✅ Sample scenario executes without errors
+2. ✅ Interpreter converts TFY to OpCode correctly
 3. ✅ Executable runs without crashes
 4. ✅ User confirms correct behavior
 5. ✅ (Optional) Tests pass for the feature
