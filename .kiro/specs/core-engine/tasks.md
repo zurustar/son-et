@@ -31,13 +31,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Pass EngineState through call chain instead of using globals
     - Maintain backward compatibility with wrapper functions if needed
     - _Requirements: All (foundation for testing)_
-
-  - [x] 0.3 Add dependency injection for external dependencies
-    - Create AssetLoader interface to abstract embed.FS
-    - Create ImageDecoder interface to abstract BMP decoding
-    - Allow mock implementations for testing
-    - Add constructor parameters for dependency injection
-    - _Requirements: 2.1, 2.2, 4.1_
+    - _Note: AssetLoader interface moved to interpreter-architecture spec (Task 0.1)_
 
   - [x] 0.4 Separate rendering logic from state management
     - Extract rendering code into Renderer struct
@@ -472,38 +466,38 @@ This implementation plan covers the son-et core engine, including both the trans
     - Note any limitations or edge cases discovered
     - _Requirements: 1.1, 1.2, 1.4_
 
-- [ ] 15. Checkpoint - Verify variable scope implementation
-  - [ ] 15.1 Run all existing unit tests
+- [x] 15. Checkpoint - Verify variable scope implementation
+  - [x] 15.1 Run all existing unit tests
     - Execute all test suites to ensure no regressions
     - Verify all property-based tests pass
     - Check test coverage for variable scope functionality
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 15.2 Test with sample scenarios using variable scope
+  - [x] 15.2 Test with sample scenarios using variable scope
     - Transpile sample scenarios that use variables in mes() blocks
     - Verify generated code includes proper engine.Assign() calls
     - Build executables and verify they compile without errors
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 15.3 Verify window positioning correctness
+  - [x] 15.3 Verify window positioning correctness
     - Run sample scenarios and verify windows appear at correct positions
     - Test scenarios with calculated positions (e.g., winW-320, winH/2)
     - Ensure no windows appear off-screen due to variable scope issues
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 15.4 Verify visual elements render correctly
+  - [x] 15.4 Verify visual elements render correctly
     - Test sprite positioning and movement
     - Verify cast operations work with scoped variables
     - Check that all visual elements appear as expected
     - _Requirements: 1.1, 1.2, 1.4_
 
-  - [ ] 15.5 Run regression tests on other samples
+  - [x] 15.5 Run regression tests on other samples
     - Test samples that don't use variable scope features
     - Verify no regressions in basic functionality
     - Ensure backward compatibility is maintained
     - _Requirements: All_
 
-  - [ ] 15.6 Ask user for verification if issues arise
+  - [x] 15.6 Ask user for verification if issues arise
     - Report any test failures or unexpected behavior
     - Request user guidance on any ambiguous results
     - Document any limitations or edge cases discovered
