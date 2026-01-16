@@ -706,14 +706,15 @@ func LoadPic(path string) int {
 }
 
 // convertTransparentColor creates a new image with the specified color converted to transparent (alpha=0)
+// convertTransparentColor creates a new image with the specified color converted to transparent (alpha=0)
 // This leverages Ebitengine's native alpha channel support for efficient rendering
-func convertTransparentColor(src *ebiten.Image, transparentColor color.Color) *ebiten.Image {
+func convertTransparentColor(src *ebiten.Image, transparentColor color.Color) (result *ebiten.Image) {
 	bounds := src.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
 
 	// Create new image with transparency
-	result := ebiten.NewImage(width, height)
+	result = ebiten.NewImage(width, height)
 
 	// Get 8-bit RGB values of transparent color for comparison
 	// Convert from 16-bit RGBA() values to 8-bit
@@ -730,6 +731,7 @@ func convertTransparentColor(src *ebiten.Image, transparentColor color.Color) *e
 	defer func() {
 		if r := recover(); r != nil {
 			// If we can't read pixels (e.g., in tests), just return original
+			fmt.Printf("convertTransparentColor: Panic during pixel processing, returning original image\n")
 			result = src
 		}
 	}()

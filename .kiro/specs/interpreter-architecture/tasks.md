@@ -35,15 +35,15 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - _Requirements: 2.3, C4.3_
     - _Note: Already implemented in pkg/engine/asset_loader.go_
 
-- [ ] 1. Create Interpreter Component
-  - [ ] 1.1 Create interpreter package structure
+- [x] 1. Create Interpreter Component
+  - [x] 1.1 Create interpreter package structure
     - Create `pkg/compiler/interpreter/` directory
     - Define `Interpreter` struct with assets, globals, userFuncs fields
     - Define `Script` struct to hold compiled OpCode sequences
     - Define `Function` struct for user-defined functions
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 1.2 Implement AST to OpCode conversion
+  - [x] 1.2 Implement AST to OpCode conversion
     - Implement `Interpret(program *ast.Program) (*Script, error)` method
     - Convert function definitions to OpCode sequences
     - Convert statements to OpCode sequences
@@ -51,21 +51,21 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Handle #include directives recursively
     - _Requirements: 1.3, C1.1, C1.2_
 
-  - [ ] 1.3 Implement asset discovery
+  - [x] 1.3 Implement asset discovery
     - Implement `scanAssets(program *ast.Program) []string` method
     - Walk AST to find LoadPic, PlayMIDI, PlayWAVE calls
     - Extract string literal filenames
     - Return unique list of asset filenames
     - _Requirements: 1.4, C4.1, C4.2_
 
-  - [ ] 1.4 Implement variable scope tracking
+  - [x] 1.4 Implement variable scope tracking
     - Track global variable declarations
     - Track function-level local variables
     - Generate scope information for VM execution
     - Support case-insensitive variable names
     - _Requirements: C2.1, C2.2, C2.3_
 
-  - [ ] 1.5 Write unit tests for interpreter
+  - [x] 1.5 Write unit tests for interpreter
     - Test simple script conversion to OpCode
     - Test function definition conversion
     - Test asset discovery
