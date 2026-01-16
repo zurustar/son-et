@@ -2,54 +2,29 @@
 
 ## Introduction
 
-This document defines the requirements for the son-et core engine, a source-to-source compiler (transpiler) that converts legacy FILLY scripts into modern Go source code. The engine provides a complete runtime environment including graphics rendering, audio playback, timing synchronization, and script execution.
+This document defines the requirements for the son-et core engine runtime environment, including graphics rendering, audio playback, timing synchronization, and FILLY language function implementations.
+
+This specification focuses on the runtime engine functionality. Interpreter architecture and execution modes are defined in [interpreter-architecture/requirements.md](../interpreter-architecture/requirements.md). Common requirements shared across specifications are defined in [COMMON_REQUIREMENTS.md](../COMMON_REQUIREMENTS.md).
 
 ## Glossary
 
-- **Transpiler**: A source-to-source compiler that converts FILLY script syntax into Go code
-- **FILLY_Script**: Legacy scripting language with C-like syntax used for creating interactive multimedia applications
-- **Virtual_Desktop**: A fixed 1280x720 rendering canvas that hosts multiple virtual windows
-- **Virtual_Window**: A sub-region within the Virtual_Desktop that displays game content (typically 640x480)
-- **Picture**: An image buffer that can be loaded, manipulated, and displayed
-- **Cast**: A sprite object with transparency support and z-ordering
-- **MIDI_Sync_Mode**: Timing mode where script execution is synchronized to MIDI playback ticks
-- **Time_Mode**: Timing mode where script execution is driven by the game loop at 60 FPS
-- **Script_Goroutine**: A separate thread that executes the transpiled user script
-- **Main_Thread**: The primary thread running the game loop (Update/Draw at 60 FPS)
-- **Render_Mutex**: A synchronization lock protecting shared rendering state
-- **Step**: A timing unit whose meaning depends on the current timing mode
-- **mes_Block**: A message-driven execution block that responds to events
-- **SoundFont**: A .sf2 file containing instrument samples for MIDI synthesis
+See [GLOSSARY.md](../GLOSSARY.md) for common terms used across all son-et specifications.
+
+## Common Requirements
+
+This specification depends on the following common requirements defined in [COMMON_REQUIREMENTS.md](../COMMON_REQUIREMENTS.md):
+- **C1**: Complete OpCode-Based Execution
+- **C2**: Variable Scope Unification
+- **C3**: VM-Based Execution Engine
+- **C4**: Asset Management
+- **C5**: Backward Compatibility
+- **C6**: Error Reporting
 
 ## Requirements
 
 ## Part A: Runtime Engine Requirements
 
-### Requirement 1: Script Transpilation
-
-**User Story:** As a developer, I want to convert FILLY scripts to Go source code, so that I can build native executables from legacy scripts.
-
-#### Acceptance Criteria
-
-1. WHEN a FILLY script file is provided as input, THE Transpiler SHALL parse it and generate valid Go source code
-2. WHEN the generated Go code is compiled, THE Transpiler SHALL produce a working executable without compilation errors
-3. THE Transpiler SHALL support C-like syntax including function definitions, variable declarations, and function calls
-4. THE Transpiler SHALL handle case-insensitive identifiers and convert them to lowercase in generated code
-5. THE Transpiler SHALL support implicit type inference for variables (int, str, int[])
-
-### Requirement 2: Asset Embedding
-
-**User Story:** As a developer, I want all assets embedded in the executable, so that I can distribute a single binary without external dependencies.
-
-#### Acceptance Criteria
-
-1. WHEN the Transpiler detects LoadPic() calls, THE Transpiler SHALL identify referenced BMP files and embed them using go:embed
-2. WHEN the Transpiler detects PlayMIDI() calls, THE Transpiler SHALL identify referenced MIDI files and embed them using go:embed
-3. WHEN the Transpiler detects PlayWAVE() calls, THE Transpiler SHALL identify referenced WAV files and embed them using go:embed
-4. THE Transpiler SHALL perform case-insensitive file matching for asset references (Windows 3.1 compatibility)
-5. THE Transpiler SHALL generate a single executable containing all embedded assets
-
-### Requirement 3: Virtual Display Architecture
+### Requirement 1: Virtual Display Architecture
 
 **User Story:** As a user, I want legacy 640x480 content displayed within a modern 1280x720 window, so that I can run old games without scaling artifacts.
 
@@ -238,7 +213,7 @@ This document defines the requirements for the son-et core engine, a source-to-s
 
 ---
 
-## Part B: Transpiler Language Support Requirements
+## Part B: Interpreter Language Support Requirements
 
 ### Requirement 18: Function Definition Support
 
@@ -246,11 +221,11 @@ This document defines the requirements for the son-et core engine, a source-to-s
 
 #### Acceptance Criteria
 
-1. WHEN a function is defined with typed parameters, THE Transpiler SHALL generate a corresponding Go function
-2. THE Transpiler SHALL support parameter types: int, str, and int[] (array)
-3. WHEN a function has default parameter values, THE Transpiler SHALL generate Go code that handles optional parameters
-4. THE Transpiler SHALL support function calls with positional arguments
-5. THE Transpiler SHALL convert all function names to lowercase in generated code
+1. WHEN a function is defined with typed parameters, THE Interpreter SHALL convert it to OpCode sequences
+2. THE Interpreter SHALL support parameter types: int, str, and int[] (array)
+3. WHEN a function has default parameter values, THE Interpreter SHALL handle optional parameters at call time
+4. THE Interpreter SHALL support function calls with positional arguments
+5. THE Interpreter SHALL convert all function names to lowercase
 
 ### Requirement 19: Variable Declaration Support
 
@@ -258,11 +233,11 @@ This document defines the requirements for the son-et core engine, a source-to-s
 
 #### Acceptance Criteria
 
-1. WHEN a variable is declared without explicit type, THE Transpiler SHALL infer the type from usage
-2. THE Transpiler SHALL infer int[] type when a variable is used with array indexing
-3. THE Transpiler SHALL infer string type when a variable is assigned a string literal or string function result
-4. THE Transpiler SHALL default to int type for all other variables
-5. THE Transpiler SHALL support global and local variable scopes
+1. WHEN a variable is declared without explicit type, THE Interpreter SHALL infer the type from usage
+2. THE Interpreter SHALL infer int[] type when a variable is used with array indexing
+3. THE Interpreter SHALL infer string type when a variable is assigned a string literal or string function result
+4. THE Interpreter SHALL default to int type for all other variables
+5. THE VM SHALL support global and local variable scopes through a scope chain
 
 ### Requirement 20: Control Flow - Conditional Statements
 
@@ -270,11 +245,11 @@ This document defines the requirements for the son-et core engine, a source-to-s
 
 #### Acceptance Criteria
 
-1. WHEN an if statement is encountered, THE Transpiler SHALL generate equivalent Go if statement
-2. THE Transpiler SHALL support else clauses
-3. THE Transpiler SHALL support nested if-else statements
-4. THE Transpiler SHALL evaluate boolean expressions in conditions
-5. THE Transpiler SHALL support comparison operators (==, !=, <, >, <=, >=)
+1. WHEN an if statement is encountered, THE Interpreter SHALL convert it to OpCode
+2. THE Interpreter SHALL support else clauses
+3. THE Interpreter SHALL support nested if-else statements
+4. THE VM SHALL evaluate boolean expressions in conditions
+5. THE VM SHALL support comparison operators (==, !=, <, >, <=, >=)
 
 ### Requirement 21: Control Flow - Loop Statements
 
@@ -282,11 +257,11 @@ This document defines the requirements for the son-et core engine, a source-to-s
 
 #### Acceptance Criteria
 
-1. WHEN a for loop is encountered, THE Transpiler SHALL generate equivalent Go for loop
-2. WHEN a while loop is encountered, THE Transpiler SHALL generate equivalent Go for loop with condition
-3. WHEN a do-while loop is encountered, THE Transpiler SHALL generate Go code that executes the body at least once
-4. THE Transpiler SHALL support break statements to exit loops
-5. THE Transpiler SHALL support continue statements to skip to next iteration
+1. WHEN a for loop is encountered, THE Interpreter SHALL convert it to OpCode
+2. WHEN a while loop is encountered, THE Interpreter SHALL convert it to OpCode
+3. WHEN a do-while loop is encountered, THE Interpreter SHALL convert it to OpCode that executes the body at least once
+4. THE VM SHALL support break statements to exit loops
+5. THE VM SHALL support continue statements to skip to next iteration
 
 ### Requirement 22: Control Flow - Switch Statements
 
@@ -294,11 +269,11 @@ This document defines the requirements for the son-et core engine, a source-to-s
 
 #### Acceptance Criteria
 
-1. WHEN a switch statement is encountered, THE Transpiler SHALL generate equivalent Go switch statement
-2. THE Transpiler SHALL support multiple case clauses
-3. THE Transpiler SHALL support default clause
-4. THE Transpiler SHALL support break statements in case clauses
-5. THE Transpiler SHALL handle fall-through behavior correctly
+1. WHEN a switch statement is encountered, THE Interpreter SHALL convert it to OpCode
+2. THE Interpreter SHALL support multiple case clauses
+3. THE Interpreter SHALL support default clause
+4. THE VM SHALL support break statements in case clauses
+5. THE VM SHALL handle fall-through behavior correctly
 
 ### Requirement 23: Drawing Functions - Lines and Shapes
 
