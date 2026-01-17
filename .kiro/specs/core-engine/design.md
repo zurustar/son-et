@@ -617,6 +617,8 @@ func ExecuteOpDirect(op OpCode) {
 
 ## Debugging Common Issues
 
+**Note:** For high-level overview of common issues, see [COMMON_DESIGN.md](../COMMON_DESIGN.md#lessons-learned-from-implementation)
+
 ### Issue: Window Not Displaying
 
 **Symptoms:**

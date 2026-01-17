@@ -435,65 +435,61 @@ done | tee debug.log
 5. Assuming understanding without verification → Test both modes!
 
 
-## Known Issues and Solutions (Lessons Learned)
+## Lessons Learned from Implementation
 
-### Issue 1: step() Block Misinterpretation
+This section documents critical issues encountered during implementation and their solutions. For detailed implementation code and examples, refer to the specific design documents.
 
-**Problem:** Initially interpreted `step(n)` as a loop count (repeat n times), but the correct interpretation is that `step(n)` sets the time duration for each Wait(1) operation.
+### 1. step() Block Semantics
 
-**Correct Behavior:**
-- `step(65)` in TIME mode → Each Wait(1) = 65 * 50ms = 3.25 seconds
-- `step(8)` in MIDI_TIME mode → Each Wait(1) = 8 * (32nd note duration)
-- The block body executes ONCE, not n times
+**Problem:** `step(n)` is NOT a loop construct - it sets the time duration for Wait operations.
 
-**Solution:** Emit `SetStep(n)` followed by the block body statements, not wrapped in a loop.
+**Key Points:**
+- `step(65)` means "each Wait(1) = 65 time units", NOT "repeat 65 times"
+- The block body executes ONCE
+- Misinterpretation causes incorrect script behavior
 
-### Issue 2: main() Function Execution and Nested Sequences
+**See:** [interpreter-architecture/design.md](interpreter-architecture/design.md#step-block-conversion) for detailed implementation
 
-**Problem:** Wrapping the entire `main()` function in `RegisterSequence` caused nested sequence deadlock. When `mes()` blocks called `RegisterSequence` internally, the outer sequence would block waiting for completion, but the inner sequence couldn't execute because the outer one was still active.
+### 2. Nested Sequence Deadlock
 
-**Correct Behavior:**
-- `main()` function body should execute directly (not in a sequence)
+**Problem:** Wrapping `main()` in `RegisterSequence` causes deadlock when `mes()` blocks register their own sequences.
+
+**Key Points:**
+- `main()` should execute directly using `ExecuteOpDirect`
 - Only `mes()` blocks should call `RegisterSequence`
-- This allows `mes()` blocks to register their own sequences without nesting issues
+- Prevents nested sequence blocking issues
 
-**Solution:** Execute `main()` function OpCodes directly using `ExecuteOpDirect`, not wrapped in `RegisterSequence`.
+**See:** [interpreter-architecture/design.md](interpreter-architecture/design.md#main-function-execution) for detailed implementation
 
-### Issue 3: vmLock Deadlock in PlayMIDI
+### 3. Audio Thread Safety and Blocking
 
-**Problem:** `PlayMIDI` was called from `ExecuteOp`, which is called from `UpdateVM`. `UpdateVM` holds `vmLock`, but `PlayMIDI` tried to acquire `vmLock` again, causing a deadlock.
+**Problem:** Audio functions caused deadlocks (vmLock) and blocking (synchronous playback).
 
-**Correct Behavior:**
-- Functions called from `ExecuteOp` should NOT acquire `vmLock`
-- `vmLock` is already held by `UpdateVM`
-- Only top-level entry points should acquire `vmLock`
+**Key Points:**
+- Functions called from `ExecuteOp` must NOT acquire `vmLock` (already held by `UpdateVM`)
+- Audio playback must be asynchronous (use goroutines)
+- Blocking audio operations freeze the game loop
 
-**Solution:** Remove `vmLock.Lock()` calls from `PlayMIDI` since it's called from within `UpdateVM`.
+**See:** [core-engine/design.md](core-engine/design.md#thread-safety-in-audio-functions) for detailed implementation
 
-### Issue 4: MIDI Player Blocking
+### 4. Dynamic Resource Sizing
 
-**Problem:** `midiPlayer.Play()` was blocking the main thread, preventing the game loop from continuing.
+**Problem:** Hardcoded dimensions (e.g., 640x480) caused incorrect window sizes.
 
-**Correct Behavior:**
-- Audio playback should be asynchronous
-- `midiPlayer.Play()` should not block the caller
+**Key Points:**
+- Always query actual resource dimensions dynamically
+- Never hardcode sizes - different resources have different dimensions
+- Window size must match the picture being displayed
 
-**Solution:** Call `midiPlayer.Play()` in a goroutine to avoid blocking.
+**See:** [core-engine/design.md](core-engine/design.md#movewin-with-variable-arguments) for detailed implementation
 
-### Issue 5: MoveWin Hardcoded Size
+## Key Design Principles
 
-**Problem:** `CallEngineFunction` for "movewin" with 2 arguments used hardcoded 640x480 size instead of the new picture's actual size.
+These principles emerged from real implementation challenges:
 
-**Correct Behavior:**
-- `MoveWin(winID, picID)` should use the new picture's dimensions
-- Window size should match the picture being displayed
-
-**Solution:** Look up the new picture's size and use it for the window dimensions.
-
-## Design Principles (Updated)
-
-1. **Avoid Nested Locking:** Functions should document whether they expect locks to be held
-2. **Direct Execution for Top-Level:** Only wrap code in sequences when timing control is needed
-3. **Goroutines for Blocking Operations:** Use goroutines for operations that might block (audio, I/O)
-4. **Dynamic Size Calculation:** Never hardcode dimensions; always query actual sizes
-5. **Test with Real Samples:** Design assumptions should be validated with actual FILLY scripts
+1. **Verify Language Semantics:** Always validate FILLY behavior with actual samples, not assumptions
+2. **Avoid Nested Locking:** Document lock expectations; never acquire locks already held by caller
+3. **Direct Execution for Top-Level:** Only use sequences when timing control is needed
+4. **Asynchronous Blocking Operations:** Use goroutines for audio, I/O, and other blocking operations
+5. **Dynamic Resource Queries:** Never hardcode dimensions or properties - always query at runtime
+6. **Test with Real Samples:** Validate design decisions with actual FILLY scripts (e.g., kuma2)

@@ -484,9 +484,12 @@ engine.RegisterSequence(engine.Time, engineOps)
 - If `main()` is already in a sequence, you get nested sequences
 - Nested sequences cause deadlock in TIME mode (outer waits for inner, but inner can't start)
 
-## Lessons Learned
+## Implementation Guidelines
 
-1. **Language Semantics Matter:** Always verify FILLY language behavior with original implementation or documentation
-2. **Test with Real Scripts:** Design assumptions should be validated with actual FILLY samples (like kuma2)
-3. **Avoid Premature Abstraction:** Don't create wrapper OpCodes (like OpStep) when direct emission works better
+Based on real-world debugging experience:
+
+1. **Verify Language Semantics:** Always validate FILLY behavior with actual samples before implementing
+2. **Test with Real Scripts:** Use actual FILLY samples (like kuma2) to validate design assumptions
+3. **Avoid Premature Abstraction:** Emit OpCodes directly rather than creating unnecessary wrapper constructs
 4. **Document Execution Context:** Clearly specify whether functions expect to be called within sequences or directly
+5. **Cross-Reference Common Design:** See [COMMON_DESIGN.md](../COMMON_DESIGN.md#lessons-learned-from-implementation) for high-level lessons learned
