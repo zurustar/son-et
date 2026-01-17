@@ -48,10 +48,137 @@ executeBash("go run cmd/son-et/main.go samples/kuma2 > log.txt 2>&1 & PID=$!; sl
 
 ## Execution Modes
 
-The son-et interpreter supports two execution modes:
+The son-et interpreter supports three execution modes:
 
 1. **Direct Mode** - Execute TFY projects directly from a directory (for development)
-2. **Embedded Mode** - Create standalone executables with embedded projects (for distribution)
+2. **Headless Mode** - Execute without GUI for testing and debugging (NEW)
+3. **Embedded Mode** - Create standalone executables with embedded projects (for distribution)
+
+## Headless Mode (Testing & Debugging)
+
+### Overview
+
+Headless mode allows you to run FILLY scripts without opening a GUI window. This is ideal for:
+- Automated testing in CI/CD environments
+- Debugging timing and logic issues
+- Testing within Kiro or other development tools
+- Verifying script behavior without visual inspection
+
+### Quick Start
+
+Run a FILLY project in headless mode with auto-termination:
+
+```bash
+go run cmd/son-et/main.go --headless --timeout=5s samples/my_game
+```
+
+**IMPORTANT:** Flags must come BEFORE the directory argument:
+```bash
+# CORRECT
+go run cmd/son-et/main.go --headless --timeout=5s samples/kuma2
+
+# WRONG (flags will be ignored)
+go run cmd/son-et/main.go samples/kuma2 --headless --timeout=5s
+```
+
+### Command Line Options
+
+**--headless**
+- Run without GUI window
+- All rendering operations are logged but not displayed
+- Audio is initialized but muted (volume set to 0)
+- MIDI timing still works correctly for MIDI_TIME mode
+- Script logic (timing, audio, state) executes normally
+
+**--timeout=DURATION**
+- Auto-terminate after specified duration
+- Formats: `5s` (5 seconds), `500ms` (500 milliseconds), `2m` (2 minutes)
+- Program exits with status code 0 after timeout
+- Prevents orphaned processes
+
+**Environment Variable:**
+```bash
+HEADLESS=1 go run cmd/son-et/main.go samples/kuma2
+```
+
+### Audio in Headless Mode
+
+In headless mode:
+- Audio system is fully initialized (required for MIDI_TIME synchronization)
+- All audio playback (MIDI and WAV) is muted (volume = 0)
+- MIDI timing events still fire correctly for mes(MIDI_TIME) blocks
+- No sound output, but timing behavior is identical to normal mode
+
+This ensures that scripts using MIDI_TIME mode work correctly in headless testing.
+
+### Timestamped Logging
+
+All important logs include timestamps in `[HH:MM:SS.mmm]` format:
+
+```
+[19:43:20.557] runHeadless: Initializing headless execution
+[19:43:20.558] RegisterSequence: 0 (16 ops)
+[19:43:20.577] VM: Wait(2 steps) -> 24 ticks
+[19:43:20.992] VM: Executing [3] Call (Tick 26) [Seq 0]
+```
+
+**Benefits:**
+- Verify mes(TIME) timing accuracy
+- Confirm Wait() durations are correct
+- Debug timing-related issues
+- Measure performance of operations
+
+### Example Usage
+
+**Basic headless test:**
+```bash
+go run cmd/son-et/main.go --headless --timeout=5s samples/kuma2
+```
+
+**Capture logs to file:**
+```bash
+go run cmd/son-et/main.go --headless --timeout=5s samples/kuma2 > test.log 2>&1
+cat test.log
+```
+
+**Verify timing accuracy:**
+```bash
+go run cmd/son-et/main.go --headless --timeout=10s samples/kuma2 2>&1 | grep "^\["
+```
+
+### What Gets Logged in Headless Mode
+
+**Rendering Operations (skipped but logged):**
+- `OpenWin (headless): pic=0, pos=(0,0), size=(0x0)`
+- `PutCast (headless): args=[...]`
+- `MoveCast (headless): args=[...]`
+
+**VM Execution (with timestamps):**
+- `[19:43:20.577] VM: Executing [0] Call (Tick 1) [Seq 0]`
+- `[19:43:20.577] VM: Wait(2 steps) -> 24 ticks`
+- `[19:43:20.992] VM: Executing [3] Call (Tick 26) [Seq 0]`
+
+**Asset Loading:**
+- `LoadPic: title.bmp`
+- `Loaded and decoded TITLE.BMP (200x200, ID=0)`
+
+**Audio:**
+- `PlayMIDI: [kuma.mid]`
+- `PlayWAVE: title2.wav`
+
+### Timing Verification Example
+
+From the logs, you can verify timing accuracy:
+
+```
+[19:43:20.577] VM: Wait(2 steps) -> 24 ticks
+[19:43:20.992] VM: Executing [3] Call (Tick 26) [Seq 0]
+```
+
+- Wait(2 steps) = 24 ticks = 400ms (at 60 FPS)
+- Actual wait: 20.992 - 20.577 = 415ms ✅ (within tolerance)
+
+This confirms that mes(TIME) is accurately synchronized with real time.
 
 ## Direct Mode (Development)
 
