@@ -267,6 +267,9 @@ var (
 	// Global EngineState instance - used by all package-level functions
 	globalEngine *EngineState
 
+	// Execution mode flags
+	headlessMode = false // Run without GUI (for testing)
+
 	// Legacy global variables - kept for backward compatibility
 	// These are now aliases/wrappers to globalEngine
 	renderMutex sync.Mutex // Protects Ebiten API calls and shared state (deprecated, use globalEngine.renderMutex)
@@ -452,6 +455,9 @@ func Init(fs embed.FS, scriptFunc func()) {
 	assets = fs
 	script = scriptFunc
 
+	// Initialize global variable store
+	globalVars = make(map[string]any)
+
 	// Create the global EngineState instance
 	globalEngine = NewEngineState(
 		WithAssetLoader(NewEmbedFSAssetLoader(fs)),
@@ -531,8 +537,12 @@ func InitEngineState(fs embed.FS, opts ...EngineStateOption) *EngineState {
 
 // InitDirect initializes the engine for direct mode execution
 // This is used by the CLI when executing TFY projects from a directory
-func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc func()) {
+func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc func(), headless bool) {
 	script = scriptFunc
+	headlessMode = headless
+
+	// Initialize global variable store
+	globalVars = make(map[string]any)
 
 	// Create the global EngineState instance with custom loaders
 	globalEngine = NewEngineState(
@@ -540,24 +550,36 @@ func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc f
 		WithImageDecoder(imageDecoder),
 	)
 
-	// Create the game state using the global engine
-	gameState = &Game{
-		state:      globalEngine,
-		renderer:   NewEbitenRenderer(),
-		tickCount:  0,
-		frameImage: ebiten.NewImage(1280, 720),
-	}
+	// Only initialize Ebiten components if not in headless mode
+	if !headless {
+		// Create the game state using the global engine
+		gameState = &Game{
+			state:      globalEngine,
+			renderer:   NewEbitenRenderer(),
+			tickCount:  0,
+			frameImage: ebiten.NewImage(1280, 720),
+		}
 
-	ebiten.SetWindowSize(1280, 720)
-	ebiten.SetWindowTitle("son-et")
-	fmt.Println("InitDirect: Window configured (1280x720)")
+		ebiten.SetWindowSize(1280, 720)
+		ebiten.SetWindowTitle("son-et")
+		fmt.Println("InitDirect: Window configured (1280x720)")
+	} else {
+		fmt.Println("InitDirect: Headless mode - skipping Ebiten initialization")
+	}
 
 	// Try to load default font
 	SetFont(14, "MS UI Gothic", 0)
 
 	// Initialize Audio
+	// In headless mode, we still initialize audio for timing purposes (MIDI_TIME mode)
+	// but audio will be muted (volume set to 0 in PlayMidiFile and PlayWAVE)
 	fmt.Println("=== AUDIO INITIALIZATION START ===")
 	InitializeAudio()
+
+	if headless {
+		fmt.Println("InitDirect: Headless mode - audio will be muted")
+	}
+
 	fmt.Println("=== AUDIO INITIALIZATION COMPLETE ===")
 
 	// SoundFont loading logic
@@ -606,6 +628,12 @@ func Close() {
 }
 
 func Run() {
+	if headlessMode {
+		fmt.Println("Run: Starting in headless mode (no GUI)")
+		runHeadless()
+		return
+	}
+
 	fmt.Printf("Run: About to call ebiten.RunGame with gameState=%v\n", gameState)
 	if gameState == nil {
 		fmt.Println("Run: ERROR - gameState is nil!")
@@ -636,6 +664,46 @@ func Run() {
 		log.Fatal(err)
 	}
 	fmt.Println("Run: ebiten.RunGame returned normally")
+}
+
+// runHeadless executes the script without GUI
+func runHeadless() {
+	startTime := time.Now()
+	fmt.Printf("[%s] runHeadless: Initializing headless execution\n",
+		startTime.Format("15:04:05.000"))
+
+	// Execute script immediately
+	fmt.Printf("[%s] runHeadless: Executing script function\n",
+		time.Now().Format("15:04:05.000"))
+	if script != nil {
+		script()
+	} else {
+		fmt.Println("runHeadless: Warning - script is nil")
+	}
+	fmt.Printf("[%s] runHeadless: Script function completed\n",
+		time.Now().Format("15:04:05.000"))
+
+	// Simulate game loop at 60 FPS for VM updates
+	ticker := time.NewTicker(time.Second / 60)
+	defer ticker.Stop()
+
+	fmt.Printf("[%s] runHeadless: Starting 60 FPS ticker for VM updates\n",
+		time.Now().Format("15:04:05.000"))
+
+	tickCounter := 0
+
+	// Run for a reasonable time or until interrupted
+	// In headless mode, we rely on timeout flag to terminate
+	for {
+		<-ticker.C
+		tickCounter++
+
+		// Update VM state (always call UpdateVM, it will check sequencers internally)
+		UpdateVM(tickCounter)
+
+		// Check if we should continue (could add completion detection here)
+		// For now, we just run until timeout or Ctrl+C
+	}
 }
 
 // --- API Stubs ---
@@ -686,11 +754,12 @@ func CapTitle(args ...any) {
 
 func WinInfo(mode int) int {
 	// 0: Width, 1: Height
+	// Return screen size (window decorations are handled by OpenWin)
 	if mode == 0 {
-		return 1280
+		return 1280 // Screen width
 	}
 	if mode == 1 {
-		return 720
+		return 720 // Screen height
 	}
 	return 0
 }
@@ -1012,28 +1081,23 @@ func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 	e.renderMutex.Lock()
 	defer e.renderMutex.Unlock()
 
-	fmt.Printf("OpenWin: pic=%d at (%d,%d) size %dx%d\n", pic, x, y, w, h)
+	fmt.Printf("OpenWin: pic=%d at (%d,%d) size %dx%d picOffset=(%d,%d) color=0x%X\n", pic, x, y, w, h, picX, picY, col)
 
-	// Use picture dimensions if not specified
-	if w == 0 || h == 0 {
+	// CRITICAL: Do NOT use picture dimensions if w and h are explicitly specified
+	// Only use picture dimensions when w==0 AND h==0 (both must be zero)
+	if w == 0 && h == 0 {
 		if picture, ok := e.pictures[pic]; ok {
-			if w == 0 {
-				w = picture.Width
-			}
-			if h == 0 {
-				h = picture.Height
-			}
-			fmt.Printf("OpenWin: Using picture size: %dx%d\n", w, h)
+			w = picture.Width
+			h = picture.Height
+			fmt.Printf("OpenWin: Both w and h are 0, using picture size: %dx%d\n", w, h)
 		} else {
 			// Fallback to default if picture not found
-			if w == 0 {
-				w = 640
-			}
-			if h == 0 {
-				h = 480
-			}
+			w = 640
+			h = 480
 			fmt.Printf("OpenWin: Picture %d not found, using default size: %dx%d\n", pic, w, h)
 		}
+	} else {
+		fmt.Printf("OpenWin: Using specified size: %dx%d\n", w, h)
 	}
 
 	// Debug logging when DEBUG_LEVEL >= 2
@@ -1081,6 +1145,14 @@ func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 
 // OpenWin is a backward-compatible wrapper for the global state
 func OpenWin(pic, x, y, w, h, picX, picY, col int) int {
+	if headlessMode {
+		if debugLevel >= 1 {
+			fmt.Printf("OpenWin (headless): pic=%d, pos=(%d,%d), size=(%dx%d)\n", pic, x, y, w, h)
+		}
+		// Return a dummy window ID for headless mode
+		return 0
+	}
+
 	if globalEngine == nil {
 		fmt.Println("Error: globalEngine not initialized")
 		return -1
@@ -1380,8 +1452,10 @@ func TextWrite(textStr string, pic, x, y int) {
 
 // MovePic copies pixels from source to destination (EngineState method)
 func (e *EngineState) MovePic(pic, x, y, w, h, dest, dx, dy int, args ...any) {
-	// Reduced logging
-	// fmt.Printf("MovePic: %d -> %d at %d,%d\n", pic, dest, dx, dy)
+	// Debug logging
+	if debugLevel >= 2 {
+		fmt.Printf("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d)\n", pic, x, y, w, h, dest, dx, dy)
+	}
 
 	// Thread Safety: Lock to prevent race with Game.Draw
 	e.renderMutex.Lock()
@@ -1497,6 +1571,8 @@ type Sequencer struct {
 
 var (
 	mainSequencer *Sequencer
+	sequencers    []*Sequencer   // List of active sequencers for multiple mes() blocks
+	globalVars    map[string]any // Global variable store for main() scope
 	vmLock        sync.Mutex
 
 	// Legacy
@@ -1541,15 +1617,11 @@ func SetVMVar(name string, value any) {
 	vmLock.Lock()
 	defer vmLock.Unlock()
 
-	if mainSequencer == nil {
-		// Create a root sequencer to hold variables
-		mainSequencer = &Sequencer{
-			vars:   make(map[string]any),
-			parent: nil,
-		}
+	if globalVars == nil {
+		globalVars = make(map[string]any)
 	}
 
-	mainSequencer.vars[strings.ToLower(name)] = value
+	globalVars[strings.ToLower(name)] = value
 }
 
 // Assign is a helper function for transpiled code to set variables
@@ -1559,8 +1631,41 @@ func Assign(name string, value any) any {
 	return value
 }
 
+// expandStepBlocks recursively expands OpStep blocks into their body operations
+// This is needed because step() blocks should execute their body inline, not as a separate operation
+func expandStepBlocks(ops []OpCode) []OpCode {
+	result := make([]OpCode, 0, len(ops))
+
+	for _, op := range ops {
+		if op.Cmd == interpreter.OpStep {
+			// Extract step count and body
+			if len(op.Args) >= 2 {
+				body, ok := op.Args[1].([]interpreter.OpCode)
+				if ok {
+					fmt.Printf("expandStepBlocks: Expanding step block with %d operations\n", len(body))
+					// Convert interpreter.OpCode to OpCode and recursively expand
+					for _, bodyOp := range body {
+						expandedOp := OpCode(bodyOp)
+						fmt.Printf("  - Expanding op: %v\n", expandedOp.Cmd)
+						// Recursively expand in case there are nested step blocks
+						result = append(result, expandStepBlocks([]OpCode{expandedOp})...)
+					}
+					continue
+				}
+			}
+		}
+
+		// For other operations, keep as-is
+		result = append(result, op)
+	}
+
+	fmt.Printf("expandStepBlocks: Input %d ops -> Output %d ops\n", len(ops), len(result))
+	return result
+}
+
 func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
-	fmt.Printf("RegisterSequence: %d (%d ops)\n", mode, len(ops))
+	fmt.Printf("[%s] RegisterSequence: %d (%d ops)\n",
+		time.Now().Format("15:04:05.000"), mode, len(ops))
 
 	var wg *sync.WaitGroup
 	// Only block for TIME mode (procedural execution like robot)
@@ -1575,11 +1680,13 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 	// Determine sync mode
 	if mode == MidiTime { // 1
 		midiSyncMode = true
-		fmt.Println("RegisterSequence: MIDI Sync Mode ON")
+		fmt.Printf("[%s] RegisterSequence: MIDI Sync Mode ON\n",
+			time.Now().Format("15:04:05.000"))
 		// In MIDI mode, targetTick is driven ONLY by NotifyTick from audio player
 	} else {
 		midiSyncMode = false
-		fmt.Println("RegisterSequence: MIDI Sync Mode OFF (Time Mode)")
+		fmt.Printf("[%s] RegisterSequence: MIDI Sync Mode OFF (Time Mode)\n",
+			time.Now().Format("15:04:05.000"))
 		// Ensure targetTick is at least current tickCount to enable immediate execution
 		if atomic.LoadInt64(&targetTick) < tickCount {
 			atomic.StoreInt64(&targetTick, tickCount)
@@ -1591,17 +1698,26 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 		onCompleteFunc = func() { wg.Done() }
 	}
 
+	// Save current sequencer as parent
+	parentSeq := mainSequencer
+
 	// Initialize vars map
-	vars := make(map[string]any)
-	// Copy initial variables if provided
+	var vars map[string]any
+
+	// For mes() blocks, share the parent's variable scope
+	// This allows multiple mes() blocks to access the same variables
+	if parentSeq != nil {
+		vars = parentSeq.vars // Share parent's vars
+	} else {
+		vars = make(map[string]any) // Create new vars for main()
+	}
+
+	// Copy initial variables if provided (these override inherited vars)
 	if len(initialVars) > 0 {
 		for k, v := range initialVars[0] {
 			vars[strings.ToLower(k)] = v // Case-insensitive
 		}
 	}
-
-	// Save current sequencer as parent
-	parentSeq := mainSequencer
 
 	mainSequencer = &Sequencer{
 		commands:     ops,
@@ -1614,6 +1730,9 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 		mode:         mode,      // Set mode
 		onComplete:   onCompleteFunc,
 	}
+
+	// Add to sequencers list for parallel execution
+	sequencers = append(sequencers, mainSequencer)
 	vmLock.Unlock()
 
 	// Wait for sequence to complete (only for TIME mode)
@@ -1665,72 +1784,74 @@ func UpdateVM(currentTick int) {
 	vmLock.Lock()
 	defer vmLock.Unlock()
 
-	if mainSequencer == nil || !mainSequencer.active {
-		return
-	}
+	// Execute all active sequencers
+	for i := 0; i < len(sequencers); i++ {
+		seq := sequencers[i]
 
-	seq := mainSequencer
-
-	// Handle Wait
-	if seq.waitTicks > 0 {
-		// fmt.Printf("VM: Waiting... %d ticks remaining\n", seq.waitTicks) // Too noisy?
-		seq.waitTicks--
-		return
-	}
-
-	// Resume Step execution if we were in the middle of one
-	if seq.inStep {
-		if resumeStepExecution(seq) {
-			// Step yielded again, wait for next tick
-			return
+		if seq == nil || !seq.active {
+			continue
 		}
-		// Step completed, continue with normal execution
-	}
 
-	// Execute Instructions
-	// We execute until we hit a Wait or End
-	for seq.pc < len(seq.commands) {
-		op := seq.commands[seq.pc]
+		// Handle Wait
+		if seq.waitTicks > 0 {
+			seq.waitTicks--
+			continue
+		}
 
-		// Measure command execution time
-		cmdStart := time.Now()
+		// Resume Step execution if we were in the middle of one
+		if seq.inStep {
+			if resumeStepExecution(seq) {
+				// Step yielded again, wait for next tick
+				continue
+			}
+			// Step completed, continue with normal execution
+		}
 
-		// Debug Log (enabled for debugging)
-		fmt.Printf("VM: Executing [%d] %s (Tick %d)\n", seq.pc, op.Cmd.String(), tickCount)
+		// Execute Instructions
+		// We execute until we hit a Wait or End
+		for seq.pc < len(seq.commands) {
+			op := seq.commands[seq.pc]
 
-		seq.pc++
+			// Measure command execution time
+			cmdStart := time.Now()
 
-		// Execute Op
-		result, yield := ExecuteOp(op, seq)
+			// Debug Log (enabled for debugging)
+			fmt.Printf("[%s] VM: Executing [%d] %s (Tick %d) [Seq %d]\n",
+				time.Now().Format("15:04:05.000"), seq.pc, op.Cmd.String(), tickCount, i)
 
-		// Check for termination signal
-		if result == ebiten.Termination {
-			fmt.Println("VM: Termination signal received")
+			seq.pc++
+
+			// Execute Op
+			result, yield := ExecuteOp(op, seq)
+
+			// Check for termination signal
+			if result == ebiten.Termination {
+				fmt.Println("VM: Termination signal received")
+				seq.active = false
+				programTerminated = true
+				return
+			}
+
+			// Log if command took long time
+			cmdElapsed := time.Since(cmdStart)
+			if cmdElapsed > 3*time.Millisecond {
+				fmt.Printf("PERF: [%d] %s took %v\n", seq.pc-1, op.Cmd.String(), cmdElapsed)
+			}
+
+			if yield {
+				// If ExecuteOp returns true, it means we must wait (Yield)
+				break
+			}
+		}
+
+		if seq.pc >= len(seq.commands) && !seq.inStep {
+			// End of sequence
 			seq.active = false
-			programTerminated = true
-			return
-		}
-
-		// Log if command took long time
-		cmdElapsed := time.Since(cmdStart)
-		if cmdElapsed > 3*time.Millisecond {
-			fmt.Printf("PERF: [%d] %s took %v\n", seq.pc-1, op.Cmd.String(), cmdElapsed)
-		}
-
-		if yield {
-			// If ExecuteOp returns true, it means we must wait (Yield)
-			// fmt.Printf("VM: Yielding for %d ticks\n", seq.waitTicks)
-			break
-		}
-	}
-
-	if seq.pc >= len(seq.commands) && !seq.inStep {
-		// End of sequence
-		seq.active = false
-		fmt.Println("VM: Sequence Finished")
-		if seq.onComplete != nil {
-			seq.onComplete()
-			seq.onComplete = nil // Ensure only called once
+			fmt.Printf("VM: Sequence %d Finished\n", i)
+			if seq.onComplete != nil {
+				seq.onComplete()
+				seq.onComplete = nil // Ensure only called once
+			}
 		}
 	}
 }
@@ -1741,17 +1862,34 @@ func ResolveArg(arg any, seq *Sequencer) any {
 		// Case-insensitive variable lookup (FILLY is case-insensitive)
 		varName := strings.ToLower(string(v))
 
+		// Check global variable store first (for cross-sequence access)
+		if globalVars != nil {
+			if val, ok := globalVars[varName]; ok {
+				if debugLevel >= 2 && (varName == "fmaku_open" || varName == "i") {
+					fmt.Printf("ResolveArg: %s = %v (found in globalVars)\n", varName, val)
+				}
+				return val
+			}
+		}
+
 		// Search in current scope and parent scopes
 		currentSeq := seq
+		depth := 0
 		for currentSeq != nil {
 			if val, ok := currentSeq.vars[varName]; ok {
+				if debugLevel >= 2 && (varName == "fmaku_open" || varName == "i") {
+					fmt.Printf("ResolveArg: %s = %v (found at depth %d)\n", varName, val, depth)
+				}
 				return val
 			}
 			currentSeq = currentSeq.parent
+			depth++
 		}
 
 		// Variable not found in any scope
-		// fmt.Printf("VM Warning: Variable %s not set, using 0\n", v)
+		if debugLevel >= 2 && (varName == "fmaku_open" || varName == "i") {
+			fmt.Printf("ResolveArg: %s not found, returning 0\n", varName)
+		}
 		return 0
 	case OpCode:
 		// Nested OpCode evaluation
@@ -1765,12 +1903,18 @@ func ResolveArg(arg any, seq *Sequencer) any {
 // ExecuteOpDirect executes an OpCode directly without a sequencer
 // This is used for executing main() function body before any mes() blocks
 func ExecuteOpDirect(op OpCode) {
-	// Create a dummy sequencer for variable scope
-	dummySeq := &Sequencer{
-		vars: make(map[string]any),
-		mode: Time,
+	vmLock.Lock()
+	// Use mainSequencer if it exists, otherwise create one
+	if mainSequencer == nil {
+		mainSequencer = &Sequencer{
+			vars: make(map[string]any),
+			mode: Time,
+		}
 	}
-	ExecuteOp(op, dummySeq)
+	seq := mainSequencer
+	vmLock.Unlock()
+
+	ExecuteOp(op, seq)
 }
 
 func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
@@ -1801,7 +1945,74 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			if varName != "" {
 				val := ResolveArg(op.Args[1], seq)
 				fmt.Printf("VM: Assign %s = %v\n", varName, val)
-				seq.vars[varName] = val
+
+				// Check if variable exists in parent scope
+				foundInParent := false
+				currentSeq := seq.parent
+				for currentSeq != nil {
+					if _, ok := currentSeq.vars[varName]; ok {
+						// Update in parent scope
+						currentSeq.vars[varName] = val
+						foundInParent = true
+						break
+					}
+					currentSeq = currentSeq.parent
+				}
+
+				// If not found in parent, set in current scope
+				if !foundInParent {
+					seq.vars[varName] = val
+				}
+
+				// Also set in global vars so other sequences can access it
+				if globalVars != nil {
+					globalVars[varName] = val
+				}
+			}
+		}
+		return nil, false
+
+	case interpreter.OpAssignArray:
+		// Array element assignment: VAR[IDX] = VALUE
+		// Args: [0] = varName, [1] = index, [2] = value
+		if len(op.Args) >= 3 {
+			varName := ""
+			if s, ok := op.Args[0].(string); ok {
+				varName = strings.ToLower(s)
+			} else if v, ok := op.Args[0].(Variable); ok {
+				varName = strings.ToLower(string(v))
+			}
+
+			if varName != "" {
+				index := ResolveArg(op.Args[1], seq)
+				value := ResolveArg(op.Args[2], seq)
+
+				indexInt, ok := index.(int)
+				if !ok {
+					fmt.Printf("VM Error: Array index must be integer, got %T\n", index)
+					return nil, false
+				}
+
+				// Get or create array
+				var arr map[int]any
+				if existing, exists := seq.vars[varName]; exists {
+					if existingArr, ok := existing.(map[int]any); ok {
+						arr = existingArr
+					} else {
+						// Variable exists but is not an array, convert to array
+						arr = make(map[int]any)
+					}
+				} else {
+					// Create new array
+					arr = make(map[int]any)
+				}
+
+				arr[indexInt] = value
+				seq.vars[varName] = arr
+
+				if debugLevel >= 2 {
+					fmt.Printf("VM: Assign %s[%d] = %v\n", varName, indexInt, value)
+				}
 			}
 		}
 		return nil, false
@@ -1822,7 +2033,8 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			totalTicks = 1
 		}
 
-		fmt.Printf("VM: Wait(%d steps) -> %d ticks\n", steps, totalTicks)
+		fmt.Printf("[%s] VM: Wait(%d steps) -> %d ticks\n",
+			time.Now().Format("15:04:05.000"), steps, totalTicks)
 
 		// Set wait state in Sequencer
 		seq.waitTicks = totalTicks
@@ -1859,7 +2071,8 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		return nil, false
 
 	case interpreter.OpStep:
-		// step() block: Args[0] = count, Args[1] = body ([]OpCode)
+		// step(n) block: Args[0] = count, Args[1] = body ([]OpCode)
+		// This sets the step resolution and executes the body once
 		if len(op.Args) < 2 {
 			return nil, false
 		}
@@ -1869,23 +2082,48 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			count = 1
 		}
 
-		body, ok := op.Args[1].([]OpCode)
+		body, ok := op.Args[1].([]interpreter.OpCode)
 		if !ok {
 			return nil, false
 		}
 
-		fmt.Printf("VM: Step(%d) with %d operations\n", count, len(body))
+		fmt.Printf("VM: Step(%d) with %d operations - setting step resolution\n", count, len(body))
 
-		// Set up Step execution state
-		seq.inStep = true
-		seq.stepBody = body
-		seq.stepCount = count
-		seq.stepIteration = 0
-		seq.stepOpIndex = 0
+		// Set the step resolution (affects Wait timing)
+		if count > 0 {
+			if seq.mode == 0 { // TIME mode
+				// 60FPS -> 50ms is 3 ticks
+				seq.ticksPerStep = count * 3
+				fmt.Printf("VM: SetStep(%d) in TIME mode -> %d ticks (%.2fs)\n", count, seq.ticksPerStep, float64(seq.ticksPerStep)/60.0)
+			} else {
+				if GlobalPPQ <= 0 {
+					GlobalPPQ = 480
+				}
+				seq.ticksPerStep = (GlobalPPQ / 8) * count
+			}
 
-		// Execute the Step block (will save state if it yields)
-		yielded := resumeStepExecution(seq)
-		return nil, yielded
+			if seq.ticksPerStep == 0 {
+				seq.ticksPerStep = 1
+			}
+			fmt.Printf("VM: Step resolution set to %d ticks per step\n", seq.ticksPerStep)
+		}
+
+		// Insert the body operations into the command sequence at current position
+		// This allows the body to execute as part of the normal flow
+		newCommands := make([]OpCode, 0, len(seq.commands)+len(body))
+		newCommands = append(newCommands, seq.commands[:seq.pc+1]...)
+
+		// Convert body to OpCode and insert
+		for _, bodyOp := range body {
+			newCommands = append(newCommands, OpCode(bodyOp))
+		}
+
+		newCommands = append(newCommands, seq.commands[seq.pc+1:]...)
+		seq.commands = newCommands
+
+		fmt.Printf("VM: Inserted %d body operations into sequence\n", len(body))
+
+		return nil, false
 
 	// Engine Commands Wrappers
 
@@ -2129,6 +2367,10 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			condition = v != 0
 		case string:
 			condition = v != ""
+		}
+
+		if debugLevel >= 2 {
+			fmt.Printf("VM: If condition evaluated to %v (raw: %v)\n", condition, condResult)
 		}
 
 		// Execute appropriate branch
@@ -2437,9 +2679,43 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		left := ResolveArg(op.Args[1], seq)
 		right := ResolveArg(op.Args[2], seq)
 
+		// Convert nil to 0 (FILLY treats uninitialized variables as 0)
+		if left == nil {
+			left = 0
+		}
+		if right == nil {
+			right = 0
+		}
+
 		// Convert to int for comparison
 		leftInt, leftIsInt := left.(int)
 		rightInt, rightIsInt := right.(int)
+		leftBool, leftIsBool := left.(bool)
+		rightBool, rightIsBool := right.(bool)
+
+		// Handle boolean operations
+		if operator == "&&" || operator == "||" {
+			// Convert to bool
+			leftBoolVal := false
+			if leftIsBool {
+				leftBoolVal = leftBool
+			} else if leftIsInt {
+				leftBoolVal = leftInt != 0
+			}
+
+			rightBoolVal := false
+			if rightIsBool {
+				rightBoolVal = rightBool
+			} else if rightIsInt {
+				rightBoolVal = rightInt != 0
+			}
+
+			if operator == "&&" {
+				return leftBoolVal && rightBoolVal, false
+			} else {
+				return leftBoolVal || rightBoolVal, false
+			}
+		}
 
 		if leftIsInt && rightIsInt {
 			switch operator {
@@ -2471,10 +2747,6 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 					return leftInt % rightInt, false
 				}
 				return 0, false
-			case "&&":
-				return (leftInt != 0) && (rightInt != 0), false
-			case "||":
-				return (leftInt != 0) || (rightInt != 0), false
 			}
 		}
 
@@ -2492,6 +2764,10 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			}
 		}
 
+		// Debug: log unsupported operation
+		if debugLevel >= 2 {
+			fmt.Printf("VM Warning: Unsupported infix operation: %v %s %v (types: %T, %T)\n", left, operator, right, left, right)
+		}
 		return nil, false
 
 	case interpreter.OpPrefix:
@@ -2523,9 +2799,16 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		array := ResolveArg(op.Args[0], seq)
 		index := ResolveArg(op.Args[1], seq)
 
+		// Support both slice and map arrays
 		if arr, ok := array.([]int); ok {
 			if idx, ok := index.(int); ok && idx >= 0 && idx < len(arr) {
 				return arr[idx], false
+			}
+		} else if arr, ok := array.(map[int]any); ok {
+			if idx, ok := index.(int); ok {
+				if val, exists := arr[idx]; exists {
+					return val, false
+				}
 			}
 		}
 
@@ -2569,10 +2852,13 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			return nil, false
 		}
 
+		// Expand any OpStep blocks in the body before registering
+		expandedBody := expandStepBlocks(body)
+
 		// Register the sequence in a goroutine to avoid blocking the main thread
 		// This is critical because RegisterSequence may call wg.Wait() which would
 		// block the Ebiten game loop
-		go RegisterSequence(modeInt, body)
+		go RegisterSequence(modeInt, expandedBody)
 		return nil, false
 
 	default:
@@ -2614,20 +2900,83 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 // CallEngineFunction calls an engine function by name with the given arguments
 func CallEngineFunction(funcName string, args ...any) (any, bool) {
 	// Normalize function name to lowercase for case-insensitive matching
+	originalName := funcName
 	funcName = strings.ToLower(funcName)
+
+	// Debug: Print function call
+	if debugLevel >= 2 {
+		fmt.Printf("CallEngineFunction: '%s' -> '%s' (args: %v)\n", originalName, funcName, args)
+	}
 
 	// Map function names to engine functions
 	switch funcName {
 	case "loadpic":
 		if len(args) >= 1 {
 			if filename, ok := args[0].(string); ok {
-				LoadPic(filename)
+				result := LoadPic(filename)
+				return result, false
 			}
 		}
 		return nil, false
 
-	case "openwin":
+	case "picwidth":
 		if len(args) >= 1 {
+			if picID, ok := args[0].(int); ok {
+				result := PicWidth(picID)
+				return result, false
+			}
+		}
+		return 0, false
+
+	case "picheight":
+		if len(args) >= 1 {
+			if picID, ok := args[0].(int); ok {
+				result := PicHeight(picID)
+				return result, false
+			}
+		}
+		return 0, false
+
+	case "wininfo":
+		if len(args) >= 1 {
+			if mode, ok := args[0].(int); ok {
+				result := WinInfo(mode)
+				return result, false
+			}
+		}
+		return 0, false
+
+	case "openwin":
+		// OpenWin can be called with different numbers of arguments:
+		// OpenWin(pic, x, y, w, h, picX, picY, col) - 8 args (full)
+		// OpenWin(pic, x, y, w, h) - 5 args (picX=0, picY=0, col=0)
+		// OpenWin(pic) - 1 arg (x=0, y=0, w=0, h=0, picX=0, picY=0, col=0)
+		if len(args) >= 5 {
+			// At least 5 arguments: pic, x, y, w, h
+			pic, _ := args[0].(int)
+			x, _ := args[1].(int)
+			y, _ := args[2].(int)
+			w, _ := args[3].(int)
+			h, _ := args[4].(int)
+
+			// Optional arguments with defaults
+			picX := 0
+			picY := 0
+			col := 0
+
+			if len(args) >= 6 {
+				picX, _ = args[5].(int)
+			}
+			if len(args) >= 7 {
+				picY, _ = args[6].(int)
+			}
+			if len(args) >= 8 {
+				col, _ = args[7].(int)
+			}
+
+			fmt.Printf("VM: Calling OpenWin(%d, %d, %d, %d, %d, %d, %d, %d)\n", pic, x, y, w, h, picX, picY, col)
+			OpenWin(pic, x, y, w, h, picX, picY, col)
+		} else if len(args) >= 1 {
 			if winID, ok := args[0].(int); ok {
 				// OpenWin with default parameters
 				// OpenWin(pic, x, y, w, h, picX, picY, col)
@@ -2718,6 +3067,43 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		// Signal program termination by returning error
 		// This will cause ebiten.RunGame to exit
 		return ebiten.Termination, true
+
+	case "strprint":
+		// StrPrint(format, args...) - sprintf-like function
+		if len(args) < 1 {
+			return "", false
+		}
+
+		format, ok := args[0].(string)
+		if !ok {
+			return "", false
+		}
+
+		// Convert args to interface{} slice for fmt.Sprintf
+		sprintfArgs := make([]interface{}, len(args)-1)
+		for i := 1; i < len(args); i++ {
+			sprintfArgs[i-1] = args[i]
+		}
+
+		result := fmt.Sprintf(format, sprintfArgs...)
+		return result, false
+
+	case "movepic":
+		// MovePic(srcPic, srcX, srcY, srcW, srcH, dstPic, dstX, dstY)
+		// Copy a region from source picture to destination picture/window
+		if len(args) >= 8 {
+			srcPic, _ := args[0].(int)
+			srcX, _ := args[1].(int)
+			srcY, _ := args[2].(int)
+			srcW, _ := args[3].(int)
+			srcH, _ := args[4].(int)
+			dstPic, _ := args[5].(int)
+			dstX, _ := args[6].(int)
+			dstY, _ := args[7].(int)
+
+			MovePic(srcPic, srcX, srcY, srcW, srcH, dstPic, dstX, dstY)
+		}
+		return nil, false
 
 	default:
 		fmt.Printf("VM Warning: Unknown function %s\n", funcName)
@@ -2958,6 +3344,14 @@ func (e *EngineState) PutCast(args ...any) int {
 
 // PutCast is a backward-compatible wrapper for the global state
 func PutCast(args ...any) int {
+	if headlessMode {
+		if debugLevel >= 2 {
+			fmt.Printf("PutCast (headless): args=%v\n", args)
+		}
+		// Return a dummy cast ID for headless mode
+		return 0
+	}
+
 	if globalEngine == nil {
 		fmt.Println("Error: globalEngine not initialized")
 		return -1
@@ -3161,6 +3555,13 @@ func (e *EngineState) MoveCast(args ...any) {
 
 // MoveCast is a backward-compatible wrapper for the global state
 func MoveCast(args ...any) {
+	if headlessMode {
+		if debugLevel >= 2 {
+			fmt.Printf("MoveCast (headless): args=%v\n", args)
+		}
+		return
+	}
+
 	if globalEngine == nil {
 		fmt.Println("Error: globalEngine not initialized")
 		return

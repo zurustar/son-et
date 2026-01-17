@@ -153,6 +153,12 @@ func PlayMidiFile(path string) {
 		return
 	}
 
+	// Set volume to 0 in headless mode
+	if headlessMode {
+		midiPlayer.SetVolume(0)
+		fmt.Println("PlayMIDI: Audio muted (headless mode)")
+	}
+
 	// Start playback in a goroutine to avoid blocking
 	go func() {
 		midiPlayer.Play()
@@ -525,6 +531,12 @@ func PlayWAVE(path string) {
 	if err != nil {
 		fmt.Printf("PlayWAVE Error: Failed to create player for %s: %v\n", path, err)
 		return
+	}
+
+	// Set volume to 0 in headless mode
+	if headlessMode {
+		player.SetVolume(0)
+		fmt.Println("PlayWAVE: Audio muted (headless mode)")
 	}
 
 	player.Play()
