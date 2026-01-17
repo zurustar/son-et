@@ -904,12 +904,12 @@ This implementation plan covers the son-et core engine, including both the trans
   - Run all existing tests to ensure no regressions
   - Ask user for verification if issues arise
 
-- [x] 28. Fix yosemiya sample issues (multiple mes blocks and missing functions)
+- [x] 28. Fix multiple mes blocks and missing window management functions
   - [x] 28.1 Implement missing functions
     - Implement CloseWinAll() function (currently shows "Unknown function closewinall")
     - Verify CapTitle() function mapping (currently shows "Unknown function captitle")
     - Check function name case conversion in interpreter
-    - Test with yosemiya sample to verify functions are called correctly
+    - Test with sample scenarios to verify functions are called correctly
     - _Requirements: 14.5, 14.6_
     - _Bug: CloseWinAllとCapTitleが未実装または関数名マッピングが間違っている_
 
@@ -918,7 +918,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Review how multiple mes() blocks are registered and executed
     - Check if mes() blocks should run in parallel or sequentially
     - Verify variable scope between different mes() blocks
-    - Test with yosemiya: verify second mes(TIME) block executes animations
+    - Test with sample scenarios: verify second mes(TIME) block executes animations
     - _Requirements: 11.5, 11.6, 15.4, 15.5_
     - _Bug: 2つ目のmes(TIME)ブロックが即座に終了する (Second mes(TIME) block finishes immediately)_
 
@@ -927,7 +927,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Review variable scope between different mes() blocks
     - Ensure variables declared in main() are accessible in all mes() blocks
     - Check if variables need explicit initialization before mes() blocks
-    - Test with yosemiya: verify 'i', 'j', 'k' variables work correctly
+    - Test with sample scenarios: verify 'i', 'j', 'k' variables work correctly
     - _Requirements: 19.1, 19.4, 19.5_
     - _Bug: mes()ブロック間で変数が共有されていない (Variables not shared between mes() blocks)_
 
@@ -947,16 +947,16 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify all mes() blocks execute as expected
     - _Requirements: 11.5, 11.6, 15.4, 15.5_
 
-  - [x] 28.6 Integration test with yosemiya sample
-    - Run yosemiya sample and verify both mes(TIME) blocks execute
+  - [x] 28.6 Integration test with sample scenarios
+    - Run sample scenarios and verify both mes(TIME) blocks execute
     - Verify curtain opening animation (second mes block)
     - Verify message display animation (second mes block)
     - Verify CloseWinAll() and CapTitle() work correctly
     - Capture logs and verify execution flow
     - _Requirements: 11.5, 11.6, 14.5, 14.6, 15.4, 15.5_
 
-- [ ] 29. Checkpoint - Verify yosemiya sample bug fixes
-  - Run yosemiya sample and verify all issues are resolved
+- [ ] 29. Checkpoint - Verify multiple mes blocks bug fixes
+  - Run sample scenarios and verify all issues are resolved
   - Verify both mes(TIME) blocks execute properly
   - Verify animations run at correct speed
   - Verify CloseWinAll() and CapTitle() functions work

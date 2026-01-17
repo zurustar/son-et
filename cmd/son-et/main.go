@@ -228,6 +228,38 @@ func executeDirect(directory string, headless bool, timeout string) error {
 	fmt.Fprintf(os.Stderr, "Interpreted script: %d globals, %d functions, %d assets\n",
 		len(script.Globals), len(script.Functions), len(script.Assets))
 
+	// Step 4.5: Validate OpCodes BEFORE initializing engine
+	// This catches transpiler bugs and unknown opcodes early, before opening any windows
+	fmt.Fprintf(os.Stderr, "Validating OpCodes...\n")
+
+	// Convert interpreter OpCode to engine OpCode format for validation
+	engineOps := convertToEngineOpCodes(script.Main.Body)
+
+	// Validate main function OpCodes
+	if err := engine.ValidateOpCodes(engineOps); err != nil {
+		fmt.Fprintf(os.Stderr, "\n=== OPCODE VALIDATION ERROR ===\n")
+		fmt.Fprintf(os.Stderr, "Invalid OpCode detected in main() function:\n")
+		fmt.Fprintf(os.Stderr, "%v\n\n", err)
+		fmt.Fprintf(os.Stderr, "This indicates a transpiler bug or unsupported language feature.\n")
+		fmt.Fprintf(os.Stderr, "Program will not execute.\n\n")
+		return fmt.Errorf("OpCode validation failed: %w", err)
+	}
+
+	// Validate all user-defined functions
+	for funcName, funcDef := range script.Functions {
+		funcOps := convertToEngineOpCodes(funcDef.Body)
+		if err := engine.ValidateOpCodes(funcOps); err != nil {
+			fmt.Fprintf(os.Stderr, "\n=== OPCODE VALIDATION ERROR ===\n")
+			fmt.Fprintf(os.Stderr, "Invalid OpCode detected in function '%s':\n", funcName)
+			fmt.Fprintf(os.Stderr, "%v\n\n", err)
+			fmt.Fprintf(os.Stderr, "This indicates a transpiler bug or unsupported language feature.\n")
+			fmt.Fprintf(os.Stderr, "Program will not execute.\n\n")
+			return fmt.Errorf("OpCode validation failed in function '%s': %w", funcName, err)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "OpCode validation successful\n")
+
 	// Step 5: Initialize engine with FilesystemAssetLoader
 	assetLoader := engine.NewFilesystemAssetLoader(absDir)
 	imageDecoder := engine.NewBMPImageDecoder()
