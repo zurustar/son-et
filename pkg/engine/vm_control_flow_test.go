@@ -8,6 +8,9 @@ import (
 
 // TestVMIfStatement tests if-else execution in VM mode
 func TestVMIfStatement(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -68,6 +71,9 @@ func TestVMIfStatement(t *testing.T) {
 
 // TestVMForLoop tests for loop execution in VM mode
 func TestVMForLoop(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -105,6 +111,9 @@ func TestVMForLoop(t *testing.T) {
 
 // TestVMWhileLoop tests while loop execution in VM mode
 func TestVMWhileLoop(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -143,6 +152,9 @@ func TestVMWhileLoop(t *testing.T) {
 
 // TestVMSwitchStatement tests switch-case execution in VM mode
 func TestVMSwitchStatement(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -195,6 +207,9 @@ func TestVMSwitchStatement(t *testing.T) {
 
 // TestVMBreakContinue tests break and continue in loops
 func TestVMBreakContinue(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -237,6 +252,9 @@ func TestVMBreakContinue(t *testing.T) {
 
 // TestVMNestedIfStatement tests nested if-else execution in VM mode (Requirement 20.3)
 func TestVMNestedIfStatement(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -293,6 +311,9 @@ func TestVMNestedIfStatement(t *testing.T) {
 
 // TestVMDoWhileLoop tests do-while loop execution in VM mode (Requirement 21.3)
 func TestVMDoWhileLoop(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -355,6 +376,9 @@ func TestVMDoWhileLoop(t *testing.T) {
 
 // TestVMSwitchMultipleCases tests switch with multiple cases and default (Requirements 22.2, 22.3)
 func TestVMSwitchMultipleCases(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -416,6 +440,9 @@ func TestVMSwitchMultipleCases(t *testing.T) {
 
 // TestVMContinueInLoop tests continue statement in loops (Requirement 21.5)
 func TestVMContinueInLoop(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,
@@ -458,6 +485,9 @@ func TestVMContinueInLoop(t *testing.T) {
 
 // TestVMInfixOperations tests infix expression evaluation
 func TestVMInfixOperations(t *testing.T) {
+	// Reset engine state to ensure globalVars is initialized
+	ResetEngineForTest()
+
 	seq := &Sequencer{
 		commands:     []OpCode{},
 		pc:           0,

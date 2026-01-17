@@ -1973,6 +1973,19 @@ func UpdateVM(currentTick int) {
 			continue
 		}
 
+		// Log variable values at start of sequence execution (for debugging)
+		if debugLevel >= 2 && seq.pc == 0 {
+			fmt.Printf("[%s] VM: Sequence %d starting, variables:\n", time.Now().Format("15:04:05.000"), i)
+			// Check key variables
+			if globalVars != nil {
+				for _, varName := range []string{"fmaku_open", "fmes_on", "i", "j", "k"} {
+					if val, ok := globalVars[varName]; ok {
+						fmt.Printf("  %s = %v\n", varName, val)
+					}
+				}
+			}
+		}
+
 		// Handle Wait
 		if seq.waitTicks > 0 {
 			seq.waitTicks--
@@ -2026,7 +2039,7 @@ func UpdateVM(currentTick int) {
 		}
 
 		if seq.pc >= len(seq.commands) && !seq.inStep {
-			// End of sequence
+			// End of sequence - mark as complete
 			seq.active = false
 			fmt.Printf("[%s] VM: Sequence %d Finished (pc=%d, commands=%d)\n",
 				time.Now().Format("15:04:05.000"), i, seq.pc, len(seq.commands))
@@ -2165,6 +2178,14 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			if varName != "" {
 				val := ResolveArg(op.Args[1], seq)
 				fmt.Printf("VM: Assign %s = %v\n", varName, val)
+
+				// Debug output for testing
+				if os.Getenv("DEBUG_ASSIGN") == "1" {
+					fmt.Printf("[ASSIGN] Setting %s = %v in seq.vars\n", varName, val)
+					if globalVars != nil {
+						fmt.Printf("[ASSIGN] Also setting %s = %v in globalVars\n", varName, val)
+					}
+				}
 
 				// Check if variable exists in parent scope
 				foundInParent := false
@@ -2654,6 +2675,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 		// Execute init
 		if op.Args[0] != nil {
+			// Handle both single OpCode and []OpCode
 			if initOps, ok := op.Args[0].([]OpCode); ok {
 				if debugLoop {
 					fmt.Printf("[FOR] Executing initialization (%d ops)\n", len(initOps))
@@ -2661,6 +2683,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				for _, initOp := range initOps {
 					ExecuteOp(initOp, seq)
 				}
+			} else if initOp, ok := op.Args[0].(OpCode); ok {
+				if debugLoop {
+					fmt.Printf("[FOR] Executing initialization (single op)\n")
+				}
+				ExecuteOp(initOp, seq)
 			}
 		}
 
@@ -2743,10 +2770,13 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 					}
 					// Execute post and continue
 					if op.Args[2] != nil {
+						// Handle both single OpCode and []OpCode
 						if postOps, ok := op.Args[2].([]OpCode); ok {
 							for _, postOp := range postOps {
 								ExecuteOp(postOp, seq)
 							}
+						} else if postOp, ok := op.Args[2].(OpCode); ok {
+							ExecuteOp(postOp, seq)
 						}
 					}
 					continue
@@ -2758,10 +2788,13 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				fmt.Printf("[FOR] Iteration %d: executing post-increment\n", iterationCount)
 			}
 			if op.Args[2] != nil {
+				// Handle both single OpCode and []OpCode
 				if postOps, ok := op.Args[2].([]OpCode); ok {
 					for _, postOp := range postOps {
 						ExecuteOp(postOp, seq)
 					}
+				} else if postOp, ok := op.Args[2].(OpCode); ok {
+					ExecuteOp(postOp, seq)
 				}
 			}
 		}
@@ -2953,6 +2986,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		operator, _ := op.Args[0].(string)
 		left := ResolveArg(op.Args[1], seq)
 		right := ResolveArg(op.Args[2], seq)
+
+		// Debug output for testing
+		if os.Getenv("DEBUG_INFIX") == "1" {
+			fmt.Printf("[INFIX] %v %s %v\n", left, operator, right)
+		}
 
 		// Convert nil to 0 (FILLY treats uninitialized variables as 0)
 		if left == nil {
@@ -3297,6 +3335,13 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 				CloseWin(winID)
 			}
 		}
+		return nil, false
+
+	case "closewinall":
+		if debugLevel >= 2 {
+			fmt.Printf("DEBUG: closewinall called\n")
+		}
+		CloseWinAll()
 		return nil, false
 
 	case "movewin":

@@ -904,8 +904,8 @@ This implementation plan covers the son-et core engine, including both the trans
   - Run all existing tests to ensure no regressions
   - Ask user for verification if issues arise
 
-- [ ] 28. Fix yosemiya sample issues (multiple mes blocks and missing functions)
-  - [ ] 28.1 Implement missing functions
+- [x] 28. Fix yosemiya sample issues (multiple mes blocks and missing functions)
+  - [x] 28.1 Implement missing functions
     - Implement CloseWinAll() function (currently shows "Unknown function closewinall")
     - Verify CapTitle() function mapping (currently shows "Unknown function captitle")
     - Check function name case conversion in interpreter
@@ -913,7 +913,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 14.5, 14.6_
     - _Bug: CloseWinAllとCapTitleが未実装または関数名マッピングが間違っている_
 
-  - [ ] 28.2 Investigate multiple mes(TIME) blocks execution
+  - [x] 28.2 Investigate multiple mes(TIME) blocks execution
     - Analyze why second mes(TIME) block completes immediately
     - Review how multiple mes() blocks are registered and executed
     - Check if mes() blocks should run in parallel or sequentially
@@ -922,7 +922,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 11.5, 11.6, 15.4, 15.5_
     - _Bug: 2つ目のmes(TIME)ブロックが即座に終了する (Second mes(TIME) block finishes immediately)_
 
-  - [ ] 28.3 Fix variable initialization and scope in mes() blocks
+  - [x] 28.3 Fix variable initialization and scope in mes() blocks
     - Analyze why variable 'i' is not initialized in second mes(TIME) block
     - Review variable scope between different mes() blocks
     - Ensure variables declared in main() are accessible in all mes() blocks
@@ -931,7 +931,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 19.1, 19.4, 19.5_
     - _Bug: mes()ブロック間で変数が共有されていない (Variables not shared between mes() blocks)_
 
-  - [ ] 28.4 Add detailed logging for multiple mes() blocks
+  - [x] 28.4 Add detailed logging for multiple mes() blocks
     - Log when each mes() block is registered
     - Log when each mes() block starts and completes
     - Log variable values at the start of each mes() block
@@ -939,7 +939,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Help diagnose why second mes() block doesn't execute properly
     - _Requirements: 11.5, 11.6, 15.4_
 
-  - [ ] 28.5 Write unit tests for multiple mes() blocks
+  - [x] 28.5 Write unit tests for multiple mes() blocks
     - Test multiple mes(TIME) blocks in same script
     - Test variable sharing between mes() blocks
     - Test if/for statements inside mes() blocks
@@ -947,7 +947,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify all mes() blocks execute as expected
     - _Requirements: 11.5, 11.6, 15.4, 15.5_
 
-  - [ ] 28.6 Integration test with yosemiya sample
+  - [x] 28.6 Integration test with yosemiya sample
     - Run yosemiya sample and verify both mes(TIME) blocks execute
     - Verify curtain opening animation (second mes block)
     - Verify message display animation (second mes block)
@@ -1020,6 +1020,47 @@ This implementation plan covers the son-et core engine, including both the trans
   - Verify only 2 images are loaded (ROBOT000.BMP, ROBOT001.BMP)
   - Verify script continues after loop completes
   - Run all existing tests to ensure no regressions
+  - Ask user for verification if issues arise
+
+- [ ] 32. Fix test isolation issues
+  - [ ] 32.1 Fix TestRegisterSequenceBlocksInTimeMode test isolation
+    - Investigate why test fails when run with other tests but passes alone
+    - Issue: Goroutines from previous tests may still be calling UpdateVM()
+    - Review test cleanup in ResetEngineForTest()
+    - Add mechanism to stop all background goroutines before test cleanup
+    - Consider adding test-specific VM tick counter to isolate tests
+    - Test: Run full test suite and verify test passes consistently
+    - _Requirements: 11.5, 11.6_
+    - _Bug: TestRegisterSequenceBlocksInTimeMode fails in full suite but passes alone_
+
+  - [ ] 32.2 Fix TestProperty1_TranspilerGeneratesValidGoCode timeout
+    - Investigate why property test times out (pre-existing issue)
+    - Review test implementation for potential infinite loops
+    - Consider reducing test case generation count
+    - Add timeout handling within property test
+    - Test: Run property test and verify it completes within timeout
+    - _Requirements: 1.1, 1.2_
+    - _Bug: Property test times out during execution_
+
+  - [ ] 32.3 Write unit tests for test isolation
+    - Test that ResetEngineForTest() properly cleans up all state
+    - Test that background goroutines are stopped before cleanup
+    - Test that multiple tests can run in sequence without interference
+    - Verify no global state leakage between tests
+    - _Requirements: All (testing infrastructure)_
+
+  - [ ] 32.4 Update test documentation
+    - Document test isolation requirements
+    - Document proper test cleanup procedures
+    - Add examples of correct test setup and teardown
+    - Note known test isolation issues and workarounds
+    - _Requirements: All (testing infrastructure)_
+
+- [ ] 33. Checkpoint - Verify test isolation fixes
+  - Run full test suite multiple times to verify consistency
+  - Verify TestRegisterSequenceBlocksInTimeMode passes in full suite
+  - Verify no test failures due to state leakage
+  - Run tests with -race flag to detect race conditions
   - Ask user for verification if issues arise
 
 ## Notes

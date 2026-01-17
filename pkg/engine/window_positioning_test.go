@@ -9,23 +9,23 @@ import (
 // TestWindowPositioningWithCalculatedValues tests that windows can be positioned
 // using calculated values from variables (e.g., winW-320, winH/2)
 func TestWindowPositioningWithCalculatedValues(t *testing.T) {
-	// Note: WinInfo returns 640x480 (legacy window size), not 1280x720 (virtual desktop)
+	// Note: WinInfo returns 1280x720 (virtual desktop size)
 
 	// Test 1: Center positioning using calculated values
 	t.Run("CenterPositioning", func(t *testing.T) {
-		winW := WinInfo(0) // Returns 640
-		winH := WinInfo(1) // Returns 480
+		winW := WinInfo(0) // Returns 1280
+		winH := WinInfo(1) // Returns 720
 
 		// Calculate center position (like in Y-SARU sample)
-		centerX := winW / 2 // 320
-		centerY := winH / 2 // 240
+		centerX := winW / 2 // 640
+		centerY := winH / 2 // 360
 
 		// Verify calculations
-		if centerX != 320 {
-			t.Errorf("Expected centerX=320, got %d", centerX)
+		if centerX != 640 {
+			t.Errorf("Expected centerX=640, got %d", centerX)
 		}
-		if centerY != 240 {
-			t.Errorf("Expected centerY=240, got %d", centerY)
+		if centerY != 360 {
+			t.Errorf("Expected centerY=360, got %d", centerY)
 		}
 
 		// Test that calculated positions work correctly
@@ -33,18 +33,18 @@ func TestWindowPositioningWithCalculatedValues(t *testing.T) {
 		x := centerX - 100
 		y := centerY - 75
 
-		if x != 220 {
-			t.Errorf("Expected x=220, got %d", x)
+		if x != 540 {
+			t.Errorf("Expected x=540, got %d", x)
 		}
-		if y != 165 {
-			t.Errorf("Expected y=165, got %d", y)
+		if y != 285 {
+			t.Errorf("Expected y=285, got %d", y)
 		}
 	})
 
 	// Test 2: Offset positioning using calculated values
 	t.Run("OffsetPositioning", func(t *testing.T) {
-		winW := WinInfo(0) // 640
-		winH := WinInfo(1) // 480
+		winW := WinInfo(0) // 1280
+		winH := WinInfo(1) // 720
 
 		picW := 300
 		picH := 200
@@ -56,8 +56,8 @@ func TestWindowPositioningWithCalculatedValues(t *testing.T) {
 		winY := 0 - ((winH - picH) / 2)
 
 		// Verify calculations
-		expectedWinX := 0 - ((640 - 300) / 2) // 0 - 170 = -170
-		expectedWinY := 0 - ((480 - 200) / 2) // 0 - 140 = -140
+		expectedWinX := 0 - ((1280 - 300) / 2) // 0 - 490 = -490
+		expectedWinY := 0 - ((720 - 200) / 2)  // 0 - 260 = -260
 
 		if winX != expectedWinX {
 			t.Errorf("Expected winX=%d, got %d", expectedWinX, winX)
@@ -69,8 +69,8 @@ func TestWindowPositioningWithCalculatedValues(t *testing.T) {
 
 	// Test 3: Edge positioning (bottom-right corner)
 	t.Run("EdgePositioning", func(t *testing.T) {
-		winW := WinInfo(0) // 640
-		winH := WinInfo(1) // 480
+		winW := WinInfo(0) // 1280
+		winH := WinInfo(1) // 720
 
 		windowWidth := 200
 		windowHeight := 150
@@ -80,35 +80,35 @@ func TestWindowPositioningWithCalculatedValues(t *testing.T) {
 		y := winH - windowHeight
 
 		// Verify calculations
-		if x != 440 { // 640 - 200
-			t.Errorf("Expected x=440, got %d", x)
+		if x != 1080 { // 1280 - 200
+			t.Errorf("Expected x=1080, got %d", x)
 		}
-		if y != 330 { // 480 - 150
-			t.Errorf("Expected y=330, got %d", y)
+		if y != 570 { // 720 - 150
+			t.Errorf("Expected y=570, got %d", y)
 		}
 	})
 
 	// Test 4: Complex calculated expression
 	t.Run("ComplexCalculation", func(t *testing.T) {
-		winW := WinInfo(0) // 640
-		winH := WinInfo(1) // 480
+		winW := WinInfo(0) // 1280
+		winH := WinInfo(1) // 720
 
 		// Test expression like: winW - 320
 		x := winW - 320
-		if x != 320 {
-			t.Errorf("Expected x=320, got %d", x)
+		if x != 960 {
+			t.Errorf("Expected x=960, got %d", x)
 		}
 
 		// Test expression like: winH / 2 - 100
 		y := winH/2 - 100
-		if y != 140 {
-			t.Errorf("Expected y=140, got %d", y)
+		if y != 260 {
+			t.Errorf("Expected y=260, got %d", y)
 		}
 
 		// Test expression like: (winW - 100) / 2
 		z := (winW - 100) / 2
-		if z != 270 {
-			t.Errorf("Expected z=270, got %d", z)
+		if z != 590 {
+			t.Errorf("Expected z=590, got %d", z)
 		}
 	})
 }
