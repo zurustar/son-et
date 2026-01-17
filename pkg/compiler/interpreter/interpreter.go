@@ -423,6 +423,19 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 	case *ast.CallExpression:
 		// Function call: FUNC(ARG1, ARG2, ...)
 		funcName := normalizeVarName(e.Function.Value)
+
+		// Special handling for Wait() - convert to OpWait
+		if funcName == "wait" {
+			if len(e.Arguments) >= 1 {
+				argOp, err := i.interpretExpression(e.Arguments[0])
+				if err != nil {
+					return OpCode{}, err
+				}
+				return OpCode{Cmd: OpWait, Args: []any{argOp}}, nil
+			}
+			return OpCode{}, fmt.Errorf("Wait() requires 1 argument")
+		}
+
 		args := []any{funcName}
 
 		for _, arg := range e.Arguments {

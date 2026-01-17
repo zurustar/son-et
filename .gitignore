@@ -39,3 +39,11 @@ samples/
 
 son-et
 !cmd/son-et
+
+# Log files
+*.log
+
+# Test artifacts
+son-et-test
+test_timing.tfy
+process_snapshot_*.txt

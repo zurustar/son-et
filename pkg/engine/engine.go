@@ -3105,6 +3105,30 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		}
 		return nil, false
 
+	case "print":
+		// Print(string) - output to stdout
+		if len(args) >= 1 {
+			if s, ok := args[0].(string); ok {
+				Print(s)
+			}
+		}
+		return nil, false
+
+	case "postmes":
+		// PostMes(messageType, p1, p2, p3, p4) - send message to mes blocks
+		fmt.Printf("CallEngineFunction: postmes called with %d args: %v\n", len(args), args)
+		PostMes(args...)
+		return nil, false
+
+	case "wait":
+		// Wait(n) - wait for n steps
+		if len(args) >= 1 {
+			if n, ok := args[0].(int); ok {
+				Wait(n)
+			}
+		}
+		return nil, false
+
 	default:
 		fmt.Printf("VM Warning: Unknown function %s\n", funcName)
 		return nil, false
@@ -3982,8 +4006,109 @@ func DelMes(id int) {
 	fmt.Printf("DelMes: %d\n", id)
 }
 
+// PostMes sends a message to mes() blocks
+// Usage: PostMes(messageType, p1, p2, p3, p4)
+// messageType: KEY, CLICK, USER, etc.
+// p1-p4: Message parameters (stored in MesP1-MesP4)
 func PostMes(args ...any) {
-	fmt.Println("PostMes")
+	fmt.Printf("PostMes: Called with %d args: %v\n", len(args), args)
+
+	if len(args) < 1 {
+		fmt.Println("PostMes: Error - requires at least message type")
+		return
+	}
+
+	// Get message type
+	var messageType int
+	switch v := args[0].(type) {
+	case int:
+		messageType = v
+	case string:
+		// Convert string to message type constant
+		msgStr := strings.ToLower(v)
+		switch msgStr {
+		case "key", "key_down":
+			messageType = 2 // KEY mode
+		case "click", "mouse_click":
+			messageType = 3 // CLICK mode
+		case "time":
+			messageType = 0 // TIME mode
+		case "midi_time":
+			messageType = 1 // MIDI_TIME mode
+		default:
+			fmt.Printf("PostMes: Unknown message type: %s\n", v)
+			return
+		}
+	default:
+		fmt.Printf("PostMes: Invalid message type: %T\n", v)
+		return
+	}
+
+	// Extract message parameters (MesP1-MesP4)
+	if len(args) >= 2 {
+		if p1, ok := args[1].(int); ok {
+			if globalEngine != nil {
+				globalEngine.MesP1 = p1
+			}
+			MesP1 = p1
+		}
+	}
+	if len(args) >= 3 {
+		if p2, ok := args[2].(int); ok {
+			if globalEngine != nil {
+				globalEngine.MesP2 = p2
+			}
+			MesP2 = p2
+		}
+	}
+	if len(args) >= 4 {
+		if p3, ok := args[3].(int); ok {
+			if globalEngine != nil {
+				globalEngine.MesP3 = p3
+			}
+			MesP3 = p3
+		}
+	}
+	if len(args) >= 5 {
+		if p4, ok := args[4].(int); ok {
+			if globalEngine != nil {
+				globalEngine.MesP4 = p4
+			}
+			MesP4 = p4
+		}
+	}
+
+	fmt.Printf("PostMes: Sending message type=%d to matching mes() blocks\n", messageType)
+
+	// Deliver message to all matching mes() blocks
+	// NOTE: Do NOT lock vmLock here - we're already called from UpdateVM which holds the lock
+
+	fmt.Printf("PostMes: Checking %d sequencers\n", len(sequencers))
+	for i, seq := range sequencers {
+		if seq == nil {
+			fmt.Printf("PostMes: Sequencer %d is nil\n", i)
+			continue
+		}
+		if !seq.active {
+			fmt.Printf("PostMes: Sequencer %d is inactive\n", i)
+			continue
+		}
+
+		fmt.Printf("PostMes: Sequencer %d has mode=%d, waitTicks=%d\n", i, seq.mode, seq.waitTicks)
+
+		// Check if this sequencer matches the message type
+		if seq.mode == messageType {
+			// Wake up the sequencer by clearing its wait state
+			if seq.waitTicks > 0 {
+				fmt.Printf("PostMes: Waking up mes(%d) block (was waiting %d ticks)\n",
+					seq.mode, seq.waitTicks)
+				seq.waitTicks = 0
+			} else {
+				fmt.Printf("PostMes: mes(%d) block is not waiting (waitTicks=0)\n", seq.mode)
+			}
+		}
+	}
+	fmt.Printf("PostMes: Finished checking sequencers\n")
 }
 
 func Sc1Sub1(p []int)                                  { fmt.Println("Sc1Sub1") }
@@ -4074,6 +4199,12 @@ func Wait(n int) {
 			time.Sleep(1 * time.Millisecond)
 		}
 	}
+}
+
+// Print outputs a string to stdout
+// This is a basic FILLY function for debugging and logging
+func Print(s string) {
+	fmt.Println(s)
 }
 
 func EndStep() {
