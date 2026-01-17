@@ -2415,15 +2415,17 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		return nil, false
 
 	case interpreter.OpFor:
-		// Args: [0] = init (OpCode or nil), [1] = condition (OpCode or value), [2] = post (OpCode or nil), [3] = body ([]OpCode)
+		// Args: [0] = init ([]OpCode or nil), [1] = condition (OpCode or value), [2] = post ([]OpCode or nil), [3] = body ([]OpCode)
 		if len(op.Args) < 4 {
 			return nil, false
 		}
 
 		// Execute init
 		if op.Args[0] != nil {
-			if initOp, ok := op.Args[0].(OpCode); ok {
-				ExecuteOp(initOp, seq)
+			if initOps, ok := op.Args[0].([]OpCode); ok {
+				for _, initOp := range initOps {
+					ExecuteOp(initOp, seq)
+				}
 			}
 		}
 
@@ -2479,8 +2481,10 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				if shouldContinue {
 					// Execute post and continue
 					if op.Args[2] != nil {
-						if postOp, ok := op.Args[2].(OpCode); ok {
-							ExecuteOp(postOp, seq)
+						if postOps, ok := op.Args[2].([]OpCode); ok {
+							for _, postOp := range postOps {
+								ExecuteOp(postOp, seq)
+							}
 						}
 					}
 					continue
@@ -2489,8 +2493,10 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 			// Execute post
 			if op.Args[2] != nil {
-				if postOp, ok := op.Args[2].(OpCode); ok {
-					ExecuteOp(postOp, seq)
+				if postOps, ok := op.Args[2].([]OpCode); ok {
+					for _, postOp := range postOps {
+						ExecuteOp(postOp, seq)
+					}
 				}
 			}
 		}
@@ -3085,7 +3091,18 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 			sprintfArgs[i-1] = args[i]
 		}
 
-		result := fmt.Sprintf(format, sprintfArgs...)
+		result := StrPrint(format, sprintfArgs...)
+		return result, false
+
+	case "strinput":
+		// StrInput(prompt) - get user input
+		prompt := ""
+		if len(args) >= 1 {
+			if p, ok := args[0].(string); ok {
+				prompt = p
+			}
+		}
+		result := StrInput(prompt)
 		return result, false
 
 	case "movepic":
@@ -3151,7 +3168,14 @@ func StrPrint(format string, args ...any) string {
 	// %s remains %s (string)
 	goFormat := strings.ReplaceAll(format, "%ld", "%d")
 	goFormat = strings.ReplaceAll(goFormat, "%lx", "%x")
-	return fmt.Sprintf(goFormat, args...)
+	// Handle escape sequences
+	goFormat = strings.ReplaceAll(goFormat, "\\n", "\n")
+	goFormat = strings.ReplaceAll(goFormat, "\\t", "\t")
+	goFormat = strings.ReplaceAll(goFormat, "\\r", "\r")
+	result := fmt.Sprintf(goFormat, args...)
+	// Print to stdout for visibility
+	fmt.Print(result)
+	return result
 }
 
 func StrLen(s string) int {

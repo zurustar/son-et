@@ -966,7 +966,7 @@ This implementation plan covers the son-et core engine, including both the trans
   - Ask user for verification if issues arise
 
 - [ ] 30. Fix robot sample infinite loop issue (for loop not terminating)
-  - [ ] 30.1 Investigate infinite LoadPic loop
+  - [x] 30.1 Investigate infinite LoadPic loop
     - Analyze why `for(i=0;i<=1;i=i+1)` loops infinitely
     - Review for loop code generation in transpiler
     - Check if loop variable 'i' is being incremented correctly
