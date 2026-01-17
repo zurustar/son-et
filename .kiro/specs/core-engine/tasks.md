@@ -976,7 +976,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 21.1_
     - _Bug: for(i=0;i<=1;i=i+1)が無限ループになり、ROBOT000.BMPを67,081回ロードする_
 
-  - [ ] 30.2 Analyze loop variable scope and initialization
+  - [x] 30.2 Analyze loop variable scope and initialization
     - Check if loop variable 'i' is properly scoped to the loop
     - Verify loop variable is not being reset on each iteration
     - Check if loop variable conflicts with other variables named 'i'
@@ -984,7 +984,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Test with simple for loop examples to isolate the issue
     - _Requirements: 21.1, 19.1_
 
-  - [ ] 30.3 Add detailed logging for for loop execution
+  - [x] 30.3 Add detailed logging for for loop execution
     - Log loop initialization: variable name and initial value
     - Log loop condition evaluation: variable value and condition result
     - Log loop increment: variable value before and after increment
@@ -992,7 +992,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Help diagnose why loop doesn't terminate
     - _Requirements: 21.1_
 
-  - [ ] 30.4 Write unit tests for for loop execution
+  - [x] 30.4 Write unit tests for for loop execution
     - Test simple for loop: `for(i=0;i<5;i=i+1)`
     - Test for loop with <= condition: `for(i=0;i<=1;i=i+1)`
     - Test for loop with different increments: `i=i+2`, `i=i-1`
@@ -1001,14 +1001,14 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify loop variable has correct value after loop
     - _Requirements: 21.1_
 
-  - [ ] 30.5 Write property test for for loop termination
+  - [x] 30.5 Write property test for for loop termination
     - **Property 26: For loop termination**
     - Generate random loop bounds and increments
     - Verify loop terminates within expected iterations
     - Verify loop variable has correct final value
     - **Validates: Requirements 21.1**
 
-  - [ ] 30.6 Integration test with robot sample
+  - [x] 30.6 Integration test with robot sample
     - Run robot sample with timeout (3-5 seconds)
     - Verify loop loads exactly 2 images: ROBOT000.BMP and ROBOT001.BMP
     - Verify loop terminates and script continues
