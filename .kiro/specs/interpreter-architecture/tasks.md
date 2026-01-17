@@ -151,7 +151,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Test error handling
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 5. Checkpoint - Verify Core Functionality
+- [x] 5. Checkpoint - Verify Core Functionality
   - Run all unit tests and integration tests
   - Test direct mode with multiple sample projects
   - Test embedded mode build and execution
@@ -159,28 +159,28 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
   - Ask user if questions arise
 
 - [ ] 6. Write Property-Based Tests
-  - [~] 6.1 Write property test for direct execution equivalence
+  - [ ] 6.1 Write property test for direct execution equivalence
     - **Property 1: Direct Execution Equivalence**
     - For any TFY script, direct mode and embedded mode produce same behavior
     - **Validates: Requirements 2.1, 2.3**
 
-  - [~] 6.2 Write property test for asset discovery completeness
+  - [ ] 6.2 Write property test for asset discovery completeness
     - **Property 2: Asset Discovery Completeness**
     - For any TFY script, all asset references are discovered
     - **Validates: Requirements C4.1, C4.2**
 
-  - [~] 6.3 Write property test for CLI argument handling
+  - [ ] 6.3 Write property test for CLI argument handling
     - **Property 3: CLI Argument Handling**
     - For any valid directory path, son-et executes the project
     - **Validates: Requirements 3.1**
 
-  - [~] 6.4 Write property test for embedded mode execution
+  - [ ] 6.4 Write property test for embedded mode execution
     - **Property 4: Embedded Mode Execution**
     - For any embedded project, executable runs without arguments
     - **Validates: Requirements 2.5**
 
 - [ ] 7. Update Documentation
-  - [~] 7.1 Update README.md
+  - [ ] 7.1 Update README.md
     - Add interpreter usage section
     - Document direct mode: `son-et <directory>`
     - Document embedded mode build process
@@ -188,7 +188,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Remove transpiler-based workflow references
     - _Requirements: 4.1, 4.4_
 
-  - [~] 7.2 Update build-workflow.md
+  - [ ] 7.2 Update build-workflow.md
     - Replace transpiler workflow with interpreter workflow
     - Document direct mode development workflow
     - Document embedded mode build workflow
@@ -196,7 +196,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Add debugging tips for interpreter mode
     - _Requirements: 4.2, 4.4_
 
-  - [~] 7.3 Update development-workflow.md
+  - [ ] 7.3 Update development-workflow.md
     - Update feature implementation workflow for interpreter
     - Update build and verification phase
     - Update debugging procedures
@@ -204,7 +204,7 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - Add interpreter-specific best practices
     - _Requirements: 4.3, 4.4_
 
-  - [~] 7.4 Create interpreter usage guide
+  - [ ] 7.4 Create interpreter usage guide
     - Document command-line options
     - Provide examples for common use cases
     - Document error messages and solutions
@@ -212,27 +212,27 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
     - _Requirements: 4.4, 4.5_
 
 - [ ] 8. Integration Testing and Validation
-  - [~] 8.1 Test with all existing sample projects
+  - [ ] 8.1 Test with all existing sample projects
     - Run direct mode on each sample project
     - Verify correct execution and output
     - Check for any regressions
     - _Requirements: All_
 
-  - [~] 8.2 Build embedded executables for samples
+  - [ ] 8.2 Build embedded executables for samples
     - Create embedded builds for key samples
     - Test standalone execution
     - Verify asset embedding
     - Check executable size and performance
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [~] 8.3 Performance benchmarking
+  - [ ] 8.3 Performance benchmarking
     - Benchmark direct mode startup time
     - Benchmark OpCode generation time
     - Compare with previous transpiler performance
     - Profile and optimize hot paths
     - _Requirements: All_
 
-  - [~] 8.4 Cross-platform testing
+  - [ ] 8.4 Cross-platform testing
     - Test on macOS (primary platform)
     - Verify asset loading on different filesystems
     - Test case-insensitive matching
@@ -244,6 +244,39 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
   - Review code coverage (aim for >80% on critical paths)
   - Ask user if questions arise
   - Confirm spec is complete and ready for production use
+
+- [ ] 10. Refactor OpCode to use enum instead of strings
+  - [ ] 10.1 Define OpCmd enum type in pkg/compiler/interpreter/opcode.go
+    - Create OpCmd type as int constant
+    - Define all OpCode commands as constants (OpAssign, OpIf, OpFor, etc.)
+    - Add String() method for debugging
+    - _Requirements: C1.1, C1.2_
+    - _Rationale: Compile-time type safety, prevents runtime errors from typos_
+
+  - [ ] 10.2 Update interpreter to use OpCmd enum
+    - Replace all `Cmd: "Assign"` with `Cmd: OpAssign`
+    - Replace all `Cmd: "If"` with `Cmd: OpIf`
+    - Update all OpCode generation in interpreter.go
+    - _Requirements: 1.3_
+
+  - [ ] 10.3 Update engine to use OpCmd enum
+    - Update ExecuteOp to use switch on OpCmd enum
+    - Replace all string comparisons with enum comparisons
+    - Update all OpCode handling in engine.go
+    - _Requirements: C3.1, C3.2_
+
+  - [ ] 10.4 Update conversion functions
+    - Update convertToEngineOpCodes in cmd/son-et/main.go
+    - Update convertToEngineOpCodes in cmd/son-et-embedded/main.go
+    - Handle OpCmd enum in conversion
+    - _Requirements: 2.2, 2.5_
+
+  - [ ] 10.5 Update all tests
+    - Update interpreter tests to use OpCmd enum
+    - Update engine tests to use OpCmd enum
+    - Update CLI tests to use OpCmd enum
+    - Verify all tests pass
+    - _Requirements: All_
 
 ## Notes
 

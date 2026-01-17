@@ -49,25 +49,31 @@ func (i *Interpreter) Interpret(program *ast.Program) (*Script, error) {
 	}
 
 	// Second pass: convert main function body to OpCode
-	mainFunc := NewFunction("main")
-	for _, stmt := range program.Statements {
-		// Skip function definitions and global declarations (already processed)
-		if _, ok := stmt.(*ast.FunctionStatement); ok {
-			continue
-		}
-		if _, ok := stmt.(*ast.LetStatement); ok {
-			continue
-		}
+	// Check if there's a user-defined main() function
+	if mainUserFunc, ok := script.Functions["main"]; ok {
+		// Use the user-defined main function
+		script.Main = mainUserFunc
+	} else {
+		// No main() function - collect top-level statements
+		mainFunc := NewFunction("main")
+		for _, stmt := range program.Statements {
+			// Skip function definitions and global declarations (already processed)
+			if _, ok := stmt.(*ast.FunctionStatement); ok {
+				continue
+			}
+			if _, ok := stmt.(*ast.LetStatement); ok {
+				continue
+			}
 
-		// Convert statement to OpCode
-		ops, err := i.interpretStatement(stmt)
-		if err != nil {
-			return nil, fmt.Errorf("error interpreting statement: %w", err)
+			// Convert statement to OpCode
+			ops, err := i.interpretStatement(stmt)
+			if err != nil {
+				return nil, fmt.Errorf("error interpreting statement: %w", err)
+			}
+			mainFunc.Body = append(mainFunc.Body, ops...)
 		}
-		mainFunc.Body = append(mainFunc.Body, ops...)
+		script.Main = mainFunc
 	}
-
-	script.Main = mainFunc
 
 	// Scan for assets
 	script.Assets = i.scanAssets(program)
@@ -404,9 +410,10 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 		return OpCode{Cmd: "Literal", Args: []any{e.Value}}, nil
 
 	case *ast.Identifier:
-		// Variable reference
+		// Variable reference - return as Variable type directly
 		varName := normalizeVarName(e.Value)
-		return OpCode{Cmd: "Var", Args: []any{Variable(varName)}}, nil
+		// Return a special marker OpCode that will be unwrapped to Variable
+		return OpCode{Cmd: "VarRef", Args: []any{Variable(varName)}}, nil
 
 	case *ast.CallExpression:
 		// Function call: FUNC(ARG1, ARG2, ...)

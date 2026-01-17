@@ -220,12 +220,16 @@ func recursiveReadEmbedded(path string, included map[string]bool) ([]byte, error
 
 // convertToEngineOpCodes converts interpreter OpCodes to engine OpCodes
 func convertToEngineOpCodes(interpOps []interpreter.OpCode) []engine.OpCode {
-	engineOps := make([]engine.OpCode, len(interpOps))
-	for i, op := range interpOps {
-		engineOps[i] = engine.OpCode{
+	engineOps := make([]engine.OpCode, 0, len(interpOps))
+	for _, op := range interpOps {
+		// Skip VarRef at top level - these should only appear as nested expressions
+		if op.Cmd == "VarRef" {
+			continue
+		}
+		engineOps = append(engineOps, engine.OpCode{
 			Cmd:  op.Cmd,
 			Args: convertOpCodeArgs(op.Args),
-		}
+		})
 	}
 	return engineOps
 }
@@ -236,6 +240,13 @@ func convertOpCodeArgs(args []any) []any {
 	for i, arg := range args {
 		switch v := arg.(type) {
 		case interpreter.OpCode:
+			// Special case: VarRef should be unwrapped to just the variable name
+			if v.Cmd == "VarRef" && len(v.Args) > 0 {
+				if varName, ok := v.Args[0].(interpreter.Variable); ok {
+					result[i] = string(varName)
+					continue
+				}
+			}
 			result[i] = engine.OpCode{
 				Cmd:  v.Cmd,
 				Args: convertOpCodeArgs(v.Args),

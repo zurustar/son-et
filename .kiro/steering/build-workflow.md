@@ -3,6 +3,38 @@
 ## Overview
 This document describes the comprehensive workflow for running and debugging FILLY programs during development. For high-level development workflow, see `development-workflow.md`.
 
+## CRITICAL: Program Execution Rules for AI Agent
+
+**RULE 1: ALWAYS use controlBashProcess for long-running programs**
+- NEVER use executeBash for `go run cmd/son-et/main.go` commands
+- These programs run indefinitely and will block execution
+- Use `controlBashProcess` with action="start" instead
+
+**RULE 2: Check for running processes BEFORE starting new ones**
+- Use `listProcesses` to check for existing processes
+- Stop any running processes with `controlBashProcess` action="stop"
+- Only then start a new process
+
+**RULE 3: Always stop processes when done**
+- After verification or testing, stop the process
+- Use `controlBashProcess` with action="stop" and the processId
+- Never leave processes running indefinitely
+
+**Example Correct Workflow:**
+```
+1. listProcesses() - Check for existing processes
+2. If processes exist: controlBashProcess(action="stop", processId=X)
+3. controlBashProcess(action="start", command="go run cmd/son-et/main.go samples/kuma2")
+4. Wait 2-3 seconds
+5. getProcessOutput(processId=Y) - Check output
+6. controlBashProcess(action="stop", processId=Y) - Stop when done
+```
+
+**NEVER do this:**
+```
+executeBash("go run cmd/son-et/main.go samples/kuma2")  # WRONG - will hang forever
+```
+
 ## Execution Modes
 
 The son-et interpreter supports two execution modes:
