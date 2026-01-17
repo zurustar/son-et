@@ -405,3 +405,88 @@ go build -tags embed_kuma2 -o kuma2 ./cmd/son-et
 - Use DEBUG_LEVEL=2 for detailed logging
 - Check asset discovery with verbose output
 - Verify OpCode generation correctness
+
+
+## Critical Implementation Details
+
+### step() Block Conversion
+
+**IMPORTANT:** `step(n)` is NOT a loop construct. It sets the time duration for Wait operations.
+
+**Correct Conversion:**
+```go
+case *ast.StepBlockStatement:
+    // step(n) block: step(65) { ... }
+    // This sets the step resolution and then executes the body once
+    
+    // First, emit SetStep operation
+    setStepOp := OpCode{
+        Cmd:  OpSetStep,
+        Args: []any{int(s.Count)},
+    }
+    
+    // Then, interpret the body statements
+    bodyOps := []OpCode{}
+    for _, stmt := range s.Body.Statements {
+        ops, err := i.interpretStatement(stmt)
+        if err != nil {
+            return nil, err
+        }
+        bodyOps = append(bodyOps, ops...)
+    }
+    
+    // Return SetStep followed by body operations
+    result := []OpCode{setStepOp}
+    result = append(result, bodyOps...)
+    return result, nil
+```
+
+**WRONG Approach (DO NOT USE):**
+```go
+// WRONG: Treating step(n) as a loop
+return []OpCode{{
+    Cmd:  OpStep,
+    Args: []any{s.Count, bodyOps},  // This creates a loop, which is incorrect
+}}, nil
+```
+
+**Why This Matters:**
+- `step(65)` means "set each Wait(1) to 65 time units"
+- The block body executes once, not 65 times
+- Misinterpreting this causes scripts to repeat incorrectly
+
+### main() Function Execution
+
+**IMPORTANT:** The `main()` function should NOT be wrapped in `RegisterSequence`.
+
+**Correct Approach (in cmd/son-et/main.go):**
+```go
+engine.InitDirect(assetLoader, imageDecoder, func() {
+    // Convert interpreter OpCode to engine OpCode format
+    engineOps := convertToEngineOpCodes(script.Main.Body)
+    
+    // Execute the main sequence directly (not wrapped in RegisterSequence)
+    // This allows mes() blocks to register their own sequences
+    for _, op := range engineOps {
+        engine.ExecuteOpDirect(op)
+    }
+})
+```
+
+**WRONG Approach (DO NOT USE):**
+```go
+// WRONG: Wrapping main() in RegisterSequence causes nested sequence deadlock
+engine.RegisterSequence(engine.Time, engineOps)
+```
+
+**Why This Matters:**
+- `mes()` blocks internally call `RegisterSequence`
+- If `main()` is already in a sequence, you get nested sequences
+- Nested sequences cause deadlock in TIME mode (outer waits for inner, but inner can't start)
+
+## Lessons Learned
+
+1. **Language Semantics Matter:** Always verify FILLY language behavior with original implementation or documentation
+2. **Test with Real Scripts:** Design assumptions should be validated with actual FILLY samples (like kuma2)
+3. **Avoid Premature Abstraction:** Don't create wrapper OpCodes (like OpStep) when direct emission works better
+4. **Document Execution Context:** Clearly specify whether functions expect to be called within sequences or directly

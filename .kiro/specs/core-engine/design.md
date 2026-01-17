@@ -472,3 +472,183 @@ See [COMMON_DESIGN.md](../COMMON_DESIGN.md) for critical design constraints and 
 - More sophisticated audio mixing
 - Visual editor for sprite placement
 - Hot-reload for faster development iteration
+
+
+## Critical Implementation Details
+
+### MoveWin with Variable Arguments
+
+**IMPORTANT:** `MoveWin` can be called with different numbers of arguments, and the behavior must adapt accordingly.
+
+**2-Argument Form: MoveWin(winID, picID)**
+
+When called with only 2 arguments, the function should:
+1. Keep the current window position
+2. Use the NEW picture's dimensions (not hardcoded values)
+3. Reset source offsets to (0, 0)
+
+**Correct Implementation:**
+```go
+case "movewin":
+    if len(args) >= 2 {
+        winID, ok1 := args[0].(int)
+        picID, ok2 := args[1].(int)
+        if ok1 && ok2 {
+            // Get current window and new picture
+            var win *Window
+            var pic *Picture
+            if globalEngine != nil {
+                globalEngine.renderMutex.Lock()
+                win, ok = globalEngine.windows[winID]
+                if ok {
+                    pic, _ = globalEngine.pictures[picID]
+                }
+                globalEngine.renderMutex.Unlock()
+            }
+            
+            if ok && pic != nil {
+                x := win.X - BorderThickness
+                y := win.Y - TitleBarHeight - BorderThickness
+                // Use NEW picture's size (CRITICAL)
+                w := pic.Width
+                h := pic.Height
+                srcX := 0
+                srcY := 0
+                MoveWin(winID, picID, x, y, w, h, srcX, srcY)
+            }
+        }
+    }
+```
+
+**WRONG Approach (DO NOT USE):**
+```go
+// WRONG: Hardcoded dimensions
+MoveWin(winID, picID, 0, 0, 640, 480, 0, 0)  // Causes incorrect window sizes
+```
+
+**Why This Matters:**
+- Different pictures have different sizes
+- Hardcoded sizes cause visual glitches
+- Window should always match the picture being displayed
+
+### Thread Safety in Audio Functions
+
+**IMPORTANT:** Functions called from `ExecuteOp` must not acquire `vmLock` as it's already held by `UpdateVM`.
+
+**PlayMIDI Correct Implementation:**
+```go
+func PlayMIDI(args ...any) {
+    // ... validation ...
+    
+    PlayMidiFile(path)
+    
+    // NOTE: We are already inside vmLock from UpdateVM, so don't lock again
+    tickCount = 0
+    atomic.StoreInt64(&targetTick, 0)
+    
+    if mainSequencer != nil {
+        mainSequencer.active = true
+    }
+    
+    StartQueuedCallback()
+}
+```
+
+**WRONG Approach (DO NOT USE):**
+```go
+// WRONG: Causes deadlock
+func PlayMIDI(args ...any) {
+    PlayMidiFile(path)
+    
+    vmLock.Lock()  // DEADLOCK: UpdateVM already holds this lock
+    tickCount = 0
+    vmLock.Unlock()
+}
+```
+
+### Asynchronous Audio Playback
+
+**IMPORTANT:** Audio playback operations should not block the main thread.
+
+**Correct Implementation:**
+```go
+midiPlayer, err = audioContext.NewPlayer(stream)
+if err != nil {
+    return
+}
+
+// Start playback in a goroutine to avoid blocking
+go func() {
+    midiPlayer.Play()
+    fmt.Println("PlayMIDI: Playback started")
+}()
+```
+
+**Why This Matters:**
+- Blocking audio operations freeze the game loop
+- Ebiten's main thread must remain responsive
+- Audio should run independently of the VM
+
+### ExecuteOpDirect for Top-Level Execution
+
+**Purpose:** Execute OpCodes directly without sequence wrapping.
+
+**When to Use:**
+- Executing `main()` function body
+- Top-level script initialization
+- Any code that should run immediately without timing control
+
+**Implementation:**
+```go
+func ExecuteOpDirect(op OpCode) {
+    // Create a dummy sequencer for variable scope
+    dummySeq := &Sequencer{
+        vars: make(map[string]any),
+        mode: Time,
+    }
+    ExecuteOp(op, dummySeq)
+}
+```
+
+**Why This Exists:**
+- Avoids nested sequence deadlocks
+- Allows `mes()` blocks to register their own sequences
+- Provides variable scope without sequence overhead
+
+## Debugging Common Issues
+
+### Issue: Window Not Displaying
+
+**Symptoms:**
+- Audio plays but no window appears
+- Program seems to run but nothing visible
+
+**Likely Causes:**
+1. Game loop blocked (check for deadlocks)
+2. `RegisterSequence` blocking in wrong context
+3. `main()` wrapped in sequence (should use `ExecuteOpDirect`)
+
+**Solution:** Ensure `main()` executes directly, not in a sequence.
+
+### Issue: Images Wrong Size
+
+**Symptoms:**
+- First image correct, subsequent images wrong size
+- Window size doesn't match picture
+
+**Likely Cause:** `MoveWin` using hardcoded dimensions instead of picture size.
+
+**Solution:** Look up new picture dimensions dynamically.
+
+### Issue: Program Freezes After PlayMIDI
+
+**Symptoms:**
+- MIDI starts playing
+- Game loop stops
+- No further updates
+
+**Likely Causes:**
+1. `PlayMIDI` acquiring `vmLock` (deadlock)
+2. `midiPlayer.Play()` blocking main thread
+
+**Solution:** Remove `vmLock` from `PlayMIDI`, use goroutine for playback.
