@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"io/fs"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -441,6 +442,7 @@ func ResetEngineForTest() {
 	ticksPerStep = 12
 	midiSyncMode = false
 	GlobalPPQ = 480
+	atomic.StoreInt64(&targetTick, 0) // Reset targetTick for test isolation
 
 	// Reset program termination flag
 	programTerminated = false

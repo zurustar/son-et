@@ -20,19 +20,32 @@ func TestMesTimeExecutesOnce(t *testing.T) {
 		},
 	}
 
+	// Start UpdateVM in background
+	stopVM := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		tickNum := 0
+		for {
+			select {
+			case <-stopVM:
+				return
+			case <-ticker.C:
+				UpdateVM(tickNum)
+				tickNum++
+			}
+		}
+	}()
+	defer func() { stopVM <- true }()
+
+	// Give VM time to start
+	time.Sleep(50 * time.Millisecond)
+
 	// Register sequence in TIME mode
 	done := make(chan bool)
 	go func() {
 		RegisterSequence(Time, ops)
 		done <- true
-	}()
-
-	// Simulate VM ticks to complete the sequence
-	go func() {
-		for i := 0; i < 10; i++ {
-			time.Sleep(10 * time.Millisecond)
-			UpdateVM(i)
-		}
 	}()
 
 	// Wait for sequence to complete (with timeout)
@@ -56,13 +69,35 @@ func TestRegisterSequenceBlocksInTimeMode(t *testing.T) {
 	// Reset engine state
 	ResetEngineForTest()
 
-	// Create a sequence with a Wait operation
+	// Create a sequence with a longer Wait operation
 	ops := []OpCode{
 		{
 			Cmd:  interpreter.OpWait,
-			Args: []any{1}, // Wait 1 step
+			Args: []any{10}, // Wait 10 steps = 120 ticks = 2 seconds at 60 FPS
 		},
 	}
+
+	// Start UpdateVM in background BEFORE RegisterSequence
+	// This ensures the VM is running when RegisterSequence blocks
+	stopVM := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		tickNum := 0
+		for {
+			select {
+			case <-stopVM:
+				return
+			case <-ticker.C:
+				UpdateVM(tickNum)
+				tickNum++
+			}
+		}
+	}()
+	defer func() { stopVM <- true }()
+
+	// Give VM time to start
+	time.Sleep(50 * time.Millisecond)
 
 	// Track when RegisterSequence returns
 	completed := false
@@ -71,20 +106,17 @@ func TestRegisterSequenceBlocksInTimeMode(t *testing.T) {
 		completed = true
 	}()
 
-	// RegisterSequence should block, so completed should still be false
-	time.Sleep(100 * time.Millisecond)
+	// RegisterSequence should block, so completed should still be false after 500ms
+	// (Wait is 10 steps = 120 ticks = 2 seconds)
+	time.Sleep(500 * time.Millisecond)
 	if completed {
 		t.Error("RegisterSequence should block in TIME mode, but it returned immediately")
 	}
 
-	// Simulate VM ticks to complete the sequence
-	for i := 0; i < 20; i++ {
-		UpdateVM(i)
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Wait for sequence to complete (VM is already running)
+	time.Sleep(2 * time.Second)
 
 	// Now RegisterSequence should have completed
-	time.Sleep(100 * time.Millisecond)
 	if !completed {
 		t.Error("RegisterSequence should have completed after sequence finished")
 	}
@@ -103,6 +135,27 @@ func TestSubsequentCodeRunsAfterMesTime(t *testing.T) {
 		},
 	}
 
+	// Start UpdateVM in background
+	stopVM := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		tickNum := 0
+		for {
+			select {
+			case <-stopVM:
+				return
+			case <-ticker.C:
+				UpdateVM(tickNum)
+				tickNum++
+			}
+		}
+	}()
+	defer func() { stopVM <- true }()
+
+	// Give VM time to start
+	time.Sleep(50 * time.Millisecond)
+
 	// Track completion
 	completed := false
 	go func() {
@@ -111,14 +164,8 @@ func TestSubsequentCodeRunsAfterMesTime(t *testing.T) {
 		completed = true
 	}()
 
-	// Simulate VM ticks to complete the sequence
-	for i := 0; i < 10; i++ {
-		UpdateVM(i)
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	// Wait a bit for the goroutine to complete
-	time.Sleep(100 * time.Millisecond)
+	// Wait for completion
+	time.Sleep(300 * time.Millisecond)
 
 	// Verify subsequent code ran
 	if !completed {
@@ -150,23 +197,45 @@ func TestDelAllDelMeExecuteAfterMesTime(t *testing.T) {
 		},
 	}
 
+	// Start UpdateVM in background
+	stopVM := make(chan bool)
+	terminated := false
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		tickNum := 0
+		for {
+			select {
+			case <-stopVM:
+				return
+			case <-ticker.C:
+				UpdateVM(tickNum)
+				tickNum++
+				// Check if program terminated
+				if programTerminated {
+					terminated = true
+					return
+				}
+			}
+		}
+	}()
+	defer func() {
+		select {
+		case stopVM <- true:
+		default:
+		}
+	}()
+
+	// Give VM time to start
+	time.Sleep(50 * time.Millisecond)
+
 	// Register sequence
 	go func() {
 		RegisterSequence(Time, ops)
 	}()
 
-	// Simulate VM ticks
-	terminated := false
-	for i := 0; i < 20 && !terminated; i++ {
-		UpdateVM(i)
-		time.Sleep(10 * time.Millisecond)
-
-		// Check if program terminated
-		if programTerminated {
-			terminated = true
-			break
-		}
-	}
+	// Wait for termination or timeout
+	time.Sleep(500 * time.Millisecond)
 
 	// Verify del_me was executed (program terminated)
 	if !terminated {
@@ -187,6 +256,27 @@ func TestNoSequenceReregistrationAfterCompletion(t *testing.T) {
 		},
 	}
 
+	// Start UpdateVM in background
+	stopVM := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		tickNum := 0
+		for {
+			select {
+			case <-stopVM:
+				return
+			case <-ticker.C:
+				UpdateVM(tickNum)
+				tickNum++
+			}
+		}
+	}()
+	defer func() { stopVM <- true }()
+
+	// Give VM time to start
+	time.Sleep(50 * time.Millisecond)
+
 	// Register sequence
 	go func() {
 		RegisterSequence(Time, ops)
@@ -200,14 +290,8 @@ func TestNoSequenceReregistrationAfterCompletion(t *testing.T) {
 	initialCount := len(sequencers)
 	vmLock.Unlock()
 
-	// Simulate VM ticks to complete the sequence
-	for i := 0; i < 10; i++ {
-		UpdateVM(i)
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	// Wait a bit more
-	time.Sleep(100 * time.Millisecond)
+	// Wait for sequence to complete
+	time.Sleep(300 * time.Millisecond)
 
 	// Verify sequencer count hasn't increased
 	vmLock.Lock()
