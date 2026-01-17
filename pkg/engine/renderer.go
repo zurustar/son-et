@@ -82,9 +82,28 @@ func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, win *Window, pic *Pi
 	// 3. Title Bar (Blue)
 	vector.DrawFilledRect(screen, winX, winY-float32(TitleBarHeight), winW, float32(TitleBarHeight), color.RGBA{0, 0, 128, 255}, true)
 
-	// 4. Title Text (White)
-	if state.currentFont != nil && win.Title != "" {
-		text.Draw(screen, win.Title, state.currentFont, int(winX)+4, int(winY)-6, color.White)
+	// 4. Title Text (White) with Window ID
+	if state.currentFont != nil {
+		titleText := win.Title
+		// Note: Empty title is valid - don't use fallback text
+		// If user wants empty title (via CapTitle("")), respect that
+
+		// Draw title (only if not empty)
+		if titleText != "" {
+			text.Draw(screen, titleText, state.currentFont, int(winX)+4, int(winY)-6, color.White)
+		}
+
+		// DEBUG: Show Window ID after title if debug overlay enabled
+		if debugLevel >= 2 {
+			// Measure title text width to position ID after it
+			// Approximate width: each character is about 7-8 pixels for 14pt font
+			titleWidth := 0
+			if titleText != "" {
+				titleWidth = len(titleText) * 7
+			}
+			winLabel := fmt.Sprintf(" [W%d]", win.ID)
+			text.Draw(screen, winLabel, state.currentFont, int(winX)+4+titleWidth, int(winY)-6, color.RGBA{255, 255, 0, 255}) // Yellow color
+		}
 	}
 
 	// Draw window content
@@ -154,7 +173,17 @@ func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, win *Window, 
 		// DEBUG: Show Picture ID if debug overlay enabled
 		if debugLevel >= 2 && state.currentFont != nil {
 			picLabel := fmt.Sprintf("P%d", win.Picture)
-			text.Draw(screen, picLabel, state.currentFont, drawRect.Min.X+5, drawRect.Min.Y+15, color.RGBA{0, 255, 0, 255})
+			// Position below Window ID
+			labelX := drawRect.Min.X + 5
+			labelY := drawRect.Min.Y + 40
+
+			// Draw black background rectangle for better visibility
+			bgRect := image.Rect(labelX-2, labelY-14, labelX+30, labelY+2)
+			vector.DrawFilledRect(screen, float32(bgRect.Min.X), float32(bgRect.Min.Y),
+				float32(bgRect.Dx()), float32(bgRect.Dy()), color.RGBA{0, 0, 0, 200}, true)
+
+			// Draw green text
+			text.Draw(screen, picLabel, state.currentFont, labelX, labelY, color.RGBA{0, 255, 0, 255})
 		}
 	}
 }
