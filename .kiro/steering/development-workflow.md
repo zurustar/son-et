@@ -182,6 +182,27 @@ go test -v -timeout=20s -run TestSpecificFunction ./pkg/engine/
 
 **Never run tests without `-timeout` flag!**
 
+### Process Management After Tests
+
+**CRITICAL: Always check for orphaned processes after running tests**
+
+```bash
+# Check for orphaned Go test processes
+ps aux | grep "go-build" | grep -v grep
+
+# If processes found, kill them
+kill -9 <PID>
+
+# Verify cleanup
+ps aux | grep "go-build" | grep -v grep
+```
+
+**Why this is important:**
+- Go tests run from cache: `/Users/.../Library/Caches/go-build/.../main`
+- Tests with GUI (Ebiten) may not terminate automatically
+- Orphaned processes keep windows open and consume resources
+- DO NOT search for "son-et" or ".test" - use "go-build" instead
+
 ### Check Implementation Status
 ```bash
 # Check which functions are implemented

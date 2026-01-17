@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 // TestVMIfStatement tests if-else execution in VM mode
@@ -18,14 +20,14 @@ func TestVMIfStatement(t *testing.T) {
 
 	// Test: if (5 > 3) { x = 10 } else { x = 20 }
 	ifOp := OpCode{
-		Cmd: "If",
+		Cmd: interpreter.OpIf,
 		Args: []any{
-			OpCode{Cmd: "Infix", Args: []any{">", 5, 3}},
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{">", 5, 3}},
 			[]OpCode{
-				{Cmd: "Assign", Args: []any{"x", 10}},
+				{Cmd: interpreter.OpAssign, Args: []any{"x", 10}},
 			},
 			[]OpCode{
-				{Cmd: "Assign", Args: []any{"x", 20}},
+				{Cmd: interpreter.OpAssign, Args: []any{"x", 20}},
 			},
 		},
 	}
@@ -42,14 +44,14 @@ func TestVMIfStatement(t *testing.T) {
 	// Test: if (3 > 5) { x = 10 } else { x = 20 }
 	seq.vars = make(map[string]any)
 	ifOp2 := OpCode{
-		Cmd: "If",
+		Cmd: interpreter.OpIf,
 		Args: []any{
-			OpCode{Cmd: "Infix", Args: []any{">", 3, 5}},
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{">", 3, 5}},
 			[]OpCode{
-				{Cmd: "Assign", Args: []any{"x", 10}},
+				{Cmd: interpreter.OpAssign, Args: []any{"x", 10}},
 			},
 			[]OpCode{
-				{Cmd: "Assign", Args: []any{"x", 20}},
+				{Cmd: interpreter.OpAssign, Args: []any{"x", 20}},
 			},
 		},
 	}
@@ -78,13 +80,13 @@ func TestVMForLoop(t *testing.T) {
 
 	// Test: for (i = 0; i < 5; i = i + 1) { sum = sum + i }
 	forOp := OpCode{
-		Cmd: "For",
+		Cmd: interpreter.OpFor,
 		Args: []any{
-			OpCode{Cmd: "Assign", Args: []any{"i", 0}},                                                        // init
-			OpCode{Cmd: "Infix", Args: []any{"<", Variable("i"), 5}},                                          // condition
-			OpCode{Cmd: "Assign", Args: []any{"i", OpCode{Cmd: "Infix", Args: []any{"+", Variable("i"), 1}}}}, // post
+			OpCode{Cmd: interpreter.OpAssign, Args: []any{"i", 0}},                                                                    // init
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{"<", Variable("i"), 5}},                                                      // condition
+			OpCode{Cmd: interpreter.OpAssign, Args: []any{"i", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("i"), 1}}}}, // post
 			[]OpCode{ // body
-				{Cmd: "Assign", Args: []any{"sum", OpCode{Cmd: "Infix", Args: []any{"+", Variable("sum"), Variable("i")}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"sum", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("sum"), Variable("i")}}}},
 			},
 		},
 	}
@@ -118,12 +120,12 @@ func TestVMWhileLoop(t *testing.T) {
 	seq.vars["sum"] = 0
 
 	whileOp := OpCode{
-		Cmd: "While",
+		Cmd: interpreter.OpWhile,
 		Args: []any{
-			OpCode{Cmd: "Infix", Args: []any{"<", Variable("i"), 5}}, // condition
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{"<", Variable("i"), 5}}, // condition
 			[]OpCode{ // body
-				{Cmd: "Assign", Args: []any{"sum", OpCode{Cmd: "Infix", Args: []any{"+", Variable("sum"), Variable("i")}}}},
-				{Cmd: "Assign", Args: []any{"i", OpCode{Cmd: "Infix", Args: []any{"+", Variable("i"), 1}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"sum", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("sum"), Variable("i")}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"i", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("i"), 1}}}},
 			},
 		},
 	}
@@ -155,15 +157,15 @@ func TestVMSwitchStatement(t *testing.T) {
 	seq.vars["x"] = 2
 
 	switchOp := OpCode{
-		Cmd: "Switch",
+		Cmd: interpreter.OpSwitch,
 		Args: []any{
 			Variable("x"), // value
 			[]any{ // cases
-				[]any{1, []OpCode{{Cmd: "Assign", Args: []any{"y", 10}}, {Cmd: "Break", Args: []any{}}}},
-				[]any{2, []OpCode{{Cmd: "Assign", Args: []any{"y", 20}}, {Cmd: "Break", Args: []any{}}}},
+				[]any{1, []OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 10}}, {Cmd: interpreter.OpBreak, Args: []any{}}}},
+				[]any{2, []OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 20}}, {Cmd: interpreter.OpBreak, Args: []any{}}}},
 			},
 			[]OpCode{ // default
-				{Cmd: "Assign", Args: []any{"y", 30}},
+				{Cmd: interpreter.OpAssign, Args: []any{"y", 30}},
 			},
 		},
 	}
@@ -207,17 +209,17 @@ func TestVMBreakContinue(t *testing.T) {
 	seq.vars["sum"] = 0
 
 	forOp := OpCode{
-		Cmd: "For",
+		Cmd: interpreter.OpFor,
 		Args: []any{
-			OpCode{Cmd: "Assign", Args: []any{"i", 0}},                                                        // init
-			OpCode{Cmd: "Infix", Args: []any{"<", Variable("i"), 10}},                                         // condition
-			OpCode{Cmd: "Assign", Args: []any{"i", OpCode{Cmd: "Infix", Args: []any{"+", Variable("i"), 1}}}}, // post
+			OpCode{Cmd: interpreter.OpAssign, Args: []any{"i", 0}},                                                                    // init
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{"<", Variable("i"), 10}},                                                     // condition
+			OpCode{Cmd: interpreter.OpAssign, Args: []any{"i", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("i"), 1}}}}, // post
 			[]OpCode{ // body
-				{Cmd: "If", Args: []any{
-					OpCode{Cmd: "Infix", Args: []any{"==", Variable("i"), 5}},
-					[]OpCode{{Cmd: "Break", Args: []any{}}},
+				{Cmd: interpreter.OpIf, Args: []any{
+					OpCode{Cmd: interpreter.OpInfix, Args: []any{"==", Variable("i"), 5}},
+					[]OpCode{{Cmd: interpreter.OpBreak, Args: []any{}}},
 				}},
-				{Cmd: "Assign", Args: []any{"sum", OpCode{Cmd: "Infix", Args: []any{"+", Variable("sum"), Variable("i")}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"sum", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("sum"), Variable("i")}}}},
 			},
 		},
 	}
@@ -249,18 +251,18 @@ func TestVMNestedIfStatement(t *testing.T) {
 	seq.vars["x"] = 8
 
 	nestedIfOp := OpCode{
-		Cmd: "If",
+		Cmd: interpreter.OpIf,
 		Args: []any{
-			OpCode{Cmd: "Infix", Args: []any{">", Variable("x"), 5}},
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{">", Variable("x"), 5}},
 			[]OpCode{
-				{Cmd: "If", Args: []any{
-					OpCode{Cmd: "Infix", Args: []any{">", Variable("x"), 10}},
-					[]OpCode{{Cmd: "Assign", Args: []any{"y", 1}}},
-					[]OpCode{{Cmd: "Assign", Args: []any{"y", 2}}},
+				{Cmd: interpreter.OpIf, Args: []any{
+					OpCode{Cmd: interpreter.OpInfix, Args: []any{">", Variable("x"), 10}},
+					[]OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 1}}},
+					[]OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 2}}},
 				}},
 			},
 			[]OpCode{
-				{Cmd: "Assign", Args: []any{"y", 3}},
+				{Cmd: interpreter.OpAssign, Args: []any{"y", 3}},
 			},
 		},
 	}
@@ -306,12 +308,12 @@ func TestVMDoWhileLoop(t *testing.T) {
 	seq.vars["sum"] = 0
 
 	doWhileOp := OpCode{
-		Cmd: "DoWhile",
+		Cmd: interpreter.OpDoWhile,
 		Args: []any{
-			OpCode{Cmd: "Infix", Args: []any{"<", Variable("i"), 5}}, // condition
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{"<", Variable("i"), 5}}, // condition
 			[]OpCode{ // body
-				{Cmd: "Assign", Args: []any{"sum", OpCode{Cmd: "Infix", Args: []any{"+", Variable("sum"), Variable("i")}}}},
-				{Cmd: "Assign", Args: []any{"i", OpCode{Cmd: "Infix", Args: []any{"+", Variable("i"), 1}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"sum", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("sum"), Variable("i")}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"i", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("i"), 1}}}},
 			},
 		},
 	}
@@ -331,11 +333,11 @@ func TestVMDoWhileLoop(t *testing.T) {
 	seq.vars["count"] = 0
 
 	doWhileOp2 := OpCode{
-		Cmd: "DoWhile",
+		Cmd: interpreter.OpDoWhile,
 		Args: []any{
-			OpCode{Cmd: "Infix", Args: []any{"<", Variable("i"), 5}}, // false from start
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{"<", Variable("i"), 5}}, // false from start
 			[]OpCode{ // body
-				{Cmd: "Assign", Args: []any{"count", OpCode{Cmd: "Infix", Args: []any{"+", Variable("count"), 1}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"count", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("count"), 1}}}},
 			},
 		},
 	}
@@ -365,16 +367,16 @@ func TestVMSwitchMultipleCases(t *testing.T) {
 
 	// Test: switch (x) { case 1: y = 10; break; case 2: y = 20; break; case 3: y = 30; break; default: y = 99 }
 	switchOp := OpCode{
-		Cmd: "Switch",
+		Cmd: interpreter.OpSwitch,
 		Args: []any{
 			Variable("x"), // value
 			[]any{ // cases
-				[]any{1, []OpCode{{Cmd: "Assign", Args: []any{"y", 10}}, {Cmd: "Break", Args: []any{}}}},
-				[]any{2, []OpCode{{Cmd: "Assign", Args: []any{"y", 20}}, {Cmd: "Break", Args: []any{}}}},
-				[]any{3, []OpCode{{Cmd: "Assign", Args: []any{"y", 30}}, {Cmd: "Break", Args: []any{}}}},
+				[]any{1, []OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 10}}, {Cmd: interpreter.OpBreak, Args: []any{}}}},
+				[]any{2, []OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 20}}, {Cmd: interpreter.OpBreak, Args: []any{}}}},
+				[]any{3, []OpCode{{Cmd: interpreter.OpAssign, Args: []any{"y", 30}}, {Cmd: interpreter.OpBreak, Args: []any{}}}},
 			},
 			[]OpCode{ // default
-				{Cmd: "Assign", Args: []any{"y", 99}},
+				{Cmd: interpreter.OpAssign, Args: []any{"y", 99}},
 			},
 		},
 	}
@@ -428,17 +430,17 @@ func TestVMContinueInLoop(t *testing.T) {
 	seq.vars["sum"] = 0
 
 	forOp := OpCode{
-		Cmd: "For",
+		Cmd: interpreter.OpFor,
 		Args: []any{
-			OpCode{Cmd: "Assign", Args: []any{"i", 0}},                                                        // init
-			OpCode{Cmd: "Infix", Args: []any{"<", Variable("i"), 10}},                                         // condition
-			OpCode{Cmd: "Assign", Args: []any{"i", OpCode{Cmd: "Infix", Args: []any{"+", Variable("i"), 1}}}}, // post
+			OpCode{Cmd: interpreter.OpAssign, Args: []any{"i", 0}},                                                                    // init
+			OpCode{Cmd: interpreter.OpInfix, Args: []any{"<", Variable("i"), 10}},                                                     // condition
+			OpCode{Cmd: interpreter.OpAssign, Args: []any{"i", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("i"), 1}}}}, // post
 			[]OpCode{ // body
-				{Cmd: "If", Args: []any{
-					OpCode{Cmd: "Infix", Args: []any{"==", OpCode{Cmd: "Infix", Args: []any{"%", Variable("i"), 2}}, 0}},
-					[]OpCode{{Cmd: "Continue", Args: []any{}}},
+				{Cmd: interpreter.OpIf, Args: []any{
+					OpCode{Cmd: interpreter.OpInfix, Args: []any{"==", OpCode{Cmd: interpreter.OpInfix, Args: []any{"%", Variable("i"), 2}}, 0}},
+					[]OpCode{{Cmd: interpreter.OpContinue, Args: []any{}}},
 				}},
-				{Cmd: "Assign", Args: []any{"sum", OpCode{Cmd: "Infix", Args: []any{"+", Variable("sum"), Variable("i")}}}},
+				{Cmd: interpreter.OpAssign, Args: []any{"sum", OpCode{Cmd: interpreter.OpInfix, Args: []any{"+", Variable("sum"), Variable("i")}}}},
 			},
 		},
 	}
@@ -489,7 +491,7 @@ func TestVMInfixOperations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			infixOp := OpCode{
-				Cmd:  "Infix",
+				Cmd:  interpreter.OpInfix,
 				Args: []any{tt.op, tt.left, tt.right},
 			}
 

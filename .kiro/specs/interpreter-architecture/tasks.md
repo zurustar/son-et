@@ -245,33 +245,33 @@ The interpreter builds on the existing compiler infrastructure (lexer, parser, A
   - Ask user if questions arise
   - Confirm spec is complete and ready for production use
 
-- [ ] 10. Refactor OpCode to use enum instead of strings
-  - [ ] 10.1 Define OpCmd enum type in pkg/compiler/interpreter/opcode.go
+- [x] 10. Refactor OpCode to use enum instead of strings
+  - [x] 10.1 Define OpCmd enum type in pkg/compiler/interpreter/opcode.go
     - Create OpCmd type as int constant
     - Define all OpCode commands as constants (OpAssign, OpIf, OpFor, etc.)
     - Add String() method for debugging
     - _Requirements: C1.1, C1.2_
     - _Rationale: Compile-time type safety, prevents runtime errors from typos_
 
-  - [ ] 10.2 Update interpreter to use OpCmd enum
+  - [x] 10.2 Update interpreter to use OpCmd enum
     - Replace all `Cmd: "Assign"` with `Cmd: OpAssign`
     - Replace all `Cmd: "If"` with `Cmd: OpIf`
     - Update all OpCode generation in interpreter.go
     - _Requirements: 1.3_
 
-  - [ ] 10.3 Update engine to use OpCmd enum
+  - [x] 10.3 Update engine to use OpCmd enum
     - Update ExecuteOp to use switch on OpCmd enum
     - Replace all string comparisons with enum comparisons
     - Update all OpCode handling in engine.go
     - _Requirements: C3.1, C3.2_
 
-  - [ ] 10.4 Update conversion functions
+  - [x] 10.4 Update conversion functions
     - Update convertToEngineOpCodes in cmd/son-et/main.go
     - Update convertToEngineOpCodes in cmd/son-et-embedded/main.go
     - Handle OpCmd enum in conversion
     - _Requirements: 2.2, 2.5_
 
-  - [ ] 10.5 Update all tests
+  - [x] 10.5 Update all tests
     - Update interpreter tests to use OpCmd enum
     - Update engine tests to use OpCmd enum
     - Update CLI tests to use OpCmd enum

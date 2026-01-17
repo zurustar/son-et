@@ -204,6 +204,42 @@ After user provides the log, analyze:
 
 ## Testing During Development
 
+### CRITICAL: Test Process Management for AI Agent
+
+**RULE 4: ALWAYS use executeBash with timeout for unit tests**
+- Unit tests should complete quickly and not open GUI windows
+- Always use `-timeout=30s` flag to prevent hangs
+- Example: `go test -timeout=30s ./pkg/compiler/... ./pkg/engine/...`
+
+**RULE 5: Track process IDs when running GUI tests**
+- When tests open GUI windows (Ebiten), they may not terminate automatically
+- Use `controlBashProcess` to start tests that may open windows
+- Store the returned processId for cleanup
+- Always call `listProcesses` after tests to verify cleanup
+
+**RULE 6: Finding orphaned test processes**
+- Go test processes run from cache: `/Users/.../Library/Caches/go-build/.../main`
+- DO NOT search for specific names like "son-et" or ".test"
+- Use broad search first: `ps aux | grep "go-build" | grep -v grep`
+- Then narrow down based on actual process names found
+
+**Example Test Execution Workflow:**
+```
+1. For unit tests (no GUI):
+   executeBash("go test -timeout=30s ./pkg/compiler/...")
+   
+2. For GUI tests:
+   processId = controlBashProcess(action="start", command="go test ./pkg/engine/...")
+   Wait for completion or timeout
+   controlBashProcess(action="stop", processId=processId)
+   
+3. After any test run:
+   listProcesses() - Verify no orphaned processes
+   If orphaned processes exist:
+     - Use: ps aux | grep "go-build" | grep -v grep
+     - Kill with: kill -9 <PID>
+```
+
 ### Running Sample Projects
 
 The `samples/` directory contains example FILLY projects:
@@ -229,13 +265,16 @@ When implementing new features:
 
 ```bash
 # 1. Make changes to compiler or engine
-# 2. Run tests
+# 2. Run tests with timeout
 go test -timeout=30s ./pkg/compiler/... ./pkg/engine/...
 
-# 3. Test with a sample script
+# 3. Check for orphaned processes
+ps aux | grep "go-build" | grep -v grep
+
+# 4. Test with a sample script
 go run cmd/son-et/main.go samples/kuma2
 
-# 4. If successful, commit changes
+# 5. If successful, commit changes
 ```
 
 ## Asset Requirements
