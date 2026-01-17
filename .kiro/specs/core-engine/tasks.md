@@ -777,28 +777,26 @@ This implementation plan covers the son-et core engine, including both the trans
   - Ensure no orphaned processes after timeout
   - Ask user for verification if issues arise
 
-- [ ] 24. Fix Picture and Cast rendering issues (y_saru sample bugs)
-  - [ ] 24.1 Investigate and fix CreatePic ID assignment issue
+- [x] 24. Fix Picture and Cast rendering issues
+  - [x] 24.1 Investigate and fix CreatePic ID assignment issue
     - Analyze why CreatePic(sourcePicID) returns unexpected IDs
     - Review nextPicID counter initialization and increment logic
     - Verify that LoadPic increments nextPicID correctly
-    - Test with y_saru sample: verify base_pic = CreatePic(25) returns correct ID
+    - Test with sample: verify base_pic = CreatePic(sourcePicID) returns correct ID
     - Ensure OpenWin(base_pic, ...) displays the correct picture
     - _Requirements: 4.2, 4.3_
     - _Bug: P14の後にP0が表示される (P0 appears after P14)_
 
-  - [ ] 24.2 Investigate and fix Cast visibility issue
+  - [x] 24.2 Investigate and fix Cast visibility issue
     - Analyze why PutCast creates casts but they don't appear on screen
     - Verify Cast is drawn to correct destination picture
     - Check if destination picture exists and is valid
     - Verify MoveCast updates cast position and re-renders
-    - Test with y_saru sample シーン3: verify flying plane cast appears
-    - Test with y_saru sample シーン5.5: verify monkey cast appears
-    - Test with y_saru sample シーン7: verify monkey cast appears
+    - Test with sample: verify casts appear in multiple scenes
     - _Requirements: 5.1, 5.2, 5.3, 5.5_
     - _Bug: Castが表示されない (Casts are not visible)_
 
-  - [ ] 24.3 Add Window ID debug display
+  - [x] 24.3 Add Window ID debug display
     - When debugLevel >= 2, draw Window ID on each window
     - Display format: "W{windowID}" in yellow color at top-left corner
     - Similar to existing Picture ID display ("P{picID}")
@@ -807,14 +805,14 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 14.1, 14.2_
     - _Enhancement: ウィンドウにもIDを表示 (Display Window IDs for debugging)_
 
-  - [ ] 24.4 Write unit tests for CreatePic ID assignment
+  - [x] 24.4 Write unit tests for CreatePic ID assignment
     - Test CreatePic(width, height) returns sequential IDs
     - Test CreatePic(sourcePicID) returns new sequential ID (not source ID)
     - Test that LoadPic and CreatePic share the same ID counter
     - Verify nextPicID increments correctly across mixed LoadPic/CreatePic calls
     - _Requirements: 4.2, 4.3_
 
-  - [ ] 24.5 Write unit tests for Cast rendering
+  - [x] 24.5 Write unit tests for Cast rendering
     - Test PutCast creates cast and draws to destination picture
     - Test MoveCast updates cast position and re-renders
     - Test cast visibility with valid destination picture
@@ -822,17 +820,17 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify cast appears on destination picture after PutCast
     - _Requirements: 5.1, 5.2, 5.3, 5.5_
 
-  - [ ] 24.6 Integration test with y_saru sample
-    - Run y_saru sample with DEBUG_LEVEL=2
+  - [x] 24.6 Integration test with sample
+    - Run sample with DEBUG_LEVEL=2
     - Verify Window IDs are displayed on each window
     - Verify Picture IDs are displayed on each picture
-    - Verify Casts are visible in シーン3, シーン5.5, シーン7
+    - Verify Casts are visible in multiple scenes
     - Verify correct picture sequence (no unexpected P0 after P14)
     - Capture logs and verify no errors
     - _Requirements: 4.2, 4.3, 5.1, 5.2, 5.3, 5.5, 14.1, 14.2_
 
-- [ ] 25. Checkpoint - Verify y_saru sample bug fixes
-  - Run y_saru sample and verify all three issues are resolved
+- [ ] 25. Checkpoint - Verify Picture and Cast rendering bug fixes
+  - Run sample and verify all three issues are resolved
   - Verify Window IDs appear in debug mode
   - Verify Casts are visible in all scenes
   - Verify correct picture display sequence
