@@ -1015,28 +1015,23 @@ func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 	e.renderMutex.Lock()
 	defer e.renderMutex.Unlock()
 
-	fmt.Printf("OpenWin: pic=%d at (%d,%d) size %dx%d\n", pic, x, y, w, h)
+	fmt.Printf("OpenWin: pic=%d at (%d,%d) size %dx%d picOffset=(%d,%d) color=0x%X\n", pic, x, y, w, h, picX, picY, col)
 
-	// Use picture dimensions if not specified
-	if w == 0 || h == 0 {
+	// CRITICAL: Do NOT use picture dimensions if w and h are explicitly specified
+	// Only use picture dimensions when w==0 AND h==0 (both must be zero)
+	if w == 0 && h == 0 {
 		if picture, ok := e.pictures[pic]; ok {
-			if w == 0 {
-				w = picture.Width
-			}
-			if h == 0 {
-				h = picture.Height
-			}
-			fmt.Printf("OpenWin: Using picture size: %dx%d\n", w, h)
+			w = picture.Width
+			h = picture.Height
+			fmt.Printf("OpenWin: Both w and h are 0, using picture size: %dx%d\n", w, h)
 		} else {
 			// Fallback to default if picture not found
-			if w == 0 {
-				w = 640
-			}
-			if h == 0 {
-				h = 480
-			}
+			w = 640
+			h = 480
 			fmt.Printf("OpenWin: Picture %d not found, using default size: %dx%d\n", pic, w, h)
 		}
+	} else {
+		fmt.Printf("OpenWin: Using specified size: %dx%d\n", w, h)
 	}
 
 	// Debug logging when DEBUG_LEVEL >= 2
@@ -1078,6 +1073,9 @@ func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 	// DEBUG: Confirm window was added
 	fmt.Printf("  Window %d added. windowOrder len=%d, windows map len=%d\n",
 		winID, len(e.windowOrder), len(e.windows))
+
+	return winID
+}
 
 	return winID
 }
