@@ -2034,7 +2034,8 @@ func UpdateVM(currentTick int) {
 
 			if yield {
 				// If ExecuteOp returns true, it means we must wait (Yield)
-				break
+				// Don't check for sequence completion, just move to next sequence
+				goto nextSequence
 			}
 		}
 
@@ -2044,12 +2045,13 @@ func UpdateVM(currentTick int) {
 			fmt.Printf("[%s] VM: Sequence %d Finished (pc=%d, commands=%d)\n",
 				time.Now().Format("15:04:05.000"), i, seq.pc, len(seq.commands))
 			if seq.onComplete != nil {
-				fmt.Printf("[%s] VM: Calling onComplete callback for sequence %d\n",
+				fmt.Printf("[%s] VM: Calling onComplete callback for sequence %d]\n",
 					time.Now().Format("15:04:05.000"), i)
 				seq.onComplete()
 				seq.onComplete = nil // Ensure only called once
 			}
 		}
+	nextSequence:
 	}
 }
 
