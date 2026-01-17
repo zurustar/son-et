@@ -41,6 +41,39 @@ For detailed build procedures, debugging, and asset management, see `build-workf
 
 **Never commit directly to the main branch during implementation work.**
 
+### 0.1. Testing Before Commit (CRITICAL)
+
+**RULE: NEVER commit code without testing it first**
+
+This rule has been emphasized since the beginning of development and is absolutely critical:
+
+1. **Before ANY commit:**
+   - Run the code with the relevant sample
+   - Verify the behavior is correct
+   - Check the logs for errors
+   - Confirm with user if needed
+
+2. **Testing workflow:**
+   ```bash
+   # Test your changes
+   go run cmd/son-et/main.go samples/[NAME] > test.log 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat test.log
+   
+   # Review the log
+   # Verify behavior
+   
+   # Only then commit
+   git add .
+   git commit -m "description"
+   ```
+
+3. **Why this is critical:**
+   - Untested code often doesn't work
+   - Committing broken code wastes time
+   - It shows lack of care and attention
+   - User has to repeatedly point this out
+
+**If you commit without testing, you are doing it wrong. No exceptions.**
+
 ### 1. Feature Request from User
 
 The user will provide a sample scenario (FILLY script) and request:

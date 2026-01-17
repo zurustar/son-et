@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
@@ -46,12 +47,19 @@ func main() {
 
 	// Parse command-line flags for direct mode
 	helpFlag := flag.Bool("help", false, "Display usage information")
+	headlessFlag := flag.Bool("headless", false, "Run without GUI (for testing and debugging)")
+	timeoutFlag := flag.String("timeout", "", "Auto-terminate after duration (e.g., 5s, 500ms, 2m)")
 	flag.Parse()
 
 	// Display help if requested or no arguments provided
 	if *helpFlag || flag.NArg() == 0 {
 		displayHelp()
 		os.Exit(0)
+	}
+
+	// Check for HEADLESS environment variable
+	if os.Getenv("HEADLESS") == "1" {
+		*headlessFlag = true
 	}
 
 	// Get directory argument
@@ -74,7 +82,7 @@ func main() {
 	}
 
 	// Execute in direct mode
-	if err := executeDirect(directory); err != nil {
+	if err := executeDirect(directory, *headlessFlag, *timeoutFlag); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -85,8 +93,15 @@ func displayHelp() {
 	fmt.Println("son-et - FILLY Script Interpreter")
 	fmt.Println()
 	fmt.Println("USAGE:")
-	fmt.Println("  son-et <directory>    Execute TFY project in the specified directory")
-	fmt.Println("  son-et --help         Display this help message")
+	fmt.Println("  son-et <directory>                Execute TFY project in the specified directory")
+	fmt.Println("  son-et <directory> --headless     Execute without GUI (for testing)")
+	fmt.Println("  son-et <directory> --timeout=5s   Auto-terminate after 5 seconds")
+	fmt.Println("  son-et --help                     Display this help message")
+	fmt.Println()
+	fmt.Println("OPTIONS:")
+	fmt.Println("  --headless          Run without GUI window (logs to stdout/stderr)")
+	fmt.Println("  --timeout=DURATION  Auto-terminate after specified duration")
+	fmt.Println("                      Examples: 5s (5 seconds), 500ms (500 milliseconds), 2m (2 minutes)")
 	fmt.Println()
 	fmt.Println("DESCRIPTION:")
 	fmt.Println("  son-et executes FILLY language scripts (.tfy files) directly from a")
@@ -94,18 +109,34 @@ func displayHelp() {
 	fmt.Println("  to OpCode at runtime, and execute the project immediately.")
 	fmt.Println()
 	fmt.Println("EXAMPLES:")
-	fmt.Println("  son-et samples/my_project   Run a sample project")
-	fmt.Println("  son-et my_game              Run project in my_game directory")
+	fmt.Println("  son-et samples/my_project                    Run a sample project")
+	fmt.Println("  son-et my_game --headless --timeout=5s       Test for 5 seconds without GUI")
+	fmt.Println("  HEADLESS=1 son-et my_game                    Run headless via environment variable")
 	fmt.Println()
 	fmt.Println("ENVIRONMENT:")
 	fmt.Println("  DEBUG_LEVEL=0    Show only errors")
 	fmt.Println("  DEBUG_LEVEL=1    Show important operations (default)")
 	fmt.Println("  DEBUG_LEVEL=2    Show all debug information")
+	fmt.Println("  HEADLESS=1       Run without GUI (same as --headless flag)")
 	fmt.Println()
 }
 
 // executeDirect executes a TFY project from a directory (direct mode)
-func executeDirect(directory string) error {
+func executeDirect(directory string, headless bool, timeout string) error {
+	// Setup timeout if specified
+	if timeout != "" {
+		duration, err := time.ParseDuration(timeout)
+		if err != nil {
+			return fmt.Errorf("invalid timeout format: %w", err)
+		}
+
+		fmt.Fprintf(os.Stderr, "Auto-termination enabled: %v\n", duration)
+		time.AfterFunc(duration, func() {
+			fmt.Fprintf(os.Stderr, "Auto-termination: timeout reached\n")
+			os.Exit(0)
+		})
+	}
+
 	// Convert to absolute path for consistent behavior
 	absDir, err := filepath.Abs(directory)
 	if err != nil {
@@ -127,12 +158,30 @@ func executeDirect(directory string) error {
 	fmt.Fprintf(os.Stderr, "Found %d TFY file(s)\n", len(tfyFiles))
 
 	// Step 2: Read and parse TFY files (with #include support)
-	// Use the first TFY file as entry point (or look for main.tfy)
+	// Entry file selection priority:
+	// 1. main.tfy (if exists)
+	// 2. <directory_name>.tfy (if exists)
+	// 3. First TFY file alphabetically
 	entryFile := tfyFiles[0]
+
+	// Check for main.tfy
 	for _, f := range tfyFiles {
 		if strings.ToLower(filepath.Base(f)) == "main.tfy" {
 			entryFile = f
 			break
+		}
+	}
+
+	// If no main.tfy, check for <directory_name>.tfy
+	if entryFile == tfyFiles[0] {
+		dirName := strings.ToLower(filepath.Base(absDir))
+		for _, f := range tfyFiles {
+			baseName := strings.ToLower(filepath.Base(f))
+			baseNameNoExt := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+			if baseNameNoExt == dirName {
+				entryFile = f
+				break
+			}
 		}
 	}
 
@@ -183,6 +232,11 @@ func executeDirect(directory string) error {
 	assetLoader := engine.NewFilesystemAssetLoader(absDir)
 	imageDecoder := engine.NewBMPImageDecoder()
 
+	// Log headless mode status
+	if headless {
+		fmt.Fprintf(os.Stderr, "Running in headless mode (no GUI)\n")
+	}
+
 	// Initialize the engine using the Init-like pattern
 	// We need to set up the global engine and game state
 	engine.InitDirect(assetLoader, imageDecoder, func() {
@@ -208,7 +262,7 @@ func executeDirect(directory string) error {
 		for _, op := range engineOps {
 			engine.ExecuteOpDirect(op)
 		}
-	})
+	}, headless)
 
 	// Step 6: Start the engine (this will block until the game exits)
 	fmt.Fprintf(os.Stderr, "Starting engine...\n")
@@ -479,7 +533,7 @@ func executeEmbedded() error {
 
 		// Register the main sequence
 		engine.RegisterSequence(engine.Time, engineOps)
-	})
+	}, false) // Embedded mode always uses GUI
 
 	// Step 6: Start the engine
 	fmt.Fprintf(os.Stderr, "Starting engine...\n")

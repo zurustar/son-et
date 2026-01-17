@@ -531,3 +531,30 @@ This specification depends on the following common requirements defined in [COMM
 3. THE Runtime SHALL preserve argument quoting and spacing
 4. THE Runtime SHALL return an empty string if no arguments were provided
 5. THE Runtime SHALL handle special characters in arguments correctly
+
+### Requirement 43: Headless Mode (CLI Testing)
+
+**User Story:** As a developer, I want to run TFY scripts without GUI, so that I can test and debug scripts within automated environments like Kiro.
+
+#### Acceptance Criteria
+
+1. WHEN the `--headless` flag is provided, THE Runtime SHALL execute scripts without creating an Ebiten window
+2. WHEN running in headless mode, THE Runtime SHALL output all log messages to stdout/stderr
+3. WHEN running in headless mode, THE Runtime SHALL execute all script logic (timing, audio, state changes) normally
+4. WHEN running in headless mode, THE Runtime SHALL skip all rendering operations (OpenWin, PutCast, MoveCast, etc.)
+5. THE Runtime SHALL support both direct mode and embedded mode in headless operation
+6. WHEN running in headless mode, THE Runtime SHALL exit cleanly when the script completes or timeout is reached
+
+### Requirement 44: Auto-Termination
+
+**User Story:** As a developer, I want scripts to automatically terminate after a specified duration, so that I can test scripts without manual process management.
+
+#### Acceptance Criteria
+
+1. WHEN the `--timeout` flag is provided with a duration, THE Runtime SHALL automatically terminate after that duration
+2. THE Runtime SHALL support timeout formats: seconds (e.g., "5s"), milliseconds (e.g., "500ms"), minutes (e.g., "2m")
+3. WHEN the timeout is reached, THE Runtime SHALL gracefully shut down all resources (audio, windows, files)
+4. WHEN the timeout is reached, THE Runtime SHALL exit with status code 0 (normal termination)
+5. THE Runtime SHALL support timeout in both GUI and headless modes
+6. WHEN an `Exit()` function is called in a script, THE Runtime SHALL terminate immediately regardless of timeout
+7. THE Runtime SHALL log a message when auto-termination occurs due to timeout

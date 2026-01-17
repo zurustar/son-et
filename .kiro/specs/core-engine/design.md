@@ -267,6 +267,188 @@ type Sequence struct {
 }
 ```
 
+## Headless Mode and Auto-Termination Design
+
+### Headless Mode Implementation
+
+**Purpose:** Enable script execution without GUI for automated testing and debugging.
+
+**Command Line Interface:**
+```bash
+# Headless mode only
+go run cmd/son-et/main.go samples/y_saru --headless
+
+# Headless mode with timeout
+go run cmd/son-et/main.go samples/y_saru --headless --timeout=5s
+
+# Environment variable alternative
+HEADLESS=1 go run cmd/son-et/main.go samples/y_saru
+```
+
+**Implementation Strategy:**
+
+1. **Flag Parsing:**
+```go
+var headless bool
+var timeout string
+
+func init() {
+    flag.BoolVar(&headless, "headless", false, "Run without GUI")
+    flag.StringVar(&timeout, "timeout", "", "Auto-terminate after duration (e.g., 5s, 500ms, 2m)")
+}
+```
+
+2. **Conditional Ebiten Initialization:**
+```go
+func Run() error {
+    if headless || os.Getenv("HEADLESS") == "1" {
+        // Run without Ebiten
+        return runHeadless()
+    } else {
+        // Normal Ebiten game loop
+        return ebiten.RunGame(game)
+    }
+}
+```
+
+3. **Headless Execution Loop:**
+```go
+func runHeadless() error {
+    // Initialize engine without Ebiten
+    initEngine()
+    
+    // Start script execution
+    go executeScript()
+    
+    // Simulate game loop at 60 FPS
+    ticker := time.NewTicker(time.Second / 60)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-ticker.C:
+            // Update VM and timing
+            UpdateVM()
+            
+            // Check if script completed
+            if scriptCompleted {
+                return nil
+            }
+            
+        case <-timeoutChan:
+            log.Println("Auto-termination: timeout reached")
+            return nil
+        }
+    }
+}
+```
+
+4. **Rendering Operation Stubs:**
+```go
+func OpenWin(args ...any) {
+    if headless {
+        log.Printf("OpenWin (headless): %v\n", args)
+        // Update internal state but skip Ebiten operations
+        return
+    }
+    // Normal implementation
+}
+```
+
+**Benefits:**
+- ✅ No GUI window creation
+- ✅ All logs visible in terminal
+- ✅ Script logic executes normally
+- ✅ Fast iteration for testing
+- ✅ Works in CI/CD environments
+
+### Auto-Termination Implementation
+
+**Purpose:** Automatically terminate scripts after a specified duration to prevent orphaned processes.
+
+**Timeout Parsing:**
+```go
+func parseTimeout(s string) (time.Duration, error) {
+    return time.ParseDuration(s)
+}
+```
+
+**Timeout Management:**
+```go
+var timeoutChan <-chan time.Time
+
+func setupTimeout(duration string) {
+    if duration == "" {
+        return
+    }
+    
+    d, err := parseTimeout(duration)
+    if err != nil {
+        log.Printf("Invalid timeout format: %v\n", err)
+        return
+    }
+    
+    log.Printf("Auto-termination enabled: %v\n", d)
+    timeoutChan = time.After(d)
+}
+```
+
+**Integration with Game Loop:**
+```go
+func (g *Game) Update() error {
+    select {
+    case <-timeoutChan:
+        log.Println("Auto-termination: timeout reached")
+        return fmt.Errorf("timeout")
+    default:
+        // Normal update logic
+    }
+    
+    UpdateVM()
+    return nil
+}
+```
+
+**Exit() Function:**
+```go
+func Exit(args ...any) {
+    log.Println("Exit() called - terminating script")
+    
+    // Cleanup resources
+    cleanupResources()
+    
+    // Signal termination
+    os.Exit(0)
+}
+```
+
+**Benefits:**
+- ✅ No manual process killing
+- ✅ Graceful resource cleanup
+- ✅ Predictable test duration
+- ✅ Works with both GUI and headless modes
+
+### Combined Usage Example
+
+```bash
+# Test script for 5 seconds without GUI
+go run cmd/son-et/main.go samples/y_saru --headless --timeout=5s > test.log 2>&1
+
+# Review logs
+cat test.log
+```
+
+**Expected Output:**
+```
+[00:00:00] Initializing engine (headless mode)
+[00:00:00] Auto-termination enabled: 5s
+[00:00:00] Loading script: samples/y_saru/Y-SARU.TFY
+[00:00:00] OpenWin (headless): [0 0 0 640 480 0 0]
+[00:00:01] PlayMIDI: samples/y_saru/FLYINSKY.MID
+[00:00:05] Auto-termination: timeout reached
+[00:00:05] Cleanup complete
+```
+
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
@@ -396,6 +578,24 @@ type Sequence struct {
 *For any* MIDI file, calling PlayMIDI should play the file exactly once and then stop (no looping).
 
 **Validates: Requirements 8.4 (MIDI Playback and Synthesis)**
+
+### Property 22: Headless mode execution equivalence
+
+*For any* script, running in headless mode should execute the same logic (timing, state changes, function calls) as GUI mode, only skipping rendering operations.
+
+**Validates: Requirements 43.3, 43.4 (Headless Mode)**
+
+### Property 23: Timeout termination
+
+*For any* timeout duration, the runtime should terminate within ±100ms of the specified duration (accounting for frame time).
+
+**Validates: Requirements 44.1, 44.3, 44.4 (Auto-Termination)**
+
+### Property 24: Exit immediate termination
+
+*For any* script execution, calling Exit() should terminate the runtime immediately, regardless of any pending operations or timeout settings.
+
+**Validates: Requirements 44.6 (Auto-Termination)**
 
 ## Error Handling
 
