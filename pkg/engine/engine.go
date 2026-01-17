@@ -686,11 +686,14 @@ func CapTitle(args ...any) {
 
 func WinInfo(mode int) int {
 	// 0: Width, 1: Height
+	// Return usable content size (screen size minus window decorations)
 	if mode == 0 {
-		return 1280
+		// Width: subtract left and right borders
+		return 1280 - (BorderThickness * 2)
 	}
 	if mode == 1 {
-		return 720
+		// Height: subtract title bar and top/bottom borders
+		return 720 - (TitleBarHeight + BorderThickness*2)
 	}
 	return 0
 }
