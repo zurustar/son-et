@@ -837,8 +837,8 @@ This implementation plan covers the son-et core engine, including both the trans
   - Run all existing tests to ensure no regressions
   - Ask user for verification if issues arise
 
-- [ ] 26. Fix TIME mode execution issues (kuma2 sample bugs)
-  - [ ] 26.1 Investigate and fix mes(TIME) block looping issue
+- [x] 26. Fix TIME mode execution issues (kuma2 sample bugs)
+  - [x] 26.1 Investigate and fix mes(TIME) block looping issue
     - Analyze why mes(TIME) block executes repeatedly instead of once
     - Review RegisterSequence blocking behavior in TIME mode
     - Verify sequence completion detection and cleanup
@@ -848,7 +848,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 11.5, 11.6_
     - _Bug: mes(TIME)ブロックが繰り返し実行される (mes(TIME) block loops instead of executing once)_
 
-  - [ ] 26.2 Investigate and fix step() timing in TIME mode
+  - [x] 26.2 Investigate and fix step() timing in TIME mode
     - Analyze step(n) interpretation in TIME mode
     - Current implementation: step(n) = n * 50ms per comma
     - Verify against sabo2 sample: step(2) should sync with MIDI duration
@@ -859,7 +859,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 11.3, 11.4_
     - _Bug: step(n)の解釈が間違っている - 音楽とアニメーションが同期しない_
 
-  - [ ] 26.3 Add detailed logging for TIME mode execution
+  - [x] 26.3 Add detailed logging for TIME mode execution
     - Log when mes(TIME) block starts and completes
     - Log RegisterSequence blocking/unblocking in TIME mode
     - Log sequence completion and cleanup
@@ -869,7 +869,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Help diagnose timing and looping issues
     - _Requirements: 11.3, 11.5, 11.6_
 
-  - [ ] 26.4 Write unit tests for mes(TIME) execution
+  - [x] 26.4 Write unit tests for mes(TIME) execution
     - Test mes(TIME) block executes exactly once
     - Test RegisterSequence blocks until sequence completes in TIME mode
     - Test subsequent code runs after mes(TIME) completes
@@ -877,7 +877,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Verify no sequence re-registration after completion
     - _Requirements: 11.5, 11.6_
 
-  - [ ] 26.5 Write unit tests for step timing
+  - [x] 26.5 Write unit tests for step timing
     - Test step(n) calculates correct wait duration in TIME mode
     - Test comma expansion: `,` = 1 step, `,,` = 2 steps, etc.
     - Test various step values: step(2), step(65), step(100)
@@ -885,7 +885,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - Test audio/animation synchronization with different step values
     - _Requirements: 11.3, 11.4_
 
-  - [ ] 26.6 Integration test with multiple samples
+  - [x] 26.6 Integration test with multiple samples
     - Test kuma2 sample (step 65): verify timing and synchronization
     - Test sabo2 sample (step 2): verify audio matches animation duration
     - Measure total execution time for each sample

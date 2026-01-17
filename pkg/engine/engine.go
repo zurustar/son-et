@@ -21,6 +21,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -709,13 +710,18 @@ func runHeadless() {
 // --- API Stubs ---
 
 func CapTitle(args ...any) {
-	fmt.Printf("CapTitle called with %d args: %v\n", len(args), args)
-	for i, a := range args {
-		fmt.Printf("  Arg[%d]: type=%T value=%v\n", i, a, a)
+	if debugLevel >= 2 {
+		fmt.Printf("CapTitle called with %d args: %v\n", len(args), args)
+		for i, a := range args {
+			fmt.Printf("  Arg[%d]: type=%T value=%v\n", i, a, a)
+		}
 	}
 
 	var title string
-	if len(args) == 1 {
+	if len(args) == 0 {
+		// No arguments - do nothing
+		return
+	} else if len(args) == 1 {
 		// CapTitle(title) - Set global title for new windows
 		if t, ok := args[0].(string); ok {
 			if globalEngine != nil {
@@ -730,24 +736,35 @@ func CapTitle(args ...any) {
 			title = t
 		}
 		if id, ok := args[0].(int); ok {
-			fmt.Printf("  Updating Window %d title to '%s'\n", id, title)
+			if debugLevel >= 2 {
+				fmt.Printf("  Updating Window %d title to '%s'\n", id, title)
+			}
 			if globalEngine != nil {
+				globalEngine.renderMutex.Lock()
 				if win, ok := globalEngine.windows[id]; ok {
 					win.Title = title
 				} else {
 					fmt.Printf("  Window %d not found!\n", id)
 				}
-			} else if win, ok := windows[id]; ok {
-				win.Title = title
+				globalEngine.renderMutex.Unlock()
 			} else {
-				fmt.Printf("  Window %d not found!\n", id)
+				renderMutex.Lock()
+				if win, ok := windows[id]; ok {
+					win.Title = title
+				} else {
+					fmt.Printf("  Window %d not found!\n", id)
+				}
+				renderMutex.Unlock()
 			}
 		}
 	}
 
-	fmt.Printf("CapTitle: Setting global/window title to: %s\n", title)
-	// Also set main window title for feedback
-	if title != "" {
+	if debugLevel >= 2 {
+		fmt.Printf("CapTitle: Setting global/window title to: '%s'\n", title)
+	}
+
+	// Also set main window title for feedback (only if not empty)
+	if title != "" && !headlessMode {
 		ebiten.SetWindowTitle(title)
 	}
 }
@@ -1640,10 +1657,21 @@ func expandStepBlocks(ops []OpCode) []OpCode {
 		if op.Cmd == interpreter.OpStep {
 			// Extract step count and body
 			if len(op.Args) >= 2 {
+				stepCount := op.Args[0] // The step count (e.g., 65)
 				body, ok := op.Args[1].([]interpreter.OpCode)
 				if ok {
-					fmt.Printf("expandStepBlocks: Expanding step block with %d operations\n", len(body))
-					// Convert interpreter.OpCode to OpCode and recursively expand
+					fmt.Printf("expandStepBlocks: Expanding step(%v) block with %d operations\n", stepCount, len(body))
+
+					// CRITICAL: Insert SetStep operation FIRST to set ticksPerStep
+					// This ensures the step resolution is set before any Wait operations
+					setStepOp := OpCode{
+						Cmd:  interpreter.OpSetStep,
+						Args: []any{stepCount},
+					}
+					result = append(result, setStepOp)
+					fmt.Printf("  - Inserted SetStep(%v) operation\n", stepCount)
+
+					// Then convert and expand the body operations
 					for _, bodyOp := range body {
 						expandedOp := OpCode(bodyOp)
 						fmt.Printf("  - Expanding op: %v\n", expandedOp.Cmd)
@@ -1663,9 +1691,134 @@ func expandStepBlocks(ops []OpCode) []OpCode {
 	return result
 }
 
+// ValidateOpCodes validates that all OpCodes in the sequence are known and supported
+// This should be called before executing any OpCode sequence to catch transpiler bugs early
+func ValidateOpCodes(ops []OpCode) error {
+	for i, op := range ops {
+		// Check if the OpCode is valid by attempting to get its string representation
+		// If it's an unknown OpCode, String() will return something like "OpCode(999)"
+		cmdStr := op.Cmd.String()
+
+		// List of all known OpCodes (should match interpreter.OpCode constants)
+		// This is a safety check to ensure we don't execute unknown opcodes
+		knownOpCodes := map[string]bool{
+			"Literal":          true,
+			"VarRef":           true,
+			"Assign":           true,
+			"Call":             true,
+			"RegisterSequence": true,
+			"Wait":             true,
+			"SetStep":          true,
+			"Step":             true,
+			"LoadPic":          true,
+			"CreatePic":        true,
+			"PutCast":          true,
+			"DelPic":           true,
+			"MovePic":          true,
+			"MoveCast":         true,
+			"OpenWin":          true,
+			"CloseWin":         true,
+			"CloseWinAll":      true,
+			"MoveWin":          true,
+			"TextColor":        true,
+			"TextWrite":        true,
+			"PlayWAVE":         true,
+			"PlayMIDI":         true,
+			"ExitTitle":        true,
+			"If":               true,
+			"For":              true,
+			"While":            true,
+			"DoWhile":          true,
+			"Switch":           true,
+			"Break":            true,
+			"Continue":         true,
+			"Infix":            true,
+			"Prefix":           true,
+			"ArrayIndex":       true,
+		}
+
+		if !knownOpCodes[cmdStr] {
+			return fmt.Errorf("unknown OpCode '%s' at position %d (value: %d)", cmdStr, i, op.Cmd)
+		}
+
+		// Recursively validate nested OpCodes (e.g., in If, For, While bodies)
+		switch op.Cmd {
+		case interpreter.OpIf:
+			if len(op.Args) >= 2 {
+				if conseq, ok := op.Args[1].([]OpCode); ok {
+					if err := ValidateOpCodes(conseq); err != nil {
+						return fmt.Errorf("in If consequence: %w", err)
+					}
+				}
+				if len(op.Args) >= 3 {
+					if alt, ok := op.Args[2].([]OpCode); ok {
+						if err := ValidateOpCodes(alt); err != nil {
+							return fmt.Errorf("in If alternative: %w", err)
+						}
+					}
+				}
+			}
+		case interpreter.OpFor:
+			if len(op.Args) >= 4 {
+				if init, ok := op.Args[0].([]OpCode); ok {
+					if err := ValidateOpCodes(init); err != nil {
+						return fmt.Errorf("in For init: %w", err)
+					}
+				}
+				if post, ok := op.Args[2].([]OpCode); ok {
+					if err := ValidateOpCodes(post); err != nil {
+						return fmt.Errorf("in For post: %w", err)
+					}
+				}
+				if body, ok := op.Args[3].([]OpCode); ok {
+					if err := ValidateOpCodes(body); err != nil {
+						return fmt.Errorf("in For body: %w", err)
+					}
+				}
+			}
+		case interpreter.OpWhile, interpreter.OpDoWhile:
+			if len(op.Args) >= 2 {
+				if body, ok := op.Args[1].([]OpCode); ok {
+					if err := ValidateOpCodes(body); err != nil {
+						return fmt.Errorf("in While/DoWhile body: %w", err)
+					}
+				}
+			}
+		case interpreter.OpStep:
+			if len(op.Args) >= 2 {
+				if body, ok := op.Args[1].([]interpreter.OpCode); ok {
+					// Convert to []OpCode for validation
+					bodyOps := make([]OpCode, len(body))
+					for i, b := range body {
+						bodyOps[i] = OpCode(b)
+					}
+					if err := ValidateOpCodes(bodyOps); err != nil {
+						return fmt.Errorf("in Step body: %w", err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
-	fmt.Printf("[%s] RegisterSequence: %d (%d ops)\n",
-		time.Now().Format("15:04:05.000"), mode, len(ops))
+	// CRITICAL: Validate OpCodes before execution
+	// This catches transpiler bugs and unknown opcodes early
+	if err := ValidateOpCodes(ops); err != nil {
+		errMsg := fmt.Sprintf("FATAL ERROR: Invalid OpCode sequence detected:\n%v\nProgram will terminate immediately.", err)
+		fmt.Fprintln(os.Stderr, errMsg)
+		panic(errMsg)
+	}
+
+	modeStr := "UNKNOWN"
+	if mode == MidiTime {
+		modeStr = "MIDI_TIME"
+	} else if mode == Time {
+		modeStr = "TIME"
+	}
+	fmt.Printf("[%s] RegisterSequence: mode=%s (%d ops)\n",
+		time.Now().Format("15:04:05.000"), modeStr, len(ops))
 
 	var wg *sync.WaitGroup
 	// Only block for TIME mode (procedural execution like robot)
@@ -1673,6 +1826,11 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 	if mode != MidiTime {
 		wg = &sync.WaitGroup{}
 		wg.Add(1)
+		fmt.Printf("[%s] RegisterSequence: TIME mode - will block until complete\n",
+			time.Now().Format("15:04:05.000"))
+	} else {
+		fmt.Printf("[%s] RegisterSequence: MIDI_TIME mode - non-blocking\n",
+			time.Now().Format("15:04:05.000"))
 	}
 
 	vmLock.Lock()
@@ -1733,11 +1891,18 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 
 	// Add to sequencers list for parallel execution
 	sequencers = append(sequencers, mainSequencer)
+	seqIndex := len(sequencers) - 1
+	fmt.Printf("[%s] RegisterSequence: Added sequence at index %d (total: %d)\n",
+		time.Now().Format("15:04:05.000"), seqIndex, len(sequencers))
 	vmLock.Unlock()
 
 	// Wait for sequence to complete (only for TIME mode)
 	if wg != nil {
+		fmt.Printf("[%s] RegisterSequence: Blocking until sequence completes...\n",
+			time.Now().Format("15:04:05.000"))
 		wg.Wait()
+		fmt.Printf("[%s] RegisterSequence: Sequence completed, unblocking\n",
+			time.Now().Format("15:04:05.000"))
 	}
 }
 
@@ -1784,11 +1949,27 @@ func UpdateVM(currentTick int) {
 	vmLock.Lock()
 	defer vmLock.Unlock()
 
+	// Log active sequences
+	activeCount := 0
+	for _, seq := range sequencers {
+		if seq != nil && seq.active {
+			activeCount++
+		}
+	}
+	if activeCount > 0 && debugLevel >= 2 {
+		fmt.Printf("[%s] UpdateVM: Tick %d, %d active sequences (total: %d)\n",
+			time.Now().Format("15:04:05.000"), currentTick, activeCount, len(sequencers))
+	}
+
 	// Execute all active sequencers
 	for i := 0; i < len(sequencers); i++ {
 		seq := sequencers[i]
 
 		if seq == nil || !seq.active {
+			if debugLevel >= 2 && seq != nil && !seq.active {
+				fmt.Printf("[%s] UpdateVM: Skipping inactive sequence %d (pc=%d/%d)\n",
+					time.Now().Format("15:04:05.000"), i, seq.pc, len(seq.commands))
+			}
 			continue
 		}
 
@@ -1847,8 +2028,11 @@ func UpdateVM(currentTick int) {
 		if seq.pc >= len(seq.commands) && !seq.inStep {
 			// End of sequence
 			seq.active = false
-			fmt.Printf("VM: Sequence %d Finished\n", i)
+			fmt.Printf("[%s] VM: Sequence %d Finished (pc=%d, commands=%d)\n",
+				time.Now().Format("15:04:05.000"), i, seq.pc, len(seq.commands))
 			if seq.onComplete != nil {
+				fmt.Printf("[%s] VM: Calling onComplete callback for sequence %d\n",
+					time.Now().Format("15:04:05.000"), i)
 				seq.onComplete()
 				seq.onComplete = nil // Ensure only called once
 			}
@@ -1903,6 +2087,9 @@ func ResolveArg(arg any, seq *Sequencer) any {
 // ExecuteOpDirect executes an OpCode directly without a sequencer
 // This is used for executing main() function body before any mes() blocks
 func ExecuteOpDirect(op OpCode) {
+	// Note: OpCode validation is performed at transpile time (before engine initialization)
+	// so we don't need to validate again here for main() function opcodes
+
 	vmLock.Lock()
 	// Use mainSequencer if it exists, otherwise create one
 	if mainSequencer == nil {
@@ -1932,6 +2119,39 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			return op.Args[0], false
 		}
 		return nil, false
+
+	case interpreter.OpVarRef:
+		// Variable reference - look up value
+		if len(op.Args) > 0 {
+			varName := ""
+			if s, ok := op.Args[0].(string); ok {
+				varName = strings.ToLower(s)
+			} else if v, ok := op.Args[0].(Variable); ok {
+				varName = strings.ToLower(string(v))
+			}
+
+			if varName != "" {
+				// Check global variable store first
+				if globalVars != nil {
+					if val, ok := globalVars[varName]; ok {
+						return val, false
+					}
+				}
+
+				// Search in current scope and parent scopes
+				currentSeq := seq
+				for currentSeq != nil {
+					if val, ok := currentSeq.vars[varName]; ok {
+						return val, false
+					}
+					currentSeq = currentSeq.parent
+				}
+
+				// Variable not found, return 0
+				return 0, false
+			}
+		}
+		return 0, false
 
 	case interpreter.OpAssign:
 		if len(op.Args) >= 2 {
@@ -2225,10 +2445,15 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			rArgs = append(rArgs, 0)
 		}
 
-		OpenWin(rArgs[0].(int), rArgs[1].(int), rArgs[2].(int),
+		winID := OpenWin(rArgs[0].(int), rArgs[1].(int), rArgs[2].(int),
 			rArgs[3].(int), rArgs[4].(int), rArgs[5].(int),
 			rArgs[6].(int), rArgs[7].(int))
-		return nil, false
+
+		if debugLevel >= 2 {
+			fmt.Printf("DEBUG: OpenWin returned Window ID=%d\n", winID)
+		}
+
+		return winID, false
 
 	case interpreter.OpCloseWin:
 		if len(op.Args) >= 1 {
@@ -2420,9 +2645,19 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			return nil, false
 		}
 
+		// Check if detailed loop logging is enabled
+		debugLoop := os.Getenv("DEBUG_LOOP") == "1"
+
+		if debugLoop {
+			fmt.Printf("[FOR] Loop starting\n")
+		}
+
 		// Execute init
 		if op.Args[0] != nil {
 			if initOps, ok := op.Args[0].([]OpCode); ok {
+				if debugLoop {
+					fmt.Printf("[FOR] Executing initialization (%d ops)\n", len(initOps))
+				}
 				for _, initOp := range initOps {
 					ExecuteOp(initOp, seq)
 				}
@@ -2430,7 +2665,16 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 
 		// Loop
+		iterationCount := 0
+		maxIterations := 10000 // Safety limit to detect infinite loops
 		for {
+			iterationCount++
+
+			if iterationCount > maxIterations {
+				fmt.Printf("[FOR] WARNING: Loop exceeded %d iterations, possible infinite loop!\n", maxIterations)
+				break
+			}
+
 			// Check condition
 			if op.Args[1] != nil {
 				condResult := ResolveArg(op.Args[1], seq)
@@ -2438,12 +2682,24 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				switch v := condResult.(type) {
 				case bool:
 					condition = v
+					if debugLoop {
+						fmt.Printf("[FOR] Iteration %d: Condition = %v (bool)\n", iterationCount, v)
+					}
 				case int:
 					condition = v != 0
+					if debugLoop {
+						fmt.Printf("[FOR] Iteration %d: Condition = %d (int, evaluates to %v)\n", iterationCount, v, condition)
+					}
 				case string:
 					condition = v != ""
+					if debugLoop {
+						fmt.Printf("[FOR] Iteration %d: Condition = %q (string, evaluates to %v)\n", iterationCount, v, condition)
+					}
 				}
 				if !condition {
+					if debugLoop {
+						fmt.Printf("[FOR] Loop terminating after %d iterations (condition false)\n", iterationCount-1)
+					}
 					break
 				}
 			}
@@ -2476,9 +2732,15 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 					}
 				}
 				if shouldBreak {
+					if debugLoop {
+						fmt.Printf("[FOR] Loop terminating after %d iterations (break statement)\n", iterationCount)
+					}
 					break
 				}
 				if shouldContinue {
+					if debugLoop {
+						fmt.Printf("[FOR] Iteration %d: continue statement, executing post\n", iterationCount)
+					}
 					// Execute post and continue
 					if op.Args[2] != nil {
 						if postOps, ok := op.Args[2].([]OpCode); ok {
@@ -2492,6 +2754,9 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			}
 
 			// Execute post
+			if debugLoop {
+				fmt.Printf("[FOR] Iteration %d: executing post-increment\n", iterationCount)
+			}
 			if op.Args[2] != nil {
 				if postOps, ok := op.Args[2].([]OpCode); ok {
 					for _, postOp := range postOps {
@@ -2499,6 +2764,10 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 					}
 				}
 			}
+		}
+
+		if debugLoop {
+			fmt.Printf("[FOR] Loop completed (%d iterations)\n", iterationCount-1)
 		}
 		return nil, false
 
@@ -2898,8 +3167,13 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			return nil, false // VM proceeds immediately
 		}
 
-		fmt.Printf("VM Error: Unknown OpCmd %s\n", op.Cmd.String())
-		return nil, false
+		// CRITICAL ERROR: Unknown OpCode detected
+		// This should never happen if the transpiler is working correctly
+		// Terminate immediately to prevent undefined behavior
+		errMsg := fmt.Sprintf("FATAL ERROR: Unknown OpCode '%s' (value: %d) encountered during execution.\nThis indicates a transpiler bug or corrupted bytecode.\nProgram will terminate immediately.", op.Cmd.String(), op.Cmd)
+		fmt.Fprintln(os.Stderr, errMsg)
+		fmt.Fprintln(os.Stderr, "OpCode details:", op)
+		panic(errMsg)
 	}
 }
 
@@ -2924,6 +3198,14 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 			}
 		}
 		return nil, false
+
+	case "createpic":
+		// CreatePic can be called with different numbers of arguments:
+		// CreatePic(sourcePicID) - 1 arg (copy dimensions from source)
+		// CreatePic(width, height) - 2 args (create blank picture)
+		// CreatePic(sourcePicID, width, height) - 3 args (create with specific size)
+		result := CreatePic(args...)
+		return result, false
 
 	case "picwidth":
 		if len(args) >= 1 {
@@ -2957,6 +3239,7 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		// OpenWin(pic, x, y, w, h, picX, picY, col) - 8 args (full)
 		// OpenWin(pic, x, y, w, h) - 5 args (picX=0, picY=0, col=0)
 		// OpenWin(pic) - 1 arg (x=0, y=0, w=0, h=0, picX=0, picY=0, col=0)
+		var winID int
 		if len(args) >= 5 {
 			// At least 5 arguments: pic, x, y, w, h
 			pic, _ := args[0].(int)
@@ -2981,16 +3264,31 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 			}
 
 			fmt.Printf("VM: Calling OpenWin(%d, %d, %d, %d, %d, %d, %d, %d)\n", pic, x, y, w, h, picX, picY, col)
-			OpenWin(pic, x, y, w, h, picX, picY, col)
+			winID = OpenWin(pic, x, y, w, h, picX, picY, col)
+			if debugLevel >= 2 {
+				fmt.Printf("VM: OpenWin returned Window ID=%d\n", winID)
+			}
 		} else if len(args) >= 1 {
-			if winID, ok := args[0].(int); ok {
+			if picID, ok := args[0].(int); ok {
 				// OpenWin with default parameters
 				// OpenWin(pic, x, y, w, h, picX, picY, col)
-				// For simplified call OpenWin(winID), use picture dimensions (w=0, h=0)
-				fmt.Printf("VM: Calling OpenWin(%d, 0, 0, 0, 0, 0, 0, 0)\n", winID)
-				OpenWin(winID, 0, 0, 0, 0, 0, 0, 0)
+				// For simplified call OpenWin(picID), use picture dimensions (w=0, h=0)
+				fmt.Printf("VM: Calling OpenWin(%d, 0, 0, 0, 0, 0, 0, 0)\n", picID)
+				winID = OpenWin(picID, 0, 0, 0, 0, 0, 0, 0)
+				if debugLevel >= 2 {
+					fmt.Printf("VM: OpenWin returned Window ID=%d\n", winID)
+				}
 			}
 		}
+		return winID, false
+
+	case "captitle":
+		// CapTitle(title) - set global window title
+		// CapTitle(winID, title) - set specific window title
+		if debugLevel >= 2 {
+			fmt.Printf("DEBUG: captitle called with %d args: %v\n", len(args), args)
+		}
+		CapTitle(args...)
 		return nil, false
 
 	case "closewin":
@@ -3122,6 +3420,49 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		}
 		return nil, false
 
+	case "setfont":
+		// SetFont(size, name, charset, ...)
+		if len(args) >= 3 {
+			size, _ := args[0].(int)
+			name, _ := args[1].(string)
+			charset, _ := args[2].(int)
+			SetFont(size, name, charset, args[3:]...)
+		}
+		return nil, false
+
+	case "textcolor":
+		// TextColor(r, g, b)
+		if len(args) >= 3 {
+			r, _ := args[0].(int)
+			g, _ := args[1].(int)
+			b, _ := args[2].(int)
+			TextColor(r, g, b)
+		}
+		return nil, false
+
+	case "textwrite":
+		// TextWrite(text, pic, x, y)
+		if len(args) >= 4 {
+			text, _ := args[0].(string)
+			pic, _ := args[1].(int)
+			x, _ := args[2].(int)
+			y, _ := args[3].(int)
+			TextWrite(text, pic, x, y)
+		}
+		return nil, false
+
+	case "putcast":
+		// PutCast(picID, destPic, x, y, transparentColor, ..., w, h, srcX, srcY)
+		// Create a new cast (sprite) with transparency
+		result := PutCast(args...)
+		return result, false
+
+	case "movecast":
+		// MoveCast(castID, picID, x, y, ..., w, h, srcX, srcY)
+		// Move a cast and redraw the destination picture
+		MoveCast(args...)
+		return nil, false
+
 	case "print":
 		// Print(string) - output to stdout
 		if len(args) >= 1 {
@@ -3147,8 +3488,13 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		return nil, false
 
 	default:
-		fmt.Printf("VM Warning: Unknown function %s\n", funcName)
-		return nil, false
+		// CRITICAL ERROR: Unknown function called
+		// This indicates the function is not implemented in the runtime
+		errMsg := fmt.Sprintf("FATAL ERROR: Unknown function '%s' called.\nThis function is not implemented in the son-et runtime.\nProgram will terminate immediately.", originalName)
+		fmt.Fprintln(os.Stderr, errMsg)
+		fmt.Fprintf(os.Stderr, "Function: %s (normalized: %s)\n", originalName, funcName)
+		fmt.Fprintf(os.Stderr, "Arguments: %v\n", args)
+		panic(errMsg)
 	}
 }
 
@@ -3380,7 +3726,17 @@ func (e *EngineState) PutCast(args ...any) int {
 			// DEBUG: Show Cast ID if debug level is 2 and font is available
 			if debugLevel >= 2 && e.currentFont != nil {
 				castLabel := fmt.Sprintf("C%d", castID)
-				text.Draw(destPicture.Image, castLabel, e.currentFont, x+5, y+15, color.RGBA{255, 255, 0, 255})
+				// Draw with black background for better visibility
+				labelX := x + 5
+				labelY := y + 20
+
+				// Draw background rectangle
+				bgRect := image.Rect(labelX-2, labelY-14, labelX+30, labelY+2)
+				vector.DrawFilledRect(destPicture.Image, float32(bgRect.Min.X), float32(bgRect.Min.Y),
+					float32(bgRect.Dx()), float32(bgRect.Dy()), color.RGBA{0, 0, 0, 200}, true)
+
+				// Draw yellow text
+				text.Draw(destPicture.Image, castLabel, e.currentFont, labelX, labelY, color.RGBA{255, 255, 0, 255})
 			}
 
 			fmt.Printf("  Created and drew cast ID=%d at %d,%d\n", castID, x, y)
@@ -3573,7 +3929,17 @@ func (e *EngineState) MoveCast(args ...any) {
 				// DEBUG: Show Cast ID if debug level is 2 and font is available
 				if debugLevel >= 2 && e.currentFont != nil {
 					castLabel := fmt.Sprintf("C%d", cID)
-					text.Draw(targetImg, castLabel, e.currentFont, c.X+5, c.Y+15, color.RGBA{255, 255, 0, 255})
+					// Draw with black background for better visibility
+					labelX := c.X + 5
+					labelY := c.Y + 20
+
+					// Draw background rectangle
+					bgRect := image.Rect(labelX-2, labelY-14, labelX+30, labelY+2)
+					vector.DrawFilledRect(targetImg, float32(bgRect.Min.X), float32(bgRect.Min.Y),
+						float32(bgRect.Dx()), float32(bgRect.Dy()), color.RGBA{0, 0, 0, 200}, true)
+
+					// Draw yellow text
+					text.Draw(targetImg, castLabel, e.currentFont, labelX, labelY, color.RGBA{255, 255, 0, 255})
 				}
 
 				redrawCount++

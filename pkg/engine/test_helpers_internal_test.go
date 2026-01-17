@@ -422,3 +422,31 @@ func GetTestAssetList() []TestAsset {
 		{Name: "large.bmp", Data: fixtures.LargeImage},
 	}
 }
+
+// ResetEngineForTest resets all global engine state for testing
+// This should be called at the beginning of each test that uses global state
+func ResetEngineForTest() {
+	vmLock.Lock()
+	defer vmLock.Unlock()
+
+	// Reset sequencers
+	mainSequencer = nil
+	sequencers = nil
+
+	// Reset global variables
+	globalVars = make(map[string]any)
+
+	// Reset timing state
+	tickCount = 0
+	ticksPerStep = 12
+	midiSyncMode = false
+	GlobalPPQ = 480
+
+	// Reset program termination flag
+	programTerminated = false
+
+	// Reset global engine
+	if globalEngine != nil {
+		globalEngine.Reset()
+	}
+}

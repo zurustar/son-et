@@ -529,6 +529,28 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 	stmt := &ast.ExpressionStatement{Token: p.curToken}
 	stmt.Expression = p.parseExpression(LOWEST)
 
+	// SPECIAL CASE: If the expression is just an identifier (no parentheses),
+	// and it's one of the special commands that can be called without parentheses,
+	// convert it to a function call with no arguments.
+	// This handles: del_all, del_me, del_us, end_step, etc.
+	if ident, ok := stmt.Expression.(*ast.Identifier); ok {
+		identLower := strings.ToLower(ident.Value)
+		specialCommands := map[string]bool{
+			"del_all":  true,
+			"del_me":   true,
+			"del_us":   true,
+			"end_step": true,
+		}
+		if specialCommands[identLower] {
+			// Convert to function call with no arguments
+			stmt.Expression = &ast.CallExpression{
+				Token:     ident.Token,
+				Function:  ident,
+				Arguments: []ast.Expression{},
+			}
+		}
+	}
+
 	if p.peekToken.Type == token.SEMICOLON {
 		p.nextToken()
 	}
