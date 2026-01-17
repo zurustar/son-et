@@ -777,6 +777,253 @@ This implementation plan covers the son-et core engine, including both the trans
   - Ensure no orphaned processes after timeout
   - Ask user for verification if issues arise
 
+- [ ] 24. Fix Picture and Cast rendering issues (y_saru sample bugs)
+  - [ ] 24.1 Investigate and fix CreatePic ID assignment issue
+    - Analyze why CreatePic(sourcePicID) returns unexpected IDs
+    - Review nextPicID counter initialization and increment logic
+    - Verify that LoadPic increments nextPicID correctly
+    - Test with y_saru sample: verify base_pic = CreatePic(25) returns correct ID
+    - Ensure OpenWin(base_pic, ...) displays the correct picture
+    - _Requirements: 4.2, 4.3_
+    - _Bug: P14の後にP0が表示される (P0 appears after P14)_
+
+  - [ ] 24.2 Investigate and fix Cast visibility issue
+    - Analyze why PutCast creates casts but they don't appear on screen
+    - Verify Cast is drawn to correct destination picture
+    - Check if destination picture exists and is valid
+    - Verify MoveCast updates cast position and re-renders
+    - Test with y_saru sample シーン3: verify flying plane cast appears
+    - Test with y_saru sample シーン5.5: verify monkey cast appears
+    - Test with y_saru sample シーン7: verify monkey cast appears
+    - _Requirements: 5.1, 5.2, 5.3, 5.5_
+    - _Bug: Castが表示されない (Casts are not visible)_
+
+  - [ ] 24.3 Add Window ID debug display
+    - When debugLevel >= 2, draw Window ID on each window
+    - Display format: "W{windowID}" in yellow color at top-left corner
+    - Similar to existing Picture ID display ("P{picID}")
+    - Use existing font (e.currentFont) if available
+    - Position: offset by 5 pixels from top-left to avoid overlap
+    - _Requirements: 14.1, 14.2_
+    - _Enhancement: ウィンドウにもIDを表示 (Display Window IDs for debugging)_
+
+  - [ ] 24.4 Write unit tests for CreatePic ID assignment
+    - Test CreatePic(width, height) returns sequential IDs
+    - Test CreatePic(sourcePicID) returns new sequential ID (not source ID)
+    - Test that LoadPic and CreatePic share the same ID counter
+    - Verify nextPicID increments correctly across mixed LoadPic/CreatePic calls
+    - _Requirements: 4.2, 4.3_
+
+  - [ ] 24.5 Write unit tests for Cast rendering
+    - Test PutCast creates cast and draws to destination picture
+    - Test MoveCast updates cast position and re-renders
+    - Test cast visibility with valid destination picture
+    - Test cast rendering order (z-ordering)
+    - Verify cast appears on destination picture after PutCast
+    - _Requirements: 5.1, 5.2, 5.3, 5.5_
+
+  - [ ] 24.6 Integration test with y_saru sample
+    - Run y_saru sample with DEBUG_LEVEL=2
+    - Verify Window IDs are displayed on each window
+    - Verify Picture IDs are displayed on each picture
+    - Verify Casts are visible in シーン3, シーン5.5, シーン7
+    - Verify correct picture sequence (no unexpected P0 after P14)
+    - Capture logs and verify no errors
+    - _Requirements: 4.2, 4.3, 5.1, 5.2, 5.3, 5.5, 14.1, 14.2_
+
+- [ ] 25. Checkpoint - Verify y_saru sample bug fixes
+  - Run y_saru sample and verify all three issues are resolved
+  - Verify Window IDs appear in debug mode
+  - Verify Casts are visible in all scenes
+  - Verify correct picture display sequence
+  - Run all existing tests to ensure no regressions
+  - Ask user for verification if issues arise
+
+- [ ] 26. Fix TIME mode execution issues (kuma2 sample bugs)
+  - [ ] 26.1 Investigate and fix mes(TIME) block looping issue
+    - Analyze why mes(TIME) block executes repeatedly instead of once
+    - Review RegisterSequence blocking behavior in TIME mode
+    - Verify sequence completion detection and cleanup
+    - Check if sequence is being re-registered after completion
+    - Ensure mes(TIME) block completes and allows subsequent code to run
+    - Test with kuma2: verify mes(TIME) executes once, then del_all/del_me run
+    - _Requirements: 11.5, 11.6_
+    - _Bug: mes(TIME)ブロックが繰り返し実行される (mes(TIME) block loops instead of executing once)_
+
+  - [ ] 26.2 Investigate and fix step() timing in TIME mode
+    - Analyze step(n) interpretation in TIME mode
+    - Current implementation: step(n) = n * 50ms per comma
+    - Verify against sabo2 sample: step(2) should sync with MIDI duration
+    - Check if step(n) means "n ticks per comma" vs "n * 50ms per comma"
+    - Review original FILLY specification for step() semantics
+    - Test with multiple samples: kuma2 (step 65), sabo2 (step 2)
+    - Ensure audio and animation stay synchronized
+    - _Requirements: 11.3, 11.4_
+    - _Bug: step(n)の解釈が間違っている - 音楽とアニメーションが同期しない_
+
+  - [ ] 26.3 Add detailed logging for TIME mode execution
+    - Log when mes(TIME) block starts and completes
+    - Log RegisterSequence blocking/unblocking in TIME mode
+    - Log sequence completion and cleanup
+    - Log step(n) value when entering step block
+    - Log calculated wait duration for each comma
+    - Log actual elapsed time between operations
+    - Help diagnose timing and looping issues
+    - _Requirements: 11.3, 11.5, 11.6_
+
+  - [ ] 26.4 Write unit tests for mes(TIME) execution
+    - Test mes(TIME) block executes exactly once
+    - Test RegisterSequence blocks until sequence completes in TIME mode
+    - Test subsequent code runs after mes(TIME) completes
+    - Test del_all/del_me execute after mes(TIME) block
+    - Verify no sequence re-registration after completion
+    - _Requirements: 11.5, 11.6_
+
+  - [ ] 26.5 Write unit tests for step timing
+    - Test step(n) calculates correct wait duration in TIME mode
+    - Test comma expansion: `,` = 1 step, `,,` = 2 steps, etc.
+    - Test various step values: step(2), step(65), step(100)
+    - Verify total execution time matches expected duration
+    - Test audio/animation synchronization with different step values
+    - _Requirements: 11.3, 11.4_
+
+  - [ ] 26.6 Integration test with multiple samples
+    - Test kuma2 sample (step 65): verify timing and synchronization
+    - Test sabo2 sample (step 2): verify audio matches animation duration
+    - Measure total execution time for each sample
+    - Verify mes(TIME) executes once and completes
+    - Verify del_all/del_me execute after mes(TIME) completes
+    - Verify program terminates cleanly
+    - Capture logs and verify execution flow
+    - _Requirements: 11.3, 11.4, 11.5, 11.6_
+
+- [ ] 27. Checkpoint - Verify kuma2 and sabo2 sample bug fixes
+  - Run kuma2 sample and verify issues are resolved
+  - Run sabo2 sample and verify audio/animation synchronization
+  - Verify mes(TIME) executes once without looping
+  - Verify step(n) timing is correct for different values
+  - Verify program terminates cleanly after completion
+  - Run all existing tests to ensure no regressions
+  - Ask user for verification if issues arise
+
+- [ ] 28. Fix yosemiya sample issues (multiple mes blocks and missing functions)
+  - [ ] 28.1 Implement missing functions
+    - Implement CloseWinAll() function (currently shows "Unknown function closewinall")
+    - Verify CapTitle() function mapping (currently shows "Unknown function captitle")
+    - Check function name case conversion in interpreter
+    - Test with yosemiya sample to verify functions are called correctly
+    - _Requirements: 14.5, 14.6_
+    - _Bug: CloseWinAllとCapTitleが未実装または関数名マッピングが間違っている_
+
+  - [ ] 28.2 Investigate multiple mes(TIME) blocks execution
+    - Analyze why second mes(TIME) block completes immediately
+    - Review how multiple mes() blocks are registered and executed
+    - Check if mes() blocks should run in parallel or sequentially
+    - Verify variable scope between different mes() blocks
+    - Test with yosemiya: verify second mes(TIME) block executes animations
+    - _Requirements: 11.5, 11.6, 15.4, 15.5_
+    - _Bug: 2つ目のmes(TIME)ブロックが即座に終了する (Second mes(TIME) block finishes immediately)_
+
+  - [ ] 28.3 Fix variable initialization and scope in mes() blocks
+    - Analyze why variable 'i' is not initialized in second mes(TIME) block
+    - Review variable scope between different mes() blocks
+    - Ensure variables declared in main() are accessible in all mes() blocks
+    - Check if variables need explicit initialization before mes() blocks
+    - Test with yosemiya: verify 'i', 'j', 'k' variables work correctly
+    - _Requirements: 19.1, 19.4, 19.5_
+    - _Bug: mes()ブロック間で変数が共有されていない (Variables not shared between mes() blocks)_
+
+  - [ ] 28.4 Add detailed logging for multiple mes() blocks
+    - Log when each mes() block is registered
+    - Log when each mes() block starts and completes
+    - Log variable values at the start of each mes() block
+    - Log if/for condition evaluations in mes() blocks
+    - Help diagnose why second mes() block doesn't execute properly
+    - _Requirements: 11.5, 11.6, 15.4_
+
+  - [ ] 28.5 Write unit tests for multiple mes() blocks
+    - Test multiple mes(TIME) blocks in same script
+    - Test variable sharing between mes() blocks
+    - Test if/for statements inside mes() blocks
+    - Test mes() blocks with different timing modes
+    - Verify all mes() blocks execute as expected
+    - _Requirements: 11.5, 11.6, 15.4, 15.5_
+
+  - [ ] 28.6 Integration test with yosemiya sample
+    - Run yosemiya sample and verify both mes(TIME) blocks execute
+    - Verify curtain opening animation (second mes block)
+    - Verify message display animation (second mes block)
+    - Verify CloseWinAll() and CapTitle() work correctly
+    - Capture logs and verify execution flow
+    - _Requirements: 11.5, 11.6, 14.5, 14.6, 15.4, 15.5_
+
+- [ ] 29. Checkpoint - Verify yosemiya sample bug fixes
+  - Run yosemiya sample and verify all issues are resolved
+  - Verify both mes(TIME) blocks execute properly
+  - Verify animations run at correct speed
+  - Verify CloseWinAll() and CapTitle() functions work
+  - Run all existing tests to ensure no regressions
+  - Ask user for verification if issues arise
+
+- [ ] 30. Fix robot sample infinite loop issue (for loop not terminating)
+  - [ ] 30.1 Investigate infinite LoadPic loop
+    - Analyze why `for(i=0;i<=1;i=i+1)` loops infinitely
+    - Review for loop code generation in transpiler
+    - Check if loop variable 'i' is being incremented correctly
+    - Check if loop condition `i<=1` is being evaluated correctly
+    - Verify loop initialization `i=0` executes before loop starts
+    - Test with robot sample: verify loop loads only ROBOT000.BMP and ROBOT001.BMP
+    - _Requirements: 21.1_
+    - _Bug: for(i=0;i<=1;i=i+1)が無限ループになり、ROBOT000.BMPを67,081回ロードする_
+
+  - [ ] 30.2 Analyze loop variable scope and initialization
+    - Check if loop variable 'i' is properly scoped to the loop
+    - Verify loop variable is not being reset on each iteration
+    - Check if loop variable conflicts with other variables named 'i'
+    - Review variable registration for loop variables in mes() blocks
+    - Test with simple for loop examples to isolate the issue
+    - _Requirements: 21.1, 19.1_
+
+  - [ ] 30.3 Add detailed logging for for loop execution
+    - Log loop initialization: variable name and initial value
+    - Log loop condition evaluation: variable value and condition result
+    - Log loop increment: variable value before and after increment
+    - Log loop iteration count to detect infinite loops
+    - Help diagnose why loop doesn't terminate
+    - _Requirements: 21.1_
+
+  - [ ] 30.4 Write unit tests for for loop execution
+    - Test simple for loop: `for(i=0;i<5;i=i+1)`
+    - Test for loop with <= condition: `for(i=0;i<=1;i=i+1)`
+    - Test for loop with different increments: `i=i+2`, `i=i-1`
+    - Test nested for loops
+    - Verify loop terminates after correct number of iterations
+    - Verify loop variable has correct value after loop
+    - _Requirements: 21.1_
+
+  - [ ] 30.5 Write property test for for loop termination
+    - **Property 26: For loop termination**
+    - Generate random loop bounds and increments
+    - Verify loop terminates within expected iterations
+    - Verify loop variable has correct final value
+    - **Validates: Requirements 21.1**
+
+  - [ ] 30.6 Integration test with robot sample
+    - Run robot sample with timeout (3-5 seconds)
+    - Verify loop loads exactly 2 images: ROBOT000.BMP and ROBOT001.BMP
+    - Verify loop terminates and script continues
+    - Verify no infinite loop (check log line count < 1000)
+    - Capture logs and verify loop execution flow
+    - _Requirements: 21.1_
+
+- [ ] 31. Checkpoint - Verify robot sample bug fix
+  - Run robot sample and verify infinite loop is fixed
+  - Verify for loop terminates correctly
+  - Verify only 2 images are loaded (ROBOT000.BMP, ROBOT001.BMP)
+  - Verify script continues after loop completes
+  - Run all existing tests to ensure no regressions
+  - Ask user for verification if issues arise
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP
