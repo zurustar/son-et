@@ -1022,8 +1022,8 @@ This implementation plan covers the son-et core engine, including both the trans
   - Run all existing tests to ensure no regressions
   - Ask user for verification if issues arise
 
-- [ ] 32. Fix test isolation issues
-  - [ ] 32.1 Fix TestRegisterSequenceBlocksInTimeMode test isolation
+- [x] 32. Fix test isolation issues
+  - [x] 32.1 Fix TestRegisterSequenceBlocksInTimeMode test isolation
     - Investigate why test fails when run with other tests but passes alone
     - Issue: Goroutines from previous tests may still be calling UpdateVM()
     - Review test cleanup in ResetEngineForTest()
@@ -1033,7 +1033,7 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 11.5, 11.6_
     - _Bug: TestRegisterSequenceBlocksInTimeMode fails in full suite but passes alone_
 
-  - [ ] 32.2 Fix TestProperty1_TranspilerGeneratesValidGoCode timeout
+  - [x] 32.2 Fix TestProperty1_TranspilerGeneratesValidGoCode timeout
     - Investigate why property test times out (pre-existing issue)
     - Review test implementation for potential infinite loops
     - Consider reducing test case generation count
@@ -1042,14 +1042,14 @@ This implementation plan covers the son-et core engine, including both the trans
     - _Requirements: 1.1, 1.2_
     - _Bug: Property test times out during execution_
 
-  - [ ] 32.3 Write unit tests for test isolation
+  - [x] 32.3 Write unit tests for test isolation
     - Test that ResetEngineForTest() properly cleans up all state
     - Test that background goroutines are stopped before cleanup
     - Test that multiple tests can run in sequence without interference
     - Verify no global state leakage between tests
     - _Requirements: All (testing infrastructure)_
 
-  - [ ] 32.4 Update test documentation
+  - [x] 32.4 Update test documentation
     - Document test isolation requirements
     - Document proper test cleanup procedures
     - Add examples of correct test setup and teardown
