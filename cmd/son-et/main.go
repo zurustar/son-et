@@ -203,9 +203,11 @@ func executeDirect(directory string) error {
 		// Convert interpreter OpCode to engine OpCode format
 		engineOps := convertToEngineOpCodes(script.Main.Body)
 
-		// Register the main sequence
-		// Use TIME mode (0) for normal execution
-		engine.RegisterSequence(engine.Time, engineOps)
+		// Execute the main sequence directly (not wrapped in RegisterSequence)
+		// This allows mes() blocks to register their own sequences
+		for _, op := range engineOps {
+			engine.ExecuteOpDirect(op)
+		}
 	})
 
 	// Step 6: Start the engine (this will block until the game exits)

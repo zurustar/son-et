@@ -324,6 +324,12 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
+	// Check for program termination
+	if programTerminated {
+		fmt.Println("Game.Update: Program terminated, returning Termination")
+		return ebiten.Termination
+	}
+
 	if g.tickCount == 0 {
 		fmt.Println("Game.Update: First update call")
 	}
@@ -439,7 +445,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	fmt.Printf("Layout called: outside=(%d,%d) -> returning (1280,720)\n", outsideWidth, outsideHeight)
 	return 1280, 720
 }
 
@@ -552,9 +557,8 @@ func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc f
 
 	// Initialize Audio
 	fmt.Println("=== AUDIO INITIALIZATION START ===")
-	// TEMPORARY: Disable audio for testing
-	// InitializeAudio()
-	fmt.Println("=== AUDIO INITIALIZATION SKIPPED (TESTING) ===")
+	InitializeAudio()
+	fmt.Println("=== AUDIO INITIALIZATION COMPLETE ===")
 
 	// SoundFont loading logic
 	sfPath := "default.sf2"
@@ -588,16 +592,12 @@ func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc f
 	}
 
 	// Try to load SoundFont
-	// TEMPORARY: Skip SoundFont loading for testing
-	/*
-		if err := LoadSoundFont(sfPath); err != nil {
-			fmt.Printf("Warning: Could not load SoundFont (%s): %v\n", sfPath, err)
-			fmt.Println("Please provide a .sf2 file via -sf <path> or place a .sf2 file in the directory.")
-		} else {
-			fmt.Printf("Success: SoundFont loaded from %s\n", sfPath)
-		}
-	*/
-	fmt.Println("=== SOUNDFONT LOADING SKIPPED (TESTING) ===")
+	if err := LoadSoundFont(sfPath); err != nil {
+		fmt.Printf("Warning: Could not load SoundFont (%s): %v\n", sfPath, err)
+		fmt.Println("Please provide a .sf2 file via -sf <path> or place a .sf2 file in the directory.")
+	} else {
+		fmt.Printf("Success: SoundFont loaded from %s\n", sfPath)
+	}
 	fmt.Println("=== AUDIO INITIALIZATION END ===")
 }
 
@@ -1486,6 +1486,13 @@ type Sequencer struct {
 	parent       *Sequencer // Parent scope for variable lookup
 	mode         int        // Added mode
 	onComplete   func()     // Completion callback
+
+	// Step execution state (for resuming after yield)
+	inStep        bool     // Currently executing a Step block
+	stepBody      []OpCode // Step block body
+	stepCount     int      // Total iterations
+	stepIteration int      // Current iteration (0-based)
+	stepOpIndex   int      // Current operation index in body
 }
 
 var (
@@ -1505,6 +1512,9 @@ var (
 	midiSyncMode bool
 
 	GlobalPPQ int = 480 // Default pulses per quarter note
+
+	// Program termination flag
+	programTerminated bool
 )
 
 var queuedCallback func()
@@ -1612,6 +1622,41 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 	}
 }
 
+// resumeStepExecution continues executing a Step block after a yield
+// Returns true if it yielded again, false if Step completed
+func resumeStepExecution(seq *Sequencer) bool {
+	if !seq.inStep {
+		return false
+	}
+
+	fmt.Printf("VM: Resuming Step at iteration %d/%d, op %d/%d\n",
+		seq.stepIteration+1, seq.stepCount, seq.stepOpIndex+1, len(seq.stepBody))
+
+	// Continue from where we left off
+	for i := seq.stepIteration; i < seq.stepCount; i++ {
+		for opIdx := seq.stepOpIndex; opIdx < len(seq.stepBody); opIdx++ {
+			subOp := seq.stepBody[opIdx]
+			fmt.Printf("VM: Step[%d/%d] executing op: %v\n", opIdx+1, len(seq.stepBody), subOp.Cmd)
+			_, yield := ExecuteOp(subOp, seq)
+			if yield {
+				// Save state for next resume - move to NEXT operation
+				seq.stepIteration = i
+				seq.stepOpIndex = opIdx + 1
+				fmt.Printf("VM: Step yielding at iteration %d, op %d\n", i+1, opIdx+1)
+				return true
+			}
+		}
+		// Reset opIndex for next iteration
+		seq.stepOpIndex = 0
+	}
+
+	// Step completed
+	fmt.Printf("VM: Step completed all %d iterations\n", seq.stepCount)
+	seq.inStep = false
+	seq.stepBody = nil
+	return false
+}
+
 // SetVMVar sets a variable in the VM for use in mes() blocks
 // Tick the VM (Called from Conductor/NotifyTick)
 func UpdateVM(currentTick int) {
@@ -1633,6 +1678,15 @@ func UpdateVM(currentTick int) {
 		return
 	}
 
+	// Resume Step execution if we were in the middle of one
+	if seq.inStep {
+		if resumeStepExecution(seq) {
+			// Step yielded again, wait for next tick
+			return
+		}
+		// Step completed, continue with normal execution
+	}
+
 	// Execute Instructions
 	// We execute until we hit a Wait or End
 	for seq.pc < len(seq.commands) {
@@ -1647,7 +1701,15 @@ func UpdateVM(currentTick int) {
 		seq.pc++
 
 		// Execute Op
-		_, yield := ExecuteOp(op, seq)
+		result, yield := ExecuteOp(op, seq)
+
+		// Check for termination signal
+		if result == ebiten.Termination {
+			fmt.Println("VM: Termination signal received")
+			seq.active = false
+			programTerminated = true
+			return
+		}
 
 		// Log if command took long time
 		cmdElapsed := time.Since(cmdStart)
@@ -1662,7 +1724,7 @@ func UpdateVM(currentTick int) {
 		}
 	}
 
-	if seq.pc >= len(seq.commands) {
+	if seq.pc >= len(seq.commands) && !seq.inStep {
 		// End of sequence
 		seq.active = false
 		fmt.Println("VM: Sequence Finished")
@@ -1698,6 +1760,17 @@ func ResolveArg(arg any, seq *Sequencer) any {
 	default:
 		return v
 	}
+}
+
+// ExecuteOpDirect executes an OpCode directly without a sequencer
+// This is used for executing main() function body before any mes() blocks
+func ExecuteOpDirect(op OpCode) {
+	// Create a dummy sequencer for variable scope
+	dummySeq := &Sequencer{
+		vars: make(map[string]any),
+		mode: Time,
+	}
+	ExecuteOp(op, dummySeq)
 }
 
 func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
@@ -1803,23 +1876,16 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 		fmt.Printf("VM: Step(%d) with %d operations\n", count, len(body))
 
-		// Execute each operation in the body 'count' times
-		for i := 0; i < count; i++ {
-			fmt.Printf("VM: Step iteration %d/%d\n", i+1, count)
-			for opIdx, subOp := range body {
-				fmt.Printf("VM: Step[%d/%d] executing op: %v\n", opIdx+1, len(body), subOp.Cmd)
-				_, yield := ExecuteOp(subOp, seq)
-				if yield {
-					// If any operation yields (like Wait), we should yield too
-					// This prevents blocking the main thread
-					fmt.Printf("VM: Step yielding at iteration %d, op %d\n", i+1, opIdx+1)
-					return nil, true
-				}
-			}
-		}
+		// Set up Step execution state
+		seq.inStep = true
+		seq.stepBody = body
+		seq.stepCount = count
+		seq.stepIteration = 0
+		seq.stepOpIndex = 0
 
-		fmt.Printf("VM: Step completed all %d iterations\n", count)
-		return nil, false
+		// Execute the Step block (will save state if it yields)
+		yielded := resumeStepExecution(seq)
+		return nil, yielded
 
 	// Engine Commands Wrappers
 
@@ -1983,6 +2049,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
 		}
+		fmt.Printf("MoveWin: args=%v\n", rArgs)
 		if len(rArgs) >= 2 {
 			// MoveWin function already acquires renderMutex, don't lock here
 			// MoveWin(winID, picID, ...)
@@ -1996,31 +2063,39 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			// If we only have 2 args, we probably need to fetch current values for the rest?
 
 			if len(rArgs) == 2 {
-				// Special case for KUMA2: MoveWin(0, 1) -> Switch Picture?
-				// We need access to current window state
+				// Special case for KUMA2: MoveWin(0, 1) -> Switch Picture
+				// When only winID and picID are provided, use the new picture's size
 				winID := rArgs[0].(int)
 				picID := rArgs[1].(int)
 
 				var win *Window
+				var pic *Picture
 				var ok bool
 				if globalEngine != nil {
 					globalEngine.renderMutex.Lock()
 					win, ok = globalEngine.windows[winID]
+					if ok {
+						pic, _ = globalEngine.pictures[picID]
+					}
 					globalEngine.renderMutex.Unlock()
 				} else {
 					renderMutex.Lock()
 					win, ok = windows[winID]
+					if ok {
+						pic, _ = pictures[picID]
+					}
 					renderMutex.Unlock()
 				}
 
-				if ok {
+				if ok && pic != nil {
 					x := win.X - BorderThickness
 					y := win.Y - TitleBarHeight - BorderThickness
-					w := win.W
-					h := win.H
-					srcX := -win.SrcX
-					srcY := -win.SrcY
-					// Update Picture, keep others
+					// Use NEW picture's size, not current window size
+					w := pic.Width
+					h := pic.Height
+					srcX := 0
+					srcY := 0
+					// Update Picture and size
 					MoveWin(winID, picID, x, y, w, h, srcX, srcY)
 				}
 			} else {
@@ -2576,10 +2651,29 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 			winID, ok1 := args[0].(int)
 			picID, ok2 := args[1].(int)
 			if ok1 && ok2 {
-				// MoveWin with default parameters
-				// MoveWin(winID, pic, x, y, w, h, picX, picY)
-				// For simplified call MoveWin(winID, picID), use defaults
-				MoveWin(winID, picID, 0, 0, 640, 480, 0, 0)
+				// MoveWin with 2 arguments: use new picture's size
+				var win *Window
+				var pic *Picture
+				var ok bool
+				if globalEngine != nil {
+					globalEngine.renderMutex.Lock()
+					win, ok = globalEngine.windows[winID]
+					if ok {
+						pic, _ = globalEngine.pictures[picID]
+					}
+					globalEngine.renderMutex.Unlock()
+				}
+
+				if ok && pic != nil {
+					x := win.X - BorderThickness
+					y := win.Y - TitleBarHeight - BorderThickness
+					// Use NEW picture's size
+					w := pic.Width
+					h := pic.Height
+					srcX := 0
+					srcY := 0
+					MoveWin(winID, picID, x, y, w, h, srcX, srcY)
+				}
 			}
 		}
 		return nil, false
@@ -2602,13 +2696,28 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 
 	case "del_all":
 		// Delete all resources
-		fmt.Printf("VM: del_all called\n")
+		fmt.Printf("VM: del_all called - cleaning up resources\n")
+		// Close all windows
+		if globalEngine != nil {
+			globalEngine.renderMutex.Lock()
+			for winID := range globalEngine.windows {
+				delete(globalEngine.windows, winID)
+			}
+			globalEngine.windowOrder = []int{}
+			globalEngine.renderMutex.Unlock()
+		}
 		return nil, false
 
 	case "del_me":
-		// Delete current sequence
-		fmt.Printf("VM: del_me called\n")
-		return nil, false
+		// Delete current sequence and exit program
+		fmt.Printf("VM: del_me called - exiting program\n")
+		// Deactivate the sequencer
+		if mainSequencer != nil {
+			mainSequencer.active = false
+		}
+		// Signal program termination by returning error
+		// This will cause ebiten.RunGame to exit
+		return ebiten.Termination, true
 
 	default:
 		fmt.Printf("VM Warning: Unknown function %s\n", funcName)
@@ -3208,19 +3317,16 @@ func PlayMIDI(args ...any) {
 			PlayMidiFile(path)
 
 			// Reset ticks to ensure synchronization with new MIDI track
-			vmLock.Lock()
+			// NOTE: We are already inside vmLock from UpdateVM, so don't lock again
 			tickCount = 0
 			atomic.StoreInt64(&targetTick, 0)
 			// targetTick will be updated by NotifyTick from MIDI player
-			vmLock.Unlock()
 
 			// VM Path: Activate Sequence
-			vmLock.Lock()
 			if mainSequencer != nil {
 				mainSequencer.active = true
 				fmt.Println("PlayMIDI: Sequence Activated")
 			}
-			vmLock.Unlock()
 
 			// Legacy Path: Deferred Callback (if any)
 			StartQueuedCallback()

@@ -55,6 +55,8 @@ const (
 
 	// Engine commands - System operations
 	OpExitTitle // Exit to title
+	OpDelAll    // Delete all (cleanup and prepare to exit)
+	OpDelMe     // Delete me (exit program)
 
 	// Expression operations
 	OpInfix  // Binary operation (e.g., +, -, *, /, ==, !=, <, >, etc.)
@@ -128,6 +130,10 @@ func (op OpCmd) String() string {
 		return "PlayMIDI"
 	case OpExitTitle:
 		return "ExitTitle"
+	case OpDelAll:
+		return "DelAll"
+	case OpDelMe:
+		return "DelMe"
 	case OpInfix:
 		return "Infix"
 	case OpPrefix:

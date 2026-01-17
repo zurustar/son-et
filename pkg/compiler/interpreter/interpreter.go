@@ -353,7 +353,17 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 		}}, nil
 
 	case *ast.StepBlockStatement:
-		// step() block: step(8) { ... }
+		// step(n) block: step(65) { ... }
+		// This sets the step resolution and then executes the body once
+		// The 'n' parameter defines how long each Wait(1) will take
+
+		// First, emit SetStep operation
+		setStepOp := OpCode{
+			Cmd:  OpSetStep,
+			Args: []any{int(s.Count)},
+		}
+
+		// Then, interpret the body statements
 		bodyOps := []OpCode{}
 		for _, stmt := range s.Body.Statements {
 			ops, err := i.interpretStatement(stmt)
@@ -363,10 +373,10 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 			bodyOps = append(bodyOps, ops...)
 		}
 
-		return []OpCode{{
-			Cmd:  OpStep,
-			Args: []any{s.Count, bodyOps},
-		}}, nil
+		// Return SetStep followed by body operations
+		result := []OpCode{setStepOp}
+		result = append(result, bodyOps...)
+		return result, nil
 
 	case *ast.WaitStatement:
 		// Wait statement: ,,,,

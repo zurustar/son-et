@@ -102,13 +102,19 @@ func PlayMidiFile(path string) {
 	var midiFileBytes []byte
 	var errBytes error
 
-	// Try file system
+	// Try file system first
 	midiFileBytes, errBytes = os.ReadFile(path)
 	if errBytes != nil {
-		// Try assets
-		midiFileBytes, errBytes = findAsset(path)
+		// Try AssetLoader if available
+		if globalEngine != nil && globalEngine.assetLoader != nil {
+			midiFileBytes, errBytes = globalEngine.assetLoader.ReadFile(path)
+		} else {
+			// Fallback to findAsset for embedded mode
+			midiFileBytes, errBytes = findAsset(path)
+		}
+
 		if errBytes != nil {
-			fmt.Printf("PlayMIDI Error: Could not find or open scalar %s: %v\n", path, errBytes)
+			fmt.Printf("PlayMIDI Error: Could not find or open %s: %v\n", path, errBytes)
 			return
 		}
 	}
@@ -147,8 +153,11 @@ func PlayMidiFile(path string) {
 		return
 	}
 
-	midiPlayer.Play()
-	fmt.Println("PlayMIDI: Playback started")
+	// Start playback in a goroutine to avoid blocking
+	go func() {
+		midiPlayer.Play()
+		fmt.Println("PlayMIDI: Playback started")
+	}()
 
 	// Parse Tempo Map and PPQ
 	tempoMap, ppq, err := parseMidiTempo(midiFileBytes)
@@ -483,8 +492,18 @@ func GetCurrentTick() int {
 // PlayWAVE plays a WAV file
 func PlayWAVE(path string) {
 	fmt.Printf("PlayWAVE: %s\n", path)
-	// Find asset
-	data, err := findAsset(path)
+
+	// Find asset using AssetLoader
+	var data []byte
+	var err error
+
+	if globalEngine != nil && globalEngine.assetLoader != nil {
+		data, err = globalEngine.assetLoader.ReadFile(path)
+	} else {
+		// Fallback to findAsset for embedded mode
+		data, err = findAsset(path)
+	}
+
 	if err != nil {
 		fmt.Printf("PlayWAVE Error: File not found %s: %v\n", path, err)
 		return
