@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 // TestWindowPositioningWithCalculatedValues tests that windows can be positioned
@@ -134,7 +136,7 @@ func TestVMVariableScope(t *testing.T) {
 
 		// Register a sequence that uses these variables
 		ops := []OpCode{
-			{Cmd: "OpenWin", Args: []any{
+			{Cmd: interpreter.OpOpenWin, Args: []any{
 				0,
 				Variable("centerX"),
 				Variable("centerY"),
@@ -220,10 +222,10 @@ func TestVMVariableScope(t *testing.T) {
 
 		// Register sequence with calculated expressions
 		ops := []OpCode{
-			{Cmd: "OpenWin", Args: []any{
+			{Cmd: interpreter.OpOpenWin, Args: []any{
 				0,
-				OpCode{Cmd: "Infix", Args: []any{"-", Variable("winW"), 320}},
-				OpCode{Cmd: "Infix", Args: []any{"-", Variable("winH"), 240}},
+				OpCode{Cmd: interpreter.OpInfix, Args: []any{"-", Variable("winW"), 320}},
+				OpCode{Cmd: interpreter.OpInfix, Args: []any{"-", Variable("winH"), 240}},
 				640, 480, 0, 0, 0xffffff,
 			}},
 		}

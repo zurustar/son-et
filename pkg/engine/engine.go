@@ -21,6 +21,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 	"gopkg.in/ini.v1"
@@ -1395,13 +1396,10 @@ func MovePic(pic, x, y, w, h, dest, dx, dy int, args ...any) {
 
 // Synchronization Globals
 // VM / Sequencer Globals
-type OpCode struct {
-	Cmd  string
-	Args []any
-}
+type OpCode = interpreter.OpCode
 
 // Variable represents a reference to a variable name
-type Variable string
+type Variable = interpreter.Variable
 
 type Sequencer struct {
 	commands     []OpCode
@@ -1569,7 +1567,7 @@ func UpdateVM(currentTick int) {
 		cmdStart := time.Now()
 
 		// Debug Log (enabled for debugging)
-		fmt.Printf("VM: Executing [%d] %s (Tick %d)\n", seq.pc, op.Cmd, tickCount)
+		fmt.Printf("VM: Executing [%d] %s (Tick %d)\n", seq.pc, op.Cmd.String(), tickCount)
 
 		seq.pc++
 
@@ -1579,7 +1577,7 @@ func UpdateVM(currentTick int) {
 		// Log if command took long time
 		cmdElapsed := time.Since(cmdStart)
 		if cmdElapsed > 3*time.Millisecond {
-			fmt.Printf("PERF: [%d] %s took %v\n", seq.pc-1, op.Cmd, cmdElapsed)
+			fmt.Printf("PERF: [%d] %s took %v\n", seq.pc-1, op.Cmd.String(), cmdElapsed)
 		}
 
 		if yield {
@@ -1636,7 +1634,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 	// For Assign, Arg[0] is name (Variable or string), Arg[1] is value.
 
 	switch op.Cmd {
-	case "Assign":
+	case interpreter.OpAssign:
 		if len(op.Args) >= 2 {
 			varName := ""
 			if s, ok := op.Args[0].(string); ok {
@@ -1653,7 +1651,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "Wait":
+	case interpreter.OpWait:
 		// Args[0] = step count
 		steps := 1
 		if len(op.Args) > 0 {
@@ -1675,7 +1673,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		// Yield execution
 		return nil, true
 
-	case "SetStep":
+	case interpreter.OpSetStep:
 		if len(op.Args) > 0 {
 			if count, ok := ResolveArg(op.Args[0], seq).(int); ok && count > 0 {
 				if seq.mode == 0 { // TIME mode
@@ -1705,7 +1703,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 	// Engine Commands Wrappers
 
-	case "LoadPic":
+	case interpreter.OpLoadPic:
 		if len(op.Args) >= 1 {
 			if path, ok := ResolveArg(op.Args[0], seq).(string); ok {
 				id := LoadPic(path)
@@ -1715,7 +1713,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return 0, false
 
-	case "CreatePic":
+	case interpreter.OpCreatePic:
 		// Resolving args manually to build slice
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
@@ -1724,7 +1722,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		id := CreatePic(rArgs...)
 		return id, false
 
-	case "PutCast":
+	case interpreter.OpPutCast:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1732,7 +1730,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		id := PutCast(rArgs...)
 		return id, false
 
-	case "DelPic":
+	case interpreter.OpDelPic:
 		if len(op.Args) >= 1 {
 			if id, ok := ResolveArg(op.Args[0], seq).(int); ok {
 				DelPic(id)
@@ -1740,7 +1738,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "MovePic":
+	case interpreter.OpMovePic:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1778,7 +1776,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "MoveCast":
+	case interpreter.OpMoveCast:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1786,7 +1784,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		MoveCast(rArgs...)
 		return nil, false
 
-	case "OpenWin":
+	case interpreter.OpOpenWin:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1807,7 +1805,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			rArgs[6].(int), rArgs[7].(int))
 		return nil, false
 
-	case "CloseWin":
+	case interpreter.OpCloseWin:
 		if len(op.Args) >= 1 {
 			if id, ok := ResolveArg(op.Args[0], seq).(int); ok {
 				CloseWin(id)
@@ -1815,11 +1813,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "CloseWinAll":
+	case interpreter.OpCloseWinAll:
 		CloseWinAll()
 		return nil, false
 
-	case "TextColor":
+	case interpreter.OpTextColor:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1829,7 +1827,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "TextWrite":
+	case interpreter.OpTextWrite:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1839,7 +1837,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "PlayWAVE":
+	case interpreter.OpPlayWAVE:
 		if len(op.Args) >= 1 {
 			if path, ok := ResolveArg(op.Args[0], seq).(string); ok {
 				PlayWAVE(path)
@@ -1847,7 +1845,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "PlayMIDI":
+	case interpreter.OpPlayMIDI:
 		if len(op.Args) >= 1 {
 			if path, ok := ResolveArg(op.Args[0], seq).(string); ok {
 				PlayMidiFile(path)
@@ -1855,11 +1853,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "ExitTitle":
+	case interpreter.OpExitTitle:
 		ExitTitle()
 		return nil, false
 
-	case "MoveWin":
+	case interpreter.OpMoveWin:
 		rArgs := make([]any, len(op.Args))
 		for i, a := range op.Args {
 			rArgs[i] = ResolveArg(a, seq)
@@ -1917,7 +1915,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		return nil, false
 
 	// Control Flow Operations
-	case "If":
+	case interpreter.OpIf:
 		// Args: [0] = condition (OpCode or value), [1] = consequence ([]OpCode), [2] = alternative ([]OpCode, optional)
 		if len(op.Args) < 2 {
 			return nil, false
@@ -1943,9 +1941,9 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			if conseq, ok := op.Args[1].([]OpCode); ok {
 				for _, subOp := range conseq {
 					// Check for break/continue before executing
-					if subOp.Cmd == "Break" || subOp.Cmd == "Continue" {
+					if subOp.Cmd == interpreter.OpBreak || subOp.Cmd == interpreter.OpContinue {
 						// Return a special marker to indicate break/continue
-						return subOp.Cmd, false
+						return subOp.Cmd.String(), false
 					}
 					result, yield := ExecuteOp(subOp, seq)
 					if yield {
@@ -1962,8 +1960,8 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			if alt, ok := op.Args[2].([]OpCode); ok {
 				for _, subOp := range alt {
 					// Check for break/continue before executing
-					if subOp.Cmd == "Break" || subOp.Cmd == "Continue" {
-						return subOp.Cmd, false
+					if subOp.Cmd == interpreter.OpBreak || subOp.Cmd == interpreter.OpContinue {
+						return subOp.Cmd.String(), false
 					}
 					result, yield := ExecuteOp(subOp, seq)
 					if yield {
@@ -1978,7 +1976,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "For":
+	case interpreter.OpFor:
 		// Args: [0] = init (OpCode or nil), [1] = condition (OpCode or value), [2] = post (OpCode or nil), [3] = body ([]OpCode)
 		if len(op.Args) < 4 {
 			return nil, false
@@ -2015,11 +2013,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				shouldBreak := false
 				shouldContinue := false
 				for _, subOp := range body {
-					if subOp.Cmd == "Break" {
+					if subOp.Cmd == interpreter.OpBreak {
 						shouldBreak = true
 						break
 					}
-					if subOp.Cmd == "Continue" {
+					if subOp.Cmd == interpreter.OpContinue {
 						shouldContinue = true
 						break
 					}
@@ -2060,7 +2058,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "While":
+	case interpreter.OpWhile:
 		// Args: [0] = condition (OpCode or value), [1] = body ([]OpCode)
 		if len(op.Args) < 2 {
 			return nil, false
@@ -2087,11 +2085,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			if body, ok := op.Args[1].([]OpCode); ok {
 				shouldBreak := false
 				for _, subOp := range body {
-					if subOp.Cmd == "Break" {
+					if subOp.Cmd == interpreter.OpBreak {
 						shouldBreak = true
 						break
 					}
-					if subOp.Cmd == "Continue" {
+					if subOp.Cmd == interpreter.OpContinue {
 						break
 					}
 					result, yield := ExecuteOp(subOp, seq)
@@ -2114,7 +2112,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "DoWhile":
+	case interpreter.OpDoWhile:
 		// Args: [0] = condition (OpCode or value), [1] = body ([]OpCode)
 		if len(op.Args) < 2 {
 			return nil, false
@@ -2126,11 +2124,11 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			if body, ok := op.Args[1].([]OpCode); ok {
 				shouldBreak := false
 				for _, subOp := range body {
-					if subOp.Cmd == "Break" {
+					if subOp.Cmd == interpreter.OpBreak {
 						shouldBreak = true
 						break
 					}
-					if subOp.Cmd == "Continue" {
+					if subOp.Cmd == interpreter.OpContinue {
 						break
 					}
 					result, yield := ExecuteOp(subOp, seq)
@@ -2168,7 +2166,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "Switch":
+	case interpreter.OpSwitch:
 		// Args: [0] = value, [1] = cases ([]any where each is []any{caseValue, []OpCode}), [2] = default ([]OpCode or nil)
 		if len(op.Args) < 2 {
 			return nil, false
@@ -2194,7 +2192,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				if body, ok := caseData[1].([]OpCode); ok {
 					shouldBreak := false
 					for _, subOp := range body {
-						if subOp.Cmd == "Break" {
+						if subOp.Cmd == interpreter.OpBreak {
 							shouldBreak = true
 							break
 						}
@@ -2224,16 +2222,16 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 		return nil, false
 
-	case "Break":
+	case interpreter.OpBreak:
 		// Break is handled by the loop execution logic
 		return nil, false
 
-	case "Continue":
+	case interpreter.OpContinue:
 		// Continue is handled by the loop execution logic
 		return nil, false
 
 	// Expression evaluation operations
-	case "Infix":
+	case interpreter.OpInfix:
 		// Args: [0] = operator, [1] = left, [2] = right
 		if len(op.Args) < 3 {
 			return nil, false
@@ -2300,7 +2298,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 		return nil, false
 
-	case "Prefix":
+	case interpreter.OpPrefix:
 		// Args: [0] = operator, [1] = operand
 		if len(op.Args) < 2 {
 			return nil, false
@@ -2320,7 +2318,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 		return nil, false
 
-	case "Index":
+	case interpreter.OpIndex:
 		// Args: [0] = array, [1] = index
 		if len(op.Args) < 2 {
 			return nil, false
@@ -2341,11 +2339,12 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		// Check user defined functions
 		var fn reflect.Value
 		var ok bool
+		cmdStr := op.Cmd.String()
 		if globalEngine != nil {
-			fn, ok = globalEngine.userFuncs[op.Cmd]
+			fn, ok = globalEngine.userFuncs[cmdStr]
 		}
 		if !ok {
-			fn, ok = userFuncs[op.Cmd]
+			fn, ok = userFuncs[cmdStr]
 		}
 
 		if ok {
@@ -2359,7 +2358,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
-						fmt.Printf("Recovered from panic in UserFunc %s: %v\n", op.Cmd, r)
+						fmt.Printf("Recovered from panic in UserFunc %s: %v\n", cmdStr, r)
 					}
 				}()
 				fn.Call(in)
@@ -2367,7 +2366,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			return nil, false // VM proceeds immediately
 		}
 
-		fmt.Printf("VM Error: Unknown OpCmd %s\n", op.Cmd)
+		fmt.Printf("VM Error: Unknown OpCmd %s\n", op.Cmd.String())
 		return nil, false
 	}
 }

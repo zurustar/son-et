@@ -205,14 +205,14 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 				return nil, err
 			}
 			return []OpCode{{
-				Cmd:  "AssignArray",
+				Cmd:  OpAssignArray,
 				Args: []any{varName, indexOp, valueOp},
 			}}, nil
 		}
 
 		// Simple assignment: VAR = VALUE
 		return []OpCode{{
-			Cmd:  "Assign",
+			Cmd:  OpAssign,
 			Args: []any{varName, valueOp},
 		}}, nil
 
@@ -225,13 +225,13 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 				return nil, err
 			}
 			return []OpCode{{
-				Cmd:  "Assign",
+				Cmd:  OpAssign,
 				Args: []any{varName, valueOp},
 			}}, nil
 		}
 		// Declaration without initialization
 		return []OpCode{{
-			Cmd:  "Assign",
+			Cmd:  OpAssign,
 			Args: []any{varName, 0},
 		}}, nil
 
@@ -263,7 +263,7 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 		}
 
 		return []OpCode{{
-			Cmd:  "If",
+			Cmd:  OpIf,
 			Args: []any{condOp, thenOps, elseOps},
 		}}, nil
 
@@ -306,7 +306,7 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 		}
 
 		return []OpCode{{
-			Cmd:  "For",
+			Cmd:  OpFor,
 			Args: []any{initOps, condOp, postOps, bodyOps},
 		}}, nil
 
@@ -327,7 +327,7 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 		}
 
 		return []OpCode{{
-			Cmd:  "While",
+			Cmd:  OpWhile,
 			Args: []any{condOp, bodyOps},
 		}}, nil
 
@@ -348,7 +348,7 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 		}
 
 		return []OpCode{{
-			Cmd:  "RegisterSequence",
+			Cmd:  OpRegisterSequence,
 			Args: []any{modeOp, bodyOps},
 		}}, nil
 
@@ -364,22 +364,22 @@ func (i *Interpreter) interpretStatement(stmt ast.Statement) ([]OpCode, error) {
 		}
 
 		return []OpCode{{
-			Cmd:  "Step",
+			Cmd:  OpStep,
 			Args: []any{s.Count, bodyOps},
 		}}, nil
 
 	case *ast.WaitStatement:
 		// Wait statement: ,,,,
 		return []OpCode{{
-			Cmd:  "Wait",
+			Cmd:  OpWait,
 			Args: []any{s.Count},
 		}}, nil
 
 	case *ast.BreakStatement:
-		return []OpCode{{Cmd: "Break", Args: []any{}}}, nil
+		return []OpCode{{Cmd: OpBreak, Args: []any{}}}, nil
 
 	case *ast.ContinueStatement:
-		return []OpCode{{Cmd: "Continue", Args: []any{}}}, nil
+		return []OpCode{{Cmd: OpContinue, Args: []any{}}}, nil
 
 	case *ast.BlockStatement:
 		// Block statement (used in control flow)
@@ -403,17 +403,17 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 	switch e := expr.(type) {
 	case *ast.IntegerLiteral:
 		// Integer literal: return as-is
-		return OpCode{Cmd: "Literal", Args: []any{int(e.Value)}}, nil
+		return OpCode{Cmd: OpLiteral, Args: []any{int(e.Value)}}, nil
 
 	case *ast.StringLiteral:
 		// String literal: return as-is
-		return OpCode{Cmd: "Literal", Args: []any{e.Value}}, nil
+		return OpCode{Cmd: OpLiteral, Args: []any{e.Value}}, nil
 
 	case *ast.Identifier:
 		// Variable reference - return as Variable type directly
 		varName := normalizeVarName(e.Value)
 		// Return a special marker OpCode that will be unwrapped to Variable
-		return OpCode{Cmd: "VarRef", Args: []any{Variable(varName)}}, nil
+		return OpCode{Cmd: OpVarRef, Args: []any{Variable(varName)}}, nil
 
 	case *ast.CallExpression:
 		// Function call: FUNC(ARG1, ARG2, ...)
@@ -428,7 +428,7 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 			args = append(args, argOp)
 		}
 
-		return OpCode{Cmd: "Call", Args: args}, nil
+		return OpCode{Cmd: OpCall, Args: args}, nil
 
 	case *ast.InfixExpression:
 		// Binary operation: LEFT OP RIGHT
@@ -443,8 +443,8 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 		}
 
 		return OpCode{
-			Cmd:  e.Operator,
-			Args: []any{leftOp, rightOp},
+			Cmd:  OpInfix,
+			Args: []any{e.Operator, leftOp, rightOp},
 		}, nil
 
 	case *ast.PrefixExpression:
@@ -455,8 +455,8 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 		}
 
 		return OpCode{
-			Cmd:  e.Operator,
-			Args: []any{rightOp},
+			Cmd:  OpPrefix,
+			Args: []any{e.Operator, rightOp},
 		}, nil
 
 	case *ast.IndexExpression:
@@ -472,14 +472,14 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 				return OpCode{}, err
 			}
 			return OpCode{
-				Cmd:  "Index",
+				Cmd:  OpIndex,
 				Args: []any{leftOp, indexOp},
 			}, nil
 		}
 
 		// Array declaration: VAR[]
 		return OpCode{
-			Cmd:  "Array",
+			Cmd:  OpArray,
 			Args: []any{leftOp},
 		}, nil
 

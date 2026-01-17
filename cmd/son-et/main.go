@@ -281,7 +281,7 @@ func convertToEngineOpCodes(interpOps []interpreter.OpCode) []engine.OpCode {
 	engineOps := make([]engine.OpCode, 0, len(interpOps))
 	for _, op := range interpOps {
 		// Skip VarRef at top level - these should only appear as nested expressions
-		if op.Cmd == "VarRef" {
+		if op.Cmd == interpreter.OpVarRef {
 			continue
 		}
 		engineOps = append(engineOps, engine.OpCode{
@@ -299,9 +299,9 @@ func convertOpCodeArgs(args []any) []any {
 		switch v := arg.(type) {
 		case interpreter.OpCode:
 			// Special case: VarRef should be unwrapped to just the variable name
-			if v.Cmd == "VarRef" && len(v.Args) > 0 {
+			if v.Cmd == interpreter.OpVarRef && len(v.Args) > 0 {
 				if varName, ok := v.Args[0].(interpreter.Variable); ok {
-					result[i] = string(varName)
+					result[i] = engine.Variable(varName)
 					continue
 				}
 			}
@@ -314,8 +314,8 @@ func convertOpCodeArgs(args []any) []any {
 			// Slice of OpCodes - convert each
 			result[i] = convertToEngineOpCodes(v)
 		case interpreter.Variable:
-			// Variable reference - keep as string
-			result[i] = string(v)
+			// Variable reference - convert to engine.Variable
+			result[i] = engine.Variable(v)
 		default:
 			// Primitive value - keep as-is
 			result[i] = arg

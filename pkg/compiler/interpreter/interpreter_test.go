@@ -46,8 +46,8 @@ x = 10;
 	}
 
 	// Check assignment OpCode
-	if script.Main.Body[0].Cmd != "Assign" {
-		t.Errorf("Expected first OpCode to be Assign, got %s", script.Main.Body[0].Cmd)
+	if script.Main.Body[0].Cmd != OpAssign {
+		t.Errorf("Expected first OpCode to be Assign, got %s", script.Main.Body[0].Cmd.String())
 	}
 }
 
@@ -193,7 +193,7 @@ MYVAR = 30;
 
 	// Check that all assignments reference the same variable
 	for _, op := range script.Main.Body {
-		if op.Cmd == "Assign" {
+		if op.Cmd == OpAssign {
 			if len(op.Args) > 0 {
 				if varRef, ok := op.Args[0].(Variable); ok {
 					if string(varRef) != "myvar" {
@@ -225,8 +225,8 @@ x = 10 + 20 * 3;
 	}
 
 	assignOp := script.Main.Body[0]
-	if assignOp.Cmd != "Assign" {
-		t.Errorf("Expected Assign OpCode, got %s", assignOp.Cmd)
+	if assignOp.Cmd != OpAssign {
+		t.Errorf("Expected Assign OpCode, got %s", assignOp.Cmd.String())
 	}
 
 	// The value should be an OpCode representing the expression
@@ -236,8 +236,8 @@ x = 10 + 20 * 3;
 
 	// Check that the expression is an OpCode (not a literal)
 	if exprOp, ok := assignOp.Args[1].(OpCode); ok {
-		if exprOp.Cmd != "+" {
-			t.Errorf("Expected expression root to be '+', got '%s'", exprOp.Cmd)
+		if exprOp.Cmd != OpInfix {
+			t.Errorf("Expected expression root to be 'Infix', got '%s'", exprOp.Cmd.String())
 		}
 	} else {
 		t.Errorf("Expected expression to be OpCode, got %T", assignOp.Args[1])
@@ -268,8 +268,8 @@ if (x > 10) {
 	}
 
 	ifOp := script.Main.Body[0]
-	if ifOp.Cmd != "If" {
-		t.Errorf("Expected If OpCode, got %s", ifOp.Cmd)
+	if ifOp.Cmd != OpIf {
+		t.Errorf("Expected If OpCode, got %s", ifOp.Cmd.String())
 	}
 
 	// Check that if has 3 arguments: condition, then, else
@@ -299,8 +299,8 @@ mes(TIME) {
 	}
 
 	mesOp := script.Main.Body[0]
-	if mesOp.Cmd != "RegisterSequence" {
-		t.Errorf("Expected RegisterSequence OpCode, got %s", mesOp.Cmd)
+	if mesOp.Cmd != OpRegisterSequence {
+		t.Errorf("Expected RegisterSequence OpCode, got %s", mesOp.Cmd.String())
 	}
 
 	// Check that mes has 2 arguments: mode, body

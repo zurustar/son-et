@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 // TestSpritePositioningWithScopedVariables tests that sprites (casts) can be
@@ -202,7 +204,7 @@ func TestCastOperationsWithVMScope(t *testing.T) {
 
 		// Register sequence that creates a cast
 		ops := []OpCode{
-			{Cmd: "PutCast", Args: []any{
+			{Cmd: interpreter.OpPutCast, Args: []any{
 				Variable("srcPic"),
 				Variable("dstPic"),
 				Variable("posX"),
@@ -266,11 +268,11 @@ func TestCastOperationsWithVMScope(t *testing.T) {
 
 		// Register sequence that moves cast to center
 		ops := []OpCode{
-			{Cmd: "MoveCast", Args: []any{
+			{Cmd: interpreter.OpMoveCast, Args: []any{
 				Variable("castID"),
 				dstPicID,
-				OpCode{Cmd: "Infix", Args: []any{"/", OpCode{Cmd: "Infix", Args: []any{"-", Variable("screenW"), Variable("spriteW")}}, 2}},
-				OpCode{Cmd: "Infix", Args: []any{"/", OpCode{Cmd: "Infix", Args: []any{"-", Variable("screenH"), Variable("spriteH")}}, 2}},
+				OpCode{Cmd: interpreter.OpInfix, Args: []any{"/", OpCode{Cmd: interpreter.OpInfix, Args: []any{"-", Variable("screenW"), Variable("spriteW")}}, 2}},
+				OpCode{Cmd: interpreter.OpInfix, Args: []any{"/", OpCode{Cmd: interpreter.OpInfix, Args: []any{"-", Variable("screenH"), Variable("spriteH")}}, 2}},
 				100, 100, 0, 0,
 			}},
 		}
