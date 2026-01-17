@@ -20,19 +20,30 @@ This document describes the comprehensive workflow for running and debugging FIL
 - Use `controlBashProcess` with action="stop" and the processId
 - Never leave processes running indefinitely
 
+**RULE 4: NEVER use separate sleep commands**
+- NEVER execute sleep in a separate executeBash call
+- ALWAYS combine sleep with other commands in a single one-liner
+- Use shell command chaining: `command & sleep 5; kill $!`
+- NEVER ask user to execute sleep separately
+
 **Example Correct Workflow:**
 ```
 1. listProcesses() - Check for existing processes
 2. If processes exist: controlBashProcess(action="stop", processId=X)
-3. controlBashProcess(action="start", command="go run cmd/son-et/main.go samples/kuma2")
-4. Wait 2-3 seconds
-5. getProcessOutput(processId=Y) - Check output
-6. controlBashProcess(action="stop", processId=Y) - Stop when done
+3. controlBashProcess(action="start", command="sh -c 'go run cmd/son-et/main.go samples/kuma2 > log.txt 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null'")
+4. Wait for process to complete (it will auto-terminate after 5 seconds)
+5. Read log.txt to check output
 ```
 
 **NEVER do this:**
 ```
 executeBash("go run cmd/son-et/main.go samples/kuma2")  # WRONG - will hang forever
+executeBash("sleep 5")  # WRONG - separate sleep command
+```
+
+**ALWAYS do this:**
+```
+executeBash("go run cmd/son-et/main.go samples/kuma2 > log.txt 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat log.txt")  # CORRECT - one-liner
 ```
 
 ## Execution Modes
@@ -80,12 +91,17 @@ DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/my_game 2>&1 | tee debug.log
 
 ### Running with Timestamped Logging
 
-For detailed debugging with timestamps:
+For detailed debugging with timestamps (RECOMMENDED - prevents orphaned processes):
 
 ```bash
-DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/my_game 2>&1 | while IFS= read -r line; do 
-  echo "$(date '+%H:%M:%S.%3N') $line"
-done | tee debug.log
+# Run in background with timeout and log capture
+go run cmd/son-et/main.go samples/my_game > debug.log 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat debug.log
+```
+
+Or with debug level:
+
+```bash
+DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/my_game > debug.log 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat debug.log
 ```
 
 ## Embedded Mode (Distribution)
@@ -177,10 +193,14 @@ When requesting user verification, always provide commands that:
 For sample in `samples/[SAMPLE_NAME]/`:
 
 ```bash
-# Run with timestamped logging
-DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/[SAMPLE_NAME] 2>&1 | while IFS= read -r line; do 
-  echo "$(date '+%H:%M:%S.%3N') $line"
-done | tee execution.log
+# Run with timeout and log capture (RECOMMENDED - prevents orphaned processes)
+go run cmd/son-et/main.go samples/[SAMPLE_NAME] > execution.log 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat execution.log
+```
+
+Or with debug level:
+
+```bash
+DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/[SAMPLE_NAME] > execution.log 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat execution.log
 ```
 
 ### Example Usage
@@ -188,9 +208,7 @@ done | tee execution.log
 For `samples/kuma2`:
 
 ```bash
-DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/kuma2 2>&1 | while IFS= read -r line; do 
-  echo "$(date '+%H:%M:%S.%3N') $line"
-done | tee execution.log
+DEBUG_LEVEL=2 go run cmd/son-et/main.go samples/kuma2 > execution.log 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat execution.log
 ```
 
 ### Log Analysis

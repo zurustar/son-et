@@ -99,9 +99,10 @@ When receiving a feature request:
 
 2. **Provide execution commands to user**
    - Generate the complete command sequence for the user
-   - Include timestamped logging for debugging
+   - Use background execution with timeout to prevent orphaned processes
    - Commands must be executable from repository root
    - Use only macOS default commands
+   - Standard format: `go run cmd/son-et/main.go samples/[NAME] > log.txt 2>&1 & PID=$!; sleep 5; kill $PID 2>/dev/null; cat log.txt`
 
 3. **User executes and reports completion**
    - User runs the provided commands

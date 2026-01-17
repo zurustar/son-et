@@ -324,6 +324,13 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
+	if g.tickCount == 0 {
+		fmt.Println("Game.Update: First update call")
+	}
+	if g.tickCount < 5 {
+		fmt.Printf("Game.Update: Update #%d\n", g.tickCount+1)
+	}
+
 	startTime := time.Now()
 	// g.tickCount is frame count, distinct from global tickCount (VM ticks)
 	g.tickCount++
@@ -394,18 +401,45 @@ func (g *Game) Update() error {
 		// fmt.Printf("PERF: Update took %v\n", elapsed)
 	}
 
+	if g.tickCount <= 5 {
+		fmt.Printf("Game.Update: Returning nil (tick #%d)\n", g.tickCount)
+	}
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	if g.tickCount <= 5 {
+		fmt.Printf("Game.Draw: Draw call #%d\n", g.tickCount)
+	}
+
+	// TEMPORARY: Debug nil checks
+	if g == nil {
+		fmt.Println("ERROR: Game is nil in Draw()")
+		return
+	}
+	if g.state == nil {
+		fmt.Println("ERROR: Game.state is nil in Draw()")
+		return
+	}
+	if g.renderer == nil {
+		fmt.Println("ERROR: Game.renderer is nil in Draw()")
+		return
+	}
+	if screen == nil {
+		fmt.Println("ERROR: screen is nil in Draw()")
+		return
+	}
+
+	// TEMPORARY: Force clear screen to test if Draw() is being called
+	screen.Fill(color.RGBA{0, 128, 255, 255}) // Blue background
+
 	// Use the renderer to draw the frame
 	// The renderer will handle locking and reading from state
-	if g.renderer != nil {
-		g.renderer.RenderFrame(screen, g.state)
-	}
+	g.renderer.RenderFrame(screen, g.state)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+	fmt.Printf("Layout called: outside=(%d,%d) -> returning (1280,720)\n", outsideWidth, outsideHeight)
 	return 1280, 720
 }
 
@@ -420,11 +454,15 @@ func Init(fs embed.FS, scriptFunc func()) {
 
 	// Create the game state using the global engine
 	gameState = &Game{
-		state:    globalEngine,
-		renderer: NewEbitenRenderer(),
+		state:      globalEngine,
+		renderer:   NewEbitenRenderer(),
+		tickCount:  0,
+		frameImage: ebiten.NewImage(1280, 720),
 	}
 
 	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowTitle("son-et")
+	fmt.Println("Init: Window configured (1280x720)")
 
 	// Try to load default font
 	SetFont(14, "MS UI Gothic", 0)
@@ -499,18 +537,24 @@ func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc f
 
 	// Create the game state using the global engine
 	gameState = &Game{
-		state:    globalEngine,
-		renderer: NewEbitenRenderer(),
+		state:      globalEngine,
+		renderer:   NewEbitenRenderer(),
+		tickCount:  0,
+		frameImage: ebiten.NewImage(1280, 720),
 	}
 
 	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowTitle("son-et")
+	fmt.Println("InitDirect: Window configured (1280x720)")
 
 	// Try to load default font
 	SetFont(14, "MS UI Gothic", 0)
 
 	// Initialize Audio
 	fmt.Println("=== AUDIO INITIALIZATION START ===")
-	InitializeAudio()
+	// TEMPORARY: Disable audio for testing
+	// InitializeAudio()
+	fmt.Println("=== AUDIO INITIALIZATION SKIPPED (TESTING) ===")
 
 	// SoundFont loading logic
 	sfPath := "default.sf2"
@@ -544,12 +588,16 @@ func InitDirect(assetLoader AssetLoader, imageDecoder ImageDecoder, scriptFunc f
 	}
 
 	// Try to load SoundFont
-	if err := LoadSoundFont(sfPath); err != nil {
-		fmt.Printf("Warning: Could not load SoundFont (%s): %v\n", sfPath, err)
-		fmt.Println("Please provide a .sf2 file via -sf <path> or place a .sf2 file in the directory.")
-	} else {
-		fmt.Printf("Success: SoundFont loaded from %s\n", sfPath)
-	}
+	// TEMPORARY: Skip SoundFont loading for testing
+	/*
+		if err := LoadSoundFont(sfPath); err != nil {
+			fmt.Printf("Warning: Could not load SoundFont (%s): %v\n", sfPath, err)
+			fmt.Println("Please provide a .sf2 file via -sf <path> or place a .sf2 file in the directory.")
+		} else {
+			fmt.Printf("Success: SoundFont loaded from %s\n", sfPath)
+		}
+	*/
+	fmt.Println("=== SOUNDFONT LOADING SKIPPED (TESTING) ===")
 	fmt.Println("=== AUDIO INITIALIZATION END ===")
 }
 
@@ -558,16 +606,36 @@ func Close() {
 }
 
 func Run() {
+	fmt.Printf("Run: About to call ebiten.RunGame with gameState=%v\n", gameState)
+	if gameState == nil {
+		fmt.Println("Run: ERROR - gameState is nil!")
+		return
+	}
+
+	// Verify gameState fields
+	fmt.Printf("Run: gameState.state=%v, gameState.renderer=%v\n", gameState.state, gameState.renderer)
+
+	// Start script execution in background after a short delay
+	// This allows the game loop to start first
+	fmt.Println("Run: Starting goroutine for script execution")
 	go func() {
 		time.Sleep(100 * time.Millisecond)
+		fmt.Println("Run: Executing script function")
 		if script != nil {
 			script()
+		} else {
+			fmt.Println("Run: Warning - script is nil")
 		}
+		fmt.Println("Run: Script function completed")
 	}()
 
+	fmt.Println("Run: Calling ebiten.RunGame...")
+	fmt.Println("Run: This should block until window closes")
 	if err := ebiten.RunGame(gameState); err != nil {
+		fmt.Printf("Run: ebiten.RunGame returned error: %v\n", err)
 		log.Fatal(err)
 	}
+	fmt.Println("Run: ebiten.RunGame returned normally")
 }
 
 // --- API Stubs ---
@@ -617,12 +685,12 @@ func CapTitle(args ...any) {
 }
 
 func WinInfo(mode int) int {
-	// 0: Width, 1: Height ?
+	// 0: Width, 1: Height
 	if mode == 0 {
-		return 640
+		return 1280
 	}
 	if mode == 1 {
-		return 480
+		return 720
 	}
 	return 0
 }
@@ -943,12 +1011,29 @@ func CreatePic(args ...any) int {
 func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 	e.renderMutex.Lock()
 	defer e.renderMutex.Unlock()
-	// Use default dimensions if not specified (variable resolution issue)
-	if w == 0 {
-		w = 640
-	}
-	if h == 0 {
-		h = 480
+
+	fmt.Printf("OpenWin: pic=%d at (%d,%d) size %dx%d\n", pic, x, y, w, h)
+
+	// Use picture dimensions if not specified
+	if w == 0 || h == 0 {
+		if picture, ok := e.pictures[pic]; ok {
+			if w == 0 {
+				w = picture.Width
+			}
+			if h == 0 {
+				h = picture.Height
+			}
+			fmt.Printf("OpenWin: Using picture size: %dx%d\n", w, h)
+		} else {
+			// Fallback to default if picture not found
+			if w == 0 {
+				w = 640
+			}
+			if h == 0 {
+				h = 480
+			}
+			fmt.Printf("OpenWin: Picture %d not found, using default size: %dx%d\n", pic, w, h)
+		}
 	}
 
 	// Debug logging when DEBUG_LEVEL >= 2
@@ -967,16 +1052,6 @@ func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 	g := uint8((col >> 8) & 0xFF)
 	b := uint8(col & 0xFF)
 	bgColor := color.RGBA{r, g, b, 255}
-
-	// If picX/picY are 0 (variable resolution issue), use Y-SARU's expected values
-	// Y-SARU uses winX=-170, winY=-115 to center a ~300x250 image in a 640x480 window
-	if picX == 0 && picY == 0 {
-		// Use the same offset values that Y-SARU script defines
-		// These will be inverted in the Window struct
-		picX = -170
-		picY = -115
-		// fmt.Printf("  Using Y-SARU default offsets: picX=%d, picY=%d\n", picX, picY)
-	}
 
 	e.windows[winID] = &Window{
 		ID:      winID,
@@ -997,9 +1072,9 @@ func (e *EngineState) OpenWin(pic, x, y, w, h, picX, picY, col int) int {
 	// Add to render order
 	e.windowOrder = append(e.windowOrder, winID)
 
-	// DEBUG: Confirm window was added (disabled)
-	// fmt.Printf("  Window %d added. windowOrder len=%d, windows map len=%d\n",
-	//	winID, len(windowOrder), len(windows))
+	// DEBUG: Confirm window was added
+	fmt.Printf("  Window %d added. windowOrder len=%d, windows map len=%d\n",
+		winID, len(e.windowOrder), len(e.windows))
 
 	return winID
 }
@@ -1634,6 +1709,13 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 	// For Assign, Arg[0] is name (Variable or string), Arg[1] is value.
 
 	switch op.Cmd {
+	case interpreter.OpLiteral:
+		// Literal value - return as-is
+		if len(op.Args) > 0 {
+			return op.Args[0], false
+		}
+		return nil, false
+
 	case interpreter.OpAssign:
 		if len(op.Args) >= 2 {
 			varName := ""
@@ -1667,6 +1749,8 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			totalTicks = 1
 		}
 
+		fmt.Printf("VM: Wait(%d steps) -> %d ticks\n", steps, totalTicks)
+
 		// Set wait state in Sequencer
 		seq.waitTicks = totalTicks
 
@@ -1699,6 +1783,42 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 					count, seq.ticksPerStep, GlobalPPQ, seq.mode)
 			}
 		}
+		return nil, false
+
+	case interpreter.OpStep:
+		// step() block: Args[0] = count, Args[1] = body ([]OpCode)
+		if len(op.Args) < 2 {
+			return nil, false
+		}
+
+		count, ok := ResolveArg(op.Args[0], seq).(int)
+		if !ok {
+			count = 1
+		}
+
+		body, ok := op.Args[1].([]OpCode)
+		if !ok {
+			return nil, false
+		}
+
+		fmt.Printf("VM: Step(%d) with %d operations\n", count, len(body))
+
+		// Execute each operation in the body 'count' times
+		for i := 0; i < count; i++ {
+			fmt.Printf("VM: Step iteration %d/%d\n", i+1, count)
+			for opIdx, subOp := range body {
+				fmt.Printf("VM: Step[%d/%d] executing op: %v\n", opIdx+1, len(body), subOp.Cmd)
+				_, yield := ExecuteOp(subOp, seq)
+				if yield {
+					// If any operation yields (like Wait), we should yield too
+					// This prevents blocking the main thread
+					fmt.Printf("VM: Step yielding at iteration %d, op %d\n", i+1, opIdx+1)
+					return nil, true
+				}
+			}
+		}
+
+		fmt.Printf("VM: Step completed all %d iterations\n", count)
 		return nil, false
 
 	// Engine Commands Wrappers
@@ -1795,7 +1915,8 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			fmt.Printf("DEBUG: OpenWin called with %d args: %v\n", len(rArgs), rArgs)
 		}
 
-		// Ensure we have at least 8 arguments, using defaults for missing ones
+		// Ensure we have at least 8 arguments, using 0 for missing ones
+		// Note: 0 for width/height means "use picture dimensions"
 		for len(rArgs) < 8 {
 			rArgs = append(rArgs, 0)
 		}
@@ -2335,6 +2456,50 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 
 		return 0, false
 
+	case interpreter.OpCall:
+		// Function call: Args[0] = function name (string), Args[1..n] = arguments
+		if len(op.Args) < 1 {
+			return nil, false
+		}
+
+		funcName, ok := op.Args[0].(string)
+		if !ok {
+			return nil, false
+		}
+
+		// Resolve arguments
+		args := make([]any, 0, len(op.Args)-1)
+		for i := 1; i < len(op.Args); i++ {
+			args = append(args, ResolveArg(op.Args[i], seq))
+		}
+
+		// Call the engine function
+		return CallEngineFunction(funcName, args...)
+
+	case interpreter.OpRegisterSequence:
+		// Register a new sequence (mes block)
+		// Args[0] = mode (TIME or MIDI_TIME), Args[1] = body ([]OpCode)
+		if len(op.Args) < 2 {
+			return nil, false
+		}
+
+		mode := ResolveArg(op.Args[0], seq)
+		modeInt, ok := mode.(int)
+		if !ok {
+			modeInt = 0 // Default to TIME mode
+		}
+
+		body, ok := op.Args[1].([]OpCode)
+		if !ok {
+			return nil, false
+		}
+
+		// Register the sequence in a goroutine to avoid blocking the main thread
+		// This is critical because RegisterSequence may call wg.Wait() which would
+		// block the Ebiten game loop
+		go RegisterSequence(modeInt, body)
+		return nil, false
+
 	default:
 		// Check user defined functions
 		var fn reflect.Value
@@ -2367,6 +2532,86 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 
 		fmt.Printf("VM Error: Unknown OpCmd %s\n", op.Cmd.String())
+		return nil, false
+	}
+}
+
+// CallEngineFunction calls an engine function by name with the given arguments
+func CallEngineFunction(funcName string, args ...any) (any, bool) {
+	// Normalize function name to lowercase for case-insensitive matching
+	funcName = strings.ToLower(funcName)
+
+	// Map function names to engine functions
+	switch funcName {
+	case "loadpic":
+		if len(args) >= 1 {
+			if filename, ok := args[0].(string); ok {
+				LoadPic(filename)
+			}
+		}
+		return nil, false
+
+	case "openwin":
+		if len(args) >= 1 {
+			if winID, ok := args[0].(int); ok {
+				// OpenWin with default parameters
+				// OpenWin(pic, x, y, w, h, picX, picY, col)
+				// For simplified call OpenWin(winID), use picture dimensions (w=0, h=0)
+				fmt.Printf("VM: Calling OpenWin(%d, 0, 0, 0, 0, 0, 0, 0)\n", winID)
+				OpenWin(winID, 0, 0, 0, 0, 0, 0, 0)
+			}
+		}
+		return nil, false
+
+	case "closewin":
+		if len(args) >= 1 {
+			if winID, ok := args[0].(int); ok {
+				CloseWin(winID)
+			}
+		}
+		return nil, false
+
+	case "movewin":
+		if len(args) >= 2 {
+			winID, ok1 := args[0].(int)
+			picID, ok2 := args[1].(int)
+			if ok1 && ok2 {
+				// MoveWin with default parameters
+				// MoveWin(winID, pic, x, y, w, h, picX, picY)
+				// For simplified call MoveWin(winID, picID), use defaults
+				MoveWin(winID, picID, 0, 0, 640, 480, 0, 0)
+			}
+		}
+		return nil, false
+
+	case "playwave":
+		if len(args) >= 1 {
+			if filename, ok := args[0].(string); ok {
+				PlayWAVE(filename)
+			}
+		}
+		return nil, false
+
+	case "playmidi":
+		if len(args) >= 1 {
+			if filename, ok := args[0].(string); ok {
+				PlayMIDI(filename)
+			}
+		}
+		return nil, false
+
+	case "del_all":
+		// Delete all resources
+		fmt.Printf("VM: del_all called\n")
+		return nil, false
+
+	case "del_me":
+		// Delete current sequence
+		fmt.Printf("VM: del_me called\n")
+		return nil, false
+
+	default:
+		fmt.Printf("VM Warning: Unknown function %s\n", funcName)
 		return nil, false
 	}
 }
@@ -2953,6 +3198,13 @@ func PlayMIDI(args ...any) {
 	fmt.Printf("PlayMIDI: %v\n", args)
 	if len(args) > 0 {
 		if path, ok := args[0].(string); ok {
+			// Try to play MIDI file
+			// If it fails (e.g., no SoundFont), just return without locking
+			if soundFont == nil {
+				fmt.Println("PlayMIDI: Skipping - No SoundFont loaded")
+				return
+			}
+
 			PlayMidiFile(path)
 
 			// Reset ticks to ensure synchronization with new MIDI track

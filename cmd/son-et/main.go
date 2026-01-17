@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"embed"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
@@ -18,8 +20,31 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// Embedded project support
+// These variables can be set at build time using build tags
+var (
+	embeddedFS      embed.FS
+	embeddedProject string
+)
+
 func main() {
-	// Parse command-line flags
+	// Lock to main thread for GUI operations (required on macOS)
+	runtime.LockOSThread()
+
+	// Force OpenGL backend (macOS 15.0 Metal compatibility issue)
+	os.Setenv("EBITEN_GRAPHICS_LIBRARY", "opengl")
+
+	// Check if running in embedded mode
+	if embeddedProject != "" {
+		fmt.Fprintf(os.Stderr, "Running embedded project: %s\n", embeddedProject)
+		if err := executeEmbedded(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Parse command-line flags for direct mode
 	helpFlag := flag.Bool("help", false, "Display usage information")
 	flag.Parse()
 
@@ -207,8 +232,8 @@ func findTFYFiles(directory string) ([]string, error) {
 		name := entry.Name()
 		ext := strings.ToLower(filepath.Ext(name))
 
-		// Look for .tfy or .fil files
-		if ext == ".tfy" || ext == ".fil" {
+		// Look for .tfy files only (not .fil which are binary)
+		if ext == ".tfy" {
 			tfyFiles = append(tfyFiles, filepath.Join(directory, name))
 		}
 	}
@@ -363,4 +388,177 @@ func (e *RuntimeError) Error() string {
 		return fmt.Sprintf("Runtime error at line %d: %s", e.Line, e.Message)
 	}
 	return fmt.Sprintf("Runtime error: %s", e.Message)
+}
+
+// executeEmbedded executes the embedded TFY project
+func executeEmbedded() error {
+	fmt.Fprintf(os.Stderr, "Executing embedded project: %s\n", embeddedProject)
+
+	// Step 1: Locate TFY files in embedded filesystem
+	tfyFiles, err := findEmbeddedTFYFiles()
+	if err != nil {
+		return fmt.Errorf("failed to find embedded TFY files: %w", err)
+	}
+
+	if len(tfyFiles) == 0 {
+		return fmt.Errorf("no TFY files found in embedded project")
+	}
+
+	fmt.Fprintf(os.Stderr, "Found %d embedded TFY file(s)\n", len(tfyFiles))
+
+	// Step 2: Read and parse TFY files (with #include support)
+	entryFile := tfyFiles[0]
+	for _, f := range tfyFiles {
+		if strings.ToLower(filepath.Base(f)) == "main.tfy" {
+			entryFile = f
+			break
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Entry file: %s\n", filepath.Base(entryFile))
+
+	// Read and merge files (handling #include directives)
+	included := make(map[string]bool)
+	fullCode, err := recursiveReadEmbedded(entryFile, included)
+	if err != nil {
+		return fmt.Errorf("failed to read embedded TFY files: %w", err)
+	}
+
+	// Step 3: Parse the code
+	l := lexer.New(string(fullCode))
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 0 {
+		fmt.Fprintf(os.Stderr, "\n=== PARSING ERRORS ===\n")
+		fmt.Fprintf(os.Stderr, "File: %s\n\n", entryFile)
+		for i, msg := range p.Errors() {
+			fmt.Fprintf(os.Stderr, "Error %d: %s\n", i+1, msg)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+		return fmt.Errorf("parse errors in %s", entryFile)
+	}
+
+	fmt.Fprintf(os.Stderr, "Parsing successful\n")
+
+	// Step 4: Convert to OpCode using interpreter
+	interp := interpreter.NewInterpreter()
+	script, err := interp.Interpret(program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n=== INTERPRETATION ERROR ===\n")
+		fmt.Fprintf(os.Stderr, "Failed to convert TFY script to OpCode:\n")
+		fmt.Fprintf(os.Stderr, "%v\n\n", err)
+		return fmt.Errorf("failed to interpret script: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Interpreted script: %d globals, %d functions, %d assets\n",
+		len(script.Globals), len(script.Functions), len(script.Assets))
+
+	// Step 5: Initialize engine with EmbeddedAssetLoader
+	assetLoader := engine.NewEmbedFSAssetLoader(embeddedFS)
+	imageDecoder := engine.NewBMPImageDecoder()
+
+	// Initialize the engine
+	engine.InitDirect(assetLoader, imageDecoder, func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "\n=== RUNTIME ERROR ===\n")
+				fmt.Fprintf(os.Stderr, "The program encountered a runtime error:\n")
+				fmt.Fprintf(os.Stderr, "%v\n\n", r)
+				fmt.Fprintf(os.Stderr, "This may be due to:\n")
+				fmt.Fprintf(os.Stderr, "  - Invalid function calls or arguments\n")
+				fmt.Fprintf(os.Stderr, "  - Missing or corrupted embedded assets\n")
+				fmt.Fprintf(os.Stderr, "  - Unsupported operations\n\n")
+			}
+		}()
+
+		// Convert interpreter OpCode to engine OpCode format
+		engineOps := convertToEngineOpCodes(script.Main.Body)
+
+		// Register the main sequence
+		engine.RegisterSequence(engine.Time, engineOps)
+	})
+
+	// Step 6: Start the engine
+	fmt.Fprintf(os.Stderr, "Starting engine...\n")
+	engine.Run()
+
+	return nil
+}
+
+// findEmbeddedTFYFiles locates all .tfy files in the embedded filesystem
+func findEmbeddedTFYFiles() ([]string, error) {
+	var tfyFiles []string
+
+	entries, err := embeddedFS.ReadDir(".")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read embedded directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+
+		if ext == ".tfy" || ext == ".fil" {
+			tfyFiles = append(tfyFiles, name)
+		}
+	}
+
+	return tfyFiles, nil
+}
+
+// recursiveReadEmbedded reads a file and its includes recursively from embedded FS
+func recursiveReadEmbedded(path string, included map[string]bool) ([]byte, error) {
+	if included[path] {
+		return []byte{}, nil
+	}
+	included[path] = true
+
+	raw, err := embeddedFS.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read embedded file %s: %w", path, err)
+	}
+
+	reader := transform.NewReader(bytes.NewReader(raw), japanese.ShiftJIS.NewDecoder())
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode embedded file %s: %w", path, err)
+	}
+
+	var output bytes.Buffer
+	scanner := bufio.NewScanner(bytes.NewReader(decoded))
+	dir := filepath.Dir(path)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "#include") {
+			start := strings.Index(trimmed, "\"")
+			end := strings.LastIndex(trimmed, "\"")
+			if start != -1 && end != -1 && end > start {
+				target := trimmed[start+1 : end]
+				targetPath := filepath.Join(dir, target)
+
+				inContent, err := recursiveReadEmbedded(targetPath, included)
+				if err != nil {
+					return nil, fmt.Errorf("error including %s from %s: %w", target, path, err)
+				}
+				output.Write(inContent)
+				output.WriteString("\n")
+			} else {
+				output.WriteString(line)
+				output.WriteString("\n")
+			}
+		} else {
+			output.WriteString(line)
+			output.WriteString("\n")
+		}
+	}
+
+	return output.Bytes(), nil
 }
