@@ -45,8 +45,28 @@ func NewTickGenerator(sampleRate, ppq int, tempoMap []TempoEvent) (*TickGenerato
 		tempoMap = []TempoEvent{{Tick: 0, MicrosPerBeat: 500000}} // 120 BPM
 	}
 
+	// Find the last tempo event at tick 0 (in case there are multiple)
+	initialTempoIndex := 0
+	for i := 1; i < len(tempoMap); i++ {
+		if tempoMap[i].Tick == 0 {
+			initialTempoIndex = i
+		} else {
+			break
+		}
+	}
+
 	// Calculate initial tempo in BPM
-	initialTempoBPM := 60000000.0 / float64(tempoMap[0].MicrosPerBeat)
+	initialTempoBPM := 60000000.0 / float64(tempoMap[initialTempoIndex].MicrosPerBeat)
+
+	// Debug: log tempo map
+	fmt.Printf("TickGenerator: Creating with sampleRate=%d, PPQ=%d\n", sampleRate, ppq)
+	fmt.Printf("TickGenerator: tempoMap has %d events\n", len(tempoMap))
+	for i, ev := range tempoMap {
+		bpm := 60000000.0 / float64(ev.MicrosPerBeat)
+		fmt.Printf("  Event %d: Tick=%d, MicrosPerBeat=%d, BPM=%.2f\n",
+			i, ev.Tick, ev.MicrosPerBeat, bpm)
+	}
+	fmt.Printf("TickGenerator: Using initial tempo from event %d: %.2f BPM\n", initialTempoIndex, initialTempoBPM)
 
 	tg := &TickGenerator{
 		sampleRate:        sampleRate,
@@ -55,7 +75,7 @@ func NewTickGenerator(sampleRate, ppq int, tempoMap []TempoEvent) (*TickGenerato
 		currentSamples:    0,
 		fractionalTick:    0.0,
 		lastDeliveredTick: 0,
-		tempoMapIndex:     0,
+		tempoMapIndex:     initialTempoIndex,
 		currentTempo:      initialTempoBPM,
 	}
 

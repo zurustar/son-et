@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
@@ -359,14 +358,6 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 	// 4 bytes per sample (2 channels * 2 bytes).
 	numSamples := len(p) / 4
 
-	// Log first few Read() calls
-	if s.tickGenerator != nil && s.tickGenerator.currentSamples < 200000 {
-		fmt.Printf("[%s] MidiStream.Read: numSamples=%d, totalSamples=%d\n",
-			time.Now().Format("15:04:05.000"),
-			numSamples,
-			s.tickGenerator.currentSamples)
-	}
-
 	if len(s.leftBuf) < numSamples {
 		s.leftBuf = make([]float32, numSamples)
 		s.rightBuf = make([]float32, numSamples)
@@ -376,10 +367,20 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 	s.sequencer.Render(s.leftBuf[:numSamples], s.rightBuf[:numSamples])
 
 	// Update Clock using TickGenerator
+	// Process in smaller chunks to deliver ticks more frequently
+	// This reduces the "jerky" animation effect
 	if s.tickGenerator != nil {
-		newTick := s.tickGenerator.ProcessSamples(numSamples)
-		if newTick >= 0 {
-			NotifyTick(newTick)
+		chunkSize := 512 // Process ~11ms chunks (at 44100 Hz) = ~11 ticks
+		for offset := 0; offset < numSamples; offset += chunkSize {
+			size := chunkSize
+			if offset+size > numSamples {
+				size = numSamples - offset
+			}
+
+			newTick := s.tickGenerator.ProcessSamples(size)
+			if newTick >= 0 {
+				NotifyTick(newTick)
+			}
 		}
 	}
 

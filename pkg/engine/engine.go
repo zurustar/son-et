@@ -387,24 +387,17 @@ func (g *Game) Update() error {
 			return nil
 		}
 
-		// Limit catch-up to avoid spiral of death
-		// At 128 BPM with PPQ=480, we generate ~1024 ticks/second
-		// At 60 FPS, that's ~17 ticks per frame
-		// Allow up to 100 ticks per frame to handle audio buffer delays
-		loops := 0
-
+		// Process all ticks up to current target
+		// We must call UpdateVM for each tick to maintain correct wait countdown
 		tickLock.Lock()
-		// We read global tickCount inside lock
-		for tickCount < currentTarget && loops < 100 {
+		for tickCount < currentTarget {
 			tickCount++
 			currentTick := int(tickCount)
-			// Unlock during UpdateVM to avoid holding lock while VM runs (which might call Wait -> tickLock)
 			tickLock.Unlock()
 
 			UpdateVM(currentTick)
 
-			tickLock.Lock() // Re-acquire for loop check
-			loops++
+			tickLock.Lock()
 		}
 		tickLock.Unlock()
 	}
@@ -2017,7 +2010,9 @@ func UpdateVM(currentTick int) {
 			}
 		}
 
-		// Handle Wait
+		// Handle Wait - decrement by 1 tick per call
+		// Note: In optimized mode, we may skip ticks, but UpdateVM is called
+		// at the correct frequency to maintain timing
 		if seq.waitTicks > 0 {
 			seq.waitTicks--
 			continue
