@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -331,9 +332,17 @@ func (g *Game) Update() error {
 	// TERMINATION FLOW:
 	// Check for program termination FIRST before any other processing
 	// This ensures immediate response to termination requests
+	// Program can only terminate if all sequences are done AND no MIDI is playing
 	if programTerminated {
-		fmt.Println("Game.Update: Program terminated, returning Termination")
-		return ebiten.Termination
+		// Check if MIDI is still playing (player exists and not finished)
+		if midiPlayer != nil && !midiFinished {
+			// MIDI is still playing, don't terminate yet
+			// Continue running the game loop
+		} else {
+			// Either no MIDI player or MIDI has finished
+			fmt.Println("Game.Update: Program terminated (all sequences done, MIDI finished or not playing), returning Termination")
+			return ebiten.Termination
+		}
 	}
 
 	// Check for ESC key press to allow user to terminate execution
@@ -705,20 +714,79 @@ func runHeadless() {
 	fmt.Printf("[%s] runHeadless: Starting 60 FPS ticker for VM updates\n",
 		time.Now().Format("15:04:05.000"))
 
-	tickCounter := 0
+	frameCounter := 0
 
 	// Run for a reasonable time or until interrupted
 	// In headless mode, we rely on timeout flag to terminate
 	for {
 		<-ticker.C
-		tickCounter++
+		frameCounter++
 
-		// Update VM state (always call UpdateVM, it will check sequencers internally)
-		UpdateVM(tickCounter)
+		// Check for program termination FIRST
+		// Program can only terminate if all sequences are done AND no MIDI is playing
+		if programTerminated {
+			// Check if MIDI is still playing (player exists and not finished)
+			if midiPlayer != nil && !midiFinished {
+				// MIDI is still playing, don't terminate yet
+				// Continue running the loop
+				if frameCounter%60 == 0 { // Log once per second
+					fmt.Printf("[%s] runHeadless: Waiting for MIDI to finish (midiPlayer=%v, midiFinished=%v)\n",
+						time.Now().Format("15:04:05.000"), midiPlayer != nil, midiFinished)
+				}
+			} else {
+				// Either no MIDI player or MIDI has finished
+				fmt.Printf("[%s] runHeadless: Program terminated (all sequences done, MIDI finished or not playing), exiting loop\n",
+					time.Now().Format("15:04:05.000"))
+				break
+			}
+		}
 
-		// Check if we should continue (could add completion detection here)
-		// For now, we just run until timeout or Ctrl+C
+		// Update VM state based on mode
+		if !midiSyncMode {
+			// TIME MODE (Async / Frame-based)
+			// Run exactly once per frame (60FPS)
+			tickLock.Lock()
+			tickCount++
+			currentTick := int(tickCount)
+			tickLock.Unlock()
+
+			UpdateVM(currentTick)
+		} else {
+			// MIDI SYNC MODE
+			// Process all ticks up to current target
+			currentTarget := atomic.LoadInt64(&targetTick)
+
+			tickLock.Lock()
+			for tickCount < currentTarget {
+				tickCount++
+				currentTick := int(tickCount)
+				tickLock.Unlock()
+
+				UpdateVM(currentTick)
+
+				tickLock.Lock()
+			}
+			tickLock.Unlock()
+		}
+
+		// Check for program termination after VM update
+		// This ensures we exit immediately after all sequences finish AND MIDI playback ends
+		if programTerminated {
+			// Check if MIDI is still playing (player exists and not finished)
+			if midiPlayer != nil && !midiFinished {
+				// MIDI is still playing, don't terminate yet
+				// Continue running the loop
+			} else {
+				// Either no MIDI player or MIDI has finished
+				fmt.Printf("[%s] runHeadless: Program terminated after VM update (all sequences done, MIDI finished or not playing), exiting loop\n",
+					time.Now().Format("15:04:05.000"))
+				break
+			}
+		}
 	}
+
+	fmt.Printf("[%s] runHeadless: Execution completed\n",
+		time.Now().Format("15:04:05.000"))
 }
 
 // processHeadlessAudio manually processes audio buffers in headless mode
@@ -1665,7 +1733,8 @@ var (
 func NotifyTick(tick int) {
 	// Update target tick (Audio Thread)
 	// We do NOT execute VM here to avoid threading issues with Ebiten/GPU
-	if tick <= 5 || tick%100 == 0 {
+	// Only log if program is not terminated (to reduce log spam when waiting for MIDI)
+	if debugLevel >= 2 && !programTerminated && (tick <= 5 || tick%100 == 0) {
 		fmt.Printf("[%s] NotifyTick: tick=%d\n", time.Now().Format("15:04:05.000"), tick)
 	}
 	atomic.StoreInt64(&targetTick, int64(tick))
@@ -1871,6 +1940,14 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 
 	vmLock.Lock()
 
+	// If a new sequence is being registered, reset programTerminated
+	// This allows new sequences to execute even if previous sequences finished
+	if programTerminated {
+		fmt.Printf("[%s] RegisterSequence: Resetting programTerminated (new sequence registered)\n",
+			time.Now().Format("15:04:05.000"))
+		programTerminated = false
+	}
+
 	// Determine sync mode
 	if mode == MidiTime { // 1
 		midiSyncMode = true
@@ -1911,7 +1988,8 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 		}
 	}
 
-	mainSequencer = &Sequencer{
+	// Create new sequencer for this mes() block
+	newSeq := &Sequencer{
 		commands:     ops,
 		pc:           0,
 		waitTicks:    0,
@@ -1924,10 +2002,14 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 	}
 
 	// Add to sequencers list for parallel execution
-	sequencers = append(sequencers, mainSequencer)
+	sequencers = append(sequencers, newSeq)
 	seqIndex := len(sequencers) - 1
 	fmt.Printf("[%s] RegisterSequence: Added sequence at index %d (total: %d)\n",
 		time.Now().Format("15:04:05.000"), seqIndex, len(sequencers))
+
+	// DO NOT overwrite mainSequencer - it should remain the main() sequence
+	// The new sequence will be executed in parallel via the sequencers list
+
 	vmLock.Unlock()
 
 	// Return immediately - no blocking
@@ -1993,8 +2075,11 @@ func UpdateVM(currentTick int) {
 		}
 
 		if debugLevel >= 1 {
-			fmt.Printf("[%s] UpdateVM: Program terminated, skipping VM execution\n",
-				time.Now().Format("15:04:05.000"))
+			// Log only once per 10 seconds when waiting for MIDI to finish
+			if currentTick%600 == 0 {
+				fmt.Printf("[%s] UpdateVM: Program terminated, waiting for MIDI to finish\n",
+					time.Now().Format("15:04:05.000"))
+			}
 		}
 		return
 	}
@@ -2059,21 +2144,23 @@ func UpdateVM(currentTick int) {
 		}
 
 		// Execute Instructions
-		// We execute until we hit a Wait or End
-		for seq.pc < len(seq.commands) {
+		// Execute ONE command per frame (unless it yields)
+		if seq.pc < len(seq.commands) {
 			op := seq.commands[seq.pc]
 
 			// Measure command execution time
 			cmdStart := time.Now()
 
 			// Debug Log (enabled for debugging)
-			fmt.Printf("[%s] VM: Executing [%d] %s (Tick %d) [Seq %d]\n",
-				time.Now().Format("15:04:05.000"), seq.pc, op.Cmd.String(), tickCount, i)
+			if debugLevel >= 3 {
+				fmt.Printf("[%s] VM: Executing [%d] %s (Tick %d) [Seq %d]\n",
+					time.Now().Format("15:04:05.000"), seq.pc, op.Cmd.String(), tickCount, i)
+			}
 
 			seq.pc++
 
 			// Execute Op
-			result, yield := ExecuteOp(op, seq)
+			result, _ := ExecuteOp(op, seq)
 
 			// Check for termination signal
 			if result == ebiten.Termination {
@@ -2089,26 +2176,47 @@ func UpdateVM(currentTick int) {
 				fmt.Printf("PERF: [%d] %s took %v\n", seq.pc-1, op.Cmd.String(), cmdElapsed)
 			}
 
-			if yield {
-				// If ExecuteOp returns true, it means we must wait (Yield)
-				// Don't check for sequence completion, just move to next sequence
-				goto nextSequence
-			}
+			// Note: yield is ignored here - we always move to next sequence after executing one command
+			// This ensures each sequence gets one command per frame
 		}
 
-		if seq.pc >= len(seq.commands) && !seq.inStep {
-			// End of sequence - mark as complete
-			seq.active = false
-			fmt.Printf("[%s] VM: Sequence %d Finished (pc=%d, commands=%d)\n",
-				time.Now().Format("15:04:05.000"), i, seq.pc, len(seq.commands))
-			if seq.onComplete != nil {
-				fmt.Printf("[%s] VM: Calling onComplete callback for sequence %d]\n",
-					time.Now().Format("15:04:05.000"), i)
-				seq.onComplete()
-				seq.onComplete = nil // Ensure only called once
+		if seq.pc >= len(seq.commands) && !seq.inStep && seq.active {
+			// End of sequence
+			if seq.mode == Time || seq.mode == MidiTime {
+				// TIME and MIDI_TIME modes loop back to beginning
+				seq.pc = 0
+				if debugLevel >= 2 {
+					fmt.Printf("[%s] VM: Sequence %d looping back to beginning (mode=%d)\n",
+						time.Now().Format("15:04:05.000"), i, seq.mode)
+				}
+			} else {
+				// Other modes - mark as complete
+				seq.active = false
+				fmt.Printf("[%s] VM: Sequence %d Finished (pc=%d, commands=%d)\n",
+					time.Now().Format("15:04:05.000"), i, seq.pc, len(seq.commands))
+				if seq.onComplete != nil {
+					fmt.Printf("[%s] VM: Calling onComplete callback for sequence %d]\n",
+						time.Now().Format("15:04:05.000"), i)
+					seq.onComplete()
+					seq.onComplete = nil // Ensure only called once
+				}
 			}
 		}
-	nextSequence:
+	}
+
+	// Check if all sequences have finished
+	allFinished := true
+	for _, seq := range sequencers {
+		if seq != nil && seq.active {
+			allFinished = false
+			break
+		}
+	}
+
+	// If all sequences are finished, terminate the program
+	if allFinished && len(sequencers) > 0 {
+		fmt.Println("UpdateVM: All sequences finished, terminating program")
+		programTerminated = true
 	}
 }
 
@@ -3218,7 +3326,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		}
 
 		// Call the engine function
-		return CallEngineFunction(funcName, args...)
+		return CallEngineFunction(funcName, seq, args...)
 
 	case interpreter.OpRegisterSequence:
 		// Register a new sequence (mes block)
@@ -3290,7 +3398,7 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 }
 
 // CallEngineFunction calls an engine function by name with the given arguments
-func CallEngineFunction(funcName string, args ...any) (any, bool) {
+func CallEngineFunction(funcName string, seq *Sequencer, args ...any) (any, bool) {
 	// Normalize function name to lowercase for case-insensitive matching
 	originalName := funcName
 	funcName = strings.ToLower(funcName)
@@ -3482,41 +3590,23 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 
 	case "del_me":
 		// Delete current sequence
-		// In MIDI_TIME mode, this should NOT exit the program if other MIDI_TIME sequences are active
-		fmt.Printf("VM: del_me called\n")
+		// Mark the CURRENT sequence (seq) as inactive
+		// This does NOT terminate the program - other sequences continue running
+		if debugLevel >= 1 {
+			fmt.Printf("VM: del_me called for current sequence\n")
+		}
 
-		// IMPORTANT: Check for MIDI_TIME sequencers BEFORE deactivating mainSequencer
-		// because mainSequencer might BE the MIDI_TIME sequencer
-		// NOTE: vmLock is already held by UpdateVM, so we don't need to lock here
-		fmt.Printf("VM: del_me - checking %d sequencers\n", len(sequencers))
-		hasMidiTimeSequencers := false
-		for i, s := range sequencers {
-			if s != nil {
-				fmt.Printf("VM: del_me - sequencer[%d]: active=%v, mode=%d (MidiTime=%d)\n",
-					i, s.active, s.mode, MidiTime)
-				if s.active && s.mode == MidiTime {
-					hasMidiTimeSequencers = true
-					fmt.Printf("VM: del_me - found active MIDI_TIME sequencer at index %d\n", i)
-				}
+		// Mark current sequence as inactive
+		if seq != nil {
+			seq.active = false
+			if debugLevel >= 1 {
+				fmt.Printf("VM: del_me - deactivated current sequence (mode=%d)\n", seq.mode)
 			}
 		}
 
-		// Only deactivate mainSequencer if it's NOT a MIDI_TIME sequencer
-		if mainSequencer != nil && mainSequencer.mode != MidiTime {
-			mainSequencer.active = false
-			fmt.Printf("VM: del_me - deactivated main sequencer (TIME mode)\n")
-		} else if mainSequencer != nil {
-			fmt.Printf("VM: del_me - keeping main sequencer active (MIDI_TIME mode)\n")
-		}
-
-		if hasMidiTimeSequencers {
-			fmt.Printf("VM: del_me - MIDI_TIME sequencers active, continuing execution\n")
-			return nil, false
-		}
-
-		// No MIDI_TIME sequencers, set termination flag
-		fmt.Printf("VM: del_me - no MIDI_TIME sequencers, setting termination flag\n")
-		programTerminated = true
+		// del_me only terminates the current sequence
+		// It does NOT terminate the program or other sequences
+		// MIDI playback continues, other mes() blocks continue
 		return nil, false
 
 	case "strprint":
@@ -3634,6 +3724,19 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		}
 		return nil, false
 
+	case "random":
+		// Random(n) - return random integer from 0 to n-1
+		if len(args) >= 1 {
+			if n, ok := args[0].(int); ok {
+				if n <= 0 {
+					return 0, false
+				}
+				result := Random(n)
+				return result, false
+			}
+		}
+		return 0, false
+
 	default:
 		// CRITICAL ERROR: Unknown function called
 		// This indicates the function is not implemented in the runtime
@@ -3731,6 +3834,15 @@ func StrUp(s string) string {
 // StrLow converts all uppercase letters to lowercase
 func StrLow(s string) string {
 	return strings.ToLower(s)
+}
+
+// Random returns a random integer from 0 to n-1
+// This matches FILLY's Random() function behavior
+func Random(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	return rand.Intn(n)
 }
 
 // PutCast creates a new cast (EngineState method)
@@ -4256,13 +4368,6 @@ func PicHeight(pic int) int {
 		return p.Height
 	}
 	return 100 // Default fallback
-}
-
-func Random(max int) int {
-	if max <= 0 {
-		return 0
-	}
-	return int(time.Now().UnixNano()) % max
 }
 
 func PlayMIDI(args ...any) {

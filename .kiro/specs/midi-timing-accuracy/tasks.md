@@ -33,11 +33,11 @@ The implementation has been completed with the following key changes:
   - Initialize state fields to zero/default values
   - _Requirements: 1.1, 1.3, 8.2_
 
-- [ ]* 1.1 Write property test for TickGenerator initialization
+- [ ] 1.1 Write property test for TickGenerator initialization
   - **Property 1: Tick Calculation Formula Accuracy**
   - **Validates: Requirements 1.1, 1.4**
 
-- [ ]* 1.2 Write unit tests for invalid inputs
+- [x]* 1.2 Write unit tests for invalid inputs
   - Test zero sample rate returns error
   - Test negative sample rate returns error
   - Test zero PPQ returns error
@@ -53,11 +53,11 @@ The implementation has been completed with the following key changes:
     - If unchanged, return -1
     - _Requirements: 1.1, 1.3, 1.4, 2.1_
 
-  - [ ]* 2.2 Write property test for fractional precision preservation
+  - [x]* 2.2 Write property test for fractional precision preservation
     - **Property 2: Fractional Precision Preservation**
     - **Validates: Requirements 1.3, 5.2**
 
-  - [ ]* 2.3 Write property test for tick calculation formula
+  - [x]* 2.3 Write property test for tick calculation formula
     - **Property 1: Tick Calculation Formula Accuracy**
     - **Validates: Requirements 1.1, 1.4**
 
@@ -70,11 +70,11 @@ The implementation has been completed with the following key changes:
     - Maintain tick continuity across boundaries
     - _Requirements: 1.2, 4.1, 4.2, 4.3, 4.4_
 
-  - [ ]* 3.2 Write property test for tempo change correctness
+  - [x]* 3.2 Write property test for tempo change correctness
     - **Property 3: Tempo Change Correctness**
     - **Validates: Requirements 1.2, 4.1, 4.2, 4.3, 4.4**
 
-  - [ ]* 3.3 Write unit tests for tempo change edge cases
+  - [~]* 3.3 Write unit tests for tempo change edge cases
     - Test tempo change at tick 0
     - Test multiple tempo changes in one buffer
     - Test tempo change at exact buffer boundary
@@ -86,7 +86,7 @@ The implementation has been completed with the following key changes:
   - Implement `Reset()` - resets all state to initial values
   - _Requirements: 8.4_
 
-- [ ]* 4.1 Write unit tests for helper methods
+- [~]* 4.1 Write unit tests for helper methods
   - Test GetCurrentTick returns correct value
   - Test GetFractionalTick returns precise value
   - Test Reset clears all state
@@ -108,11 +108,11 @@ The implementation has been completed with the following key changes:
     - Update `lastDeliveredTick` after delivery
     - _Requirements: 2.1, 2.2, 2.4_
 
-  - [ ]* 5.3 Write property test for single tick delivery
+  - [~]* 5.3 Write property test for single tick delivery
     - **Property 4: Single Tick Delivery**
     - **Validates: Requirements 2.1, 2.2**
 
-  - [ ]* 5.4 Write property test for monotonic tick progression
+  - [~]* 5.4 Write property test for monotonic tick progression
     - **Property 5: Monotonic Tick Progression**
     - **Validates: Requirements 2.4, 4.3**
 
@@ -138,29 +138,29 @@ The implementation has been completed with the following key changes:
     - Use format: `[HH:MM:SS.mmm] TickGenerator: tick=%d, tempo=%.2f BPM, samples=%d`
     - _Requirements: 3.3, 7.3_
 
-  - [ ]* 7.2 Write property test for timing information logging
+  - [~]* 7.2 Write property test for timing information logging
     - **Property 14: Timing Information Logging**
     - **Validates: Requirements 3.3, 7.3**
 
-  - [ ]* 7.3 Write property test for wait operation timing accuracy
+  - [~]* 7.3 Write property test for wait operation timing accuracy
     - **Property 8: Wait Operation Timing Accuracy**
     - **Validates: Requirements 3.2**
 
 - [ ] 8. Implement buffer size determinism
-  - [ ]* 8.1 Write property test for buffer size determinism
+  - [~]* 8.1 Write property test for buffer size determinism
     - **Property 11: Buffer Size Determinism**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
-  - [ ]* 8.2 Write property test for regular tick delivery intervals
+  - [~]* 8.2 Write property test for regular tick delivery intervals
     - **Property 6: Regular Tick Delivery Intervals**
     - **Validates: Requirements 2.3**
 
 - [ ] 9. Add headless mode verification
-  - [ ]* 9.1 Write property test for headless mode equivalence
+  - [~]* 9.1 Write property test for headless mode equivalence
     - **Property 12: Headless Mode Equivalence**
     - **Validates: Requirements 3.4, 7.1, 7.4**
 
-  - [ ]* 9.2 Write property test for headless mode timing accuracy
+  - [~]* 9.2 Write property test for headless mode timing accuracy
     - **Property 13: Headless Mode Timing Accuracy**
     - **Validates: Requirements 7.2**
 
@@ -179,34 +179,34 @@ The implementation has been completed with the following key changes:
     - Log: `"MIDI playback ended during wait, resuming execution"`
     - _Requirements: 6.4_
 
-  - [ ]* 10.3 Write unit tests for error handling
+  - [~]* 10.3 Write unit tests for error handling
     - Test invalid tempo handling
     - Test MIDI end during wait
     - _Requirements: 8.1, 6.4_
 
 - [ ] 11. Add VM integration tests
-  - [ ]* 11.1 Write property test for wait operation tick calculation
+  - [~]* 11.1 Write property test for wait operation tick calculation
     - **Property 7: Wait Operation Tick Calculation**
     - **Validates: Requirements 3.1, 6.1**
 
-  - [ ]* 11.2 Write property test for wait resume latency
+  - [~]* 11.2 Write property test for wait resume latency
     - **Property 9: Wait Resume Latency**
     - **Validates: Requirements 6.2**
 
-  - [ ]* 11.3 Write property test for multi-buffer wait handling
+  - [~]* 11.3 Write property test for multi-buffer wait handling
     - **Property 10: Multi-Buffer Wait Handling**
     - **Validates: Requirements 6.3**
 
 - [ ] 12. Add edge case handling
-  - [ ]* 12.1 Write property test for delayed processing catch-up
+  - [~]* 12.1 Write property test for delayed processing catch-up
     - **Property 15: Delayed Processing Catch-Up**
     - **Validates: Requirements 8.3**
 
-  - [ ]* 12.2 Write property test for pause state preservation
+  - [~]* 12.2 Write property test for pause state preservation
     - **Property 16: Pause State Preservation**
     - **Validates: Requirements 8.4**
 
-  - [ ]* 12.3 Write unit tests for edge cases
+  - [~]* 12.3 Write unit tests for edge cases
     - Test zero-length audio buffers
     - Test first buffer (initialization)
     - Test very large buffer sizes
@@ -235,3 +235,88 @@ The implementation has been completed with the following key changes:
 - Property tests validate universal correctness properties with 100+ iterations
 - Unit tests validate specific examples and edge cases
 - Integration tests verify end-to-end behavior with real MIDI files
+
+
+## Additional Tasks - Logging and Termination Issues
+
+- [x] 15. Reduce excessive logging during normal execution
+  - [x] 15.1 Reduce VM execution logging
+    - Modified "VM: Executing" log to only output at debugLevel >= 3
+    - Location: pkg/engine/engine.go:2155
+    - _Status: Completed and verified with kuma2_
+
+  - [x] 15.2 Reduce NotifyTick logging
+    - Modified "NotifyTick" log to only output at debugLevel >= 2
+    - Location: pkg/engine/engine.go:1738
+    - _Status: Completed and verified with kuma2_
+
+  - [x] 15.3 Reduce MIDI wait logging frequency
+    - Changed "Program terminated, waiting for MIDI" log from 1/second to 1/10seconds
+    - Modified from `currentTick%60` to `currentTick%600`
+    - Location: pkg/engine/engine.go:2078
+    - _Status: Completed and verified with kuma2_
+
+- [ ] 16. Fix yosemiya MIDI termination hang
+  - **Problem**: yosemiya continues waiting for MIDI to finish for 5+ minutes after all sequences complete
+  - **Expected**: MIDI should finish in ~64 seconds (46,210 ticks at 120 BPM, 48 PPQ)
+  - **Symptoms**:
+    - "All sequences finished, terminating program" appears at 23:59:42
+    - "Program terminated, waiting for MIDI to finish" continues every 10 seconds indefinitely
+    - Program never terminates naturally
+  
+  - [ ] 16.1 Add debug logging to investigate midiFinished flag
+    - Add logging in MidiStream.Read() to show:
+      - currentTick vs totalTicks comparison
+      - midiFinished flag state
+      - endReported flag state
+    - Add logging in UpdateVM/Game.Update to show:
+      - midiPlayer != nil check result
+      - midiFinished value when waiting
+      - Current tick count
+    - Location: pkg/engine/midi_player.go:480, pkg/engine/engine.go:2077
+    - _Requirements: Debug and fix termination logic_
+
+  - [ ] 16.2 Verify MidiStream.Read() is being called
+    - Confirm audio processing continues after program termination
+    - Check if Read() reaches the totalTicks check
+    - Verify CalculateTickFromTime() returns correct values
+    - _Requirements: Ensure audio thread continues processing_
+
+  - [ ] 16.3 Check for multiple MIDI player instances
+    - Verify only one midiPlayer exists at termination time
+    - Check if PlayMIDI creates new player without cleaning up old one
+    - Ensure midiFinished flag applies to the correct player
+    - _Requirements: Single MIDI player instance management_
+
+  - [ ] 16.4 Test with debug output
+    - Run: `DEBUG_LEVEL=2 go run ./cmd/son-et/main.go samples/yosemiya > yosemiya_debug.log 2>&1 & PID=$!; sleep 120; kill -9 -$PID 2>/dev/null; wait $PID 2>/dev/null`
+    - Analyze logs for tick progression and midiFinished state
+    - Compare expected vs actual MIDI duration
+    - _Requirements: Reproduce and diagnose issue_
+
+  - [ ] 16.5 Implement fix based on findings
+    - Fix identified issue with midiFinished flag or tick calculation
+    - Ensure proper cleanup when MIDI ends
+    - Test with both kuma2 and yosemiya samples
+    - _Requirements: Correct MIDI termination behavior_
+
+## Debug Information
+
+### yosemiya MIDI Details
+- File: YOSEMIYA.MID
+- Total ticks: 46,210
+- PPQ: 48
+- Initial BPM: 120
+- Expected duration: ~64 seconds
+- Script calls PlayMIDI() at end of main()
+
+### Related Files
+- pkg/engine/engine.go (UpdateVM, Game.Update, runHeadless termination logic)
+- pkg/engine/midi_player.go (MidiStream.Read, PlayMIDI, midiFinished flag)
+- samples/yosemiya/YOSEMIYA.TFY (script structure)
+
+### Verified Working
+- kuma2 terminates correctly after MIDI finishes
+- Logging is now clean and minimal
+- midiFinished flag is set in MidiStream.Read() at line 481
+- midiFinished flag is reset in PlayMIDI() at line 194

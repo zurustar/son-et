@@ -151,16 +151,17 @@ func TestVMVariableScope(t *testing.T) {
 
 		// Verify variables are accessible in the sequencer
 		vmLock.Lock()
-		if mainSequencer == nil {
+		if len(sequencers) == 0 {
 			vmLock.Unlock()
 			t.Fatal("Sequencer not created")
 		}
+		seq := sequencers[len(sequencers)-1] // Get the last registered sequence
 
 		// Check that variables can be resolved
-		winW := ResolveArg(Variable("winW"), mainSequencer)
-		winH := ResolveArg(Variable("winH"), mainSequencer)
-		centerX := ResolveArg(Variable("centerX"), mainSequencer)
-		centerY := ResolveArg(Variable("centerY"), mainSequencer)
+		winW := ResolveArg(Variable("winW"), seq)
+		winH := ResolveArg(Variable("winH"), seq)
+		centerX := ResolveArg(Variable("centerX"), seq)
+		centerY := ResolveArg(Variable("centerY"), seq)
 		vmLock.Unlock()
 
 		if winW != 640 {
@@ -182,6 +183,7 @@ func TestVMVariableScope(t *testing.T) {
 		// Clear VM
 		vmLock.Lock()
 		mainSequencer = nil
+		sequencers = nil
 		vmLock.Unlock()
 
 		// Set variable with mixed case
@@ -192,14 +194,15 @@ func TestVMVariableScope(t *testing.T) {
 
 		// Try to access with different cases
 		vmLock.Lock()
-		if mainSequencer == nil {
+		if len(sequencers) == 0 {
 			vmLock.Unlock()
 			t.Fatal("Sequencer not created")
 		}
+		seq := sequencers[len(sequencers)-1] // Get the last registered sequence
 
-		val1 := ResolveArg(Variable("winw"), mainSequencer)
-		val2 := ResolveArg(Variable("WINW"), mainSequencer)
-		val3 := ResolveArg(Variable("WinW"), mainSequencer)
+		val1 := ResolveArg(Variable("winw"), seq)
+		val2 := ResolveArg(Variable("WINW"), seq)
+		val3 := ResolveArg(Variable("WinW"), seq)
 		vmLock.Unlock()
 
 		// All should resolve to the same value
@@ -214,6 +217,7 @@ func TestVMVariableScope(t *testing.T) {
 		// Clear VM
 		vmLock.Lock()
 		mainSequencer = nil
+		sequencers = nil
 		vmLock.Unlock()
 
 		// Set base variables
@@ -235,17 +239,18 @@ func TestVMVariableScope(t *testing.T) {
 
 		// Execute the OpCode to verify calculation works
 		vmLock.Lock()
-		if mainSequencer == nil {
+		if len(sequencers) == 0 {
 			vmLock.Unlock()
 			t.Fatal("Sequencer not created")
 		}
+		seq := sequencers[len(sequencers)-1] // Get the last registered sequence
 
 		// Resolve the calculated expressions
 		xExpr := ops[0].Args[1].(OpCode)
 		yExpr := ops[0].Args[2].(OpCode)
 
-		x := ResolveArg(xExpr, mainSequencer)
-		y := ResolveArg(yExpr, mainSequencer)
+		x := ResolveArg(xExpr, seq)
+		y := ResolveArg(yExpr, seq)
 		vmLock.Unlock()
 
 		expectedX := 640 - 320 // 320

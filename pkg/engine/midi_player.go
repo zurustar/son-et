@@ -18,6 +18,7 @@ var (
 	midiPlayer   *audio.Player
 	sequencer    *meltysynth.MidiFileSequencer
 	synthesizer  *meltysynth.Synthesizer
+	midiFinished bool // Flag to track if MIDI has finished playing
 )
 
 const (
@@ -159,11 +160,17 @@ func PlayMidiFile(path string) {
 		return
 	}
 
+	// Calculate total ticks in MIDI file
+	totalTicks := calculateMidiLength(midiFileBytes, ppq)
+	fmt.Printf("PlayMIDI: Total ticks in MIDI file: %d\n", totalTicks)
+
 	// Create a stream that reads from the synthesizer
 	stream := &MidiStream{
 		sequencer:     sequencer,
 		tickGenerator: tickGen,
 		startTime:     time.Now(),
+		totalTicks:    totalTicks,
+		endReported:   false,
 	}
 
 	// Create Ebiten player
@@ -182,6 +189,9 @@ func PlayMidiFile(path string) {
 		midiPlayer.SetVolume(0)
 		fmt.Println("PlayMIDI: Audio muted (headless mode)")
 	}
+
+	// Reset MIDI finished flag
+	midiFinished = false
 
 	// Start playback in a goroutine to avoid blocking the VM execution
 	// This allows the MIDI player to run concurrently with the game loop
@@ -331,6 +341,89 @@ func parseMidiTempo(data []byte) ([]TempoEvent, int, error) {
 	return events, ppq, nil
 }
 
+// calculateMidiLength calculates the total length of a MIDI file in ticks
+// by finding the last event in all tracks
+func calculateMidiLength(data []byte, ppq int) int64 {
+	if len(data) < 14 {
+		return 0
+	}
+
+	// Skip header
+	offset := 14
+
+	maxTick := int64(0)
+
+	// Parse all tracks
+	for offset < len(data) {
+		if offset+8 > len(data) {
+			break
+		}
+
+		chunkType := string(data[offset : offset+4])
+		chunkLen := int(data[offset+4])<<24 | int(data[offset+5])<<16 | int(data[offset+6])<<8 | int(data[offset+7])
+		offset += 8
+
+		if chunkType == "MTrk" {
+			trackData := data[offset : offset+chunkLen]
+			trackOffset := 0
+			currentTick := int64(0)
+
+			// Parse all events in this track
+			for trackOffset < len(trackData) {
+				// Read delta time
+				deltaTime, consumed := readVarInt(trackData[trackOffset:])
+				if consumed == 0 {
+					break
+				}
+				trackOffset += consumed
+				currentTick += int64(deltaTime)
+
+				if trackOffset >= len(trackData) {
+					break
+				}
+
+				// Skip event data (we only care about timing)
+				eventByte := trackData[trackOffset]
+				trackOffset++
+
+				if eventByte == 0xFF {
+					// Meta event
+					if trackOffset >= len(trackData) {
+						break
+					}
+					trackOffset++ // Skip meta type
+					length, consumed := readVarInt(trackData[trackOffset:])
+					trackOffset += consumed + length
+				} else if eventByte == 0xF0 || eventByte == 0xF7 {
+					// SysEx event
+					length, consumed := readVarInt(trackData[trackOffset:])
+					trackOffset += consumed + length
+				} else if eventByte >= 0x80 {
+					// MIDI event
+					if eventByte >= 0xC0 && eventByte < 0xE0 {
+						// Program change or channel pressure (1 data byte)
+						trackOffset++
+					} else {
+						// Other events (2 data bytes)
+						trackOffset += 2
+					}
+				}
+			}
+
+			// Update max tick
+			if currentTick > maxTick {
+				maxTick = currentTick
+			}
+
+			offset += chunkLen
+		} else {
+			offset += chunkLen
+		}
+	}
+
+	return maxTick
+}
+
 func readVarInt(data []byte) (int, int) {
 	if len(data) == 0 {
 		return 0, 0
@@ -355,6 +448,8 @@ type MidiStream struct {
 	rightBuf      []float32
 	tickGenerator *TickGenerator
 	startTime     time.Time
+	totalTicks    int64 // Total ticks in MIDI file
+	endReported   bool  // Flag to ensure MIDI_END is triggered only once
 }
 
 func (s *MidiStream) Read(p []byte) (n int, err error) {
@@ -379,9 +474,28 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 		// This properly accounts for tempo changes
 		currentTick := s.tickGenerator.CalculateTickFromTime(elapsed)
 
+		// Check if we've reached the end of the MIDI file
+		if int64(currentTick) >= s.totalTicks && !s.endReported {
+			fmt.Println("MidiStream.Read: MIDI playback ended (reached totalTicks), triggering MIDI_END event")
+			s.endReported = true
+			midiFinished = true // Set global flag
+			// Trigger MIDI_END event if handler is registered
+			if midiEndHandler != nil && !midiEndTriggered {
+				TriggerMidiEnd()
+			}
+			// Stop sending ticks
+			return len(p), nil
+		}
+
 		// Notify all ticks from lastDeliveredTick+1 to currentTick
 		// This ensures we don't skip any ticks even if processing is delayed
-		for tick := s.tickGenerator.lastDeliveredTick + 1; tick <= currentTick; tick++ {
+		// But don't exceed totalTicks
+		endTick := int64(currentTick)
+		if endTick > s.totalTicks {
+			endTick = s.totalTicks
+		}
+
+		for tick := s.tickGenerator.lastDeliveredTick + 1; tick <= int(endTick); tick++ {
 			NotifyTick(tick)
 		}
 
