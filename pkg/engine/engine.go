@@ -388,11 +388,14 @@ func (g *Game) Update() error {
 		}
 
 		// Limit catch-up to avoid spiral of death
+		// At 128 BPM with PPQ=480, we generate ~1024 ticks/second
+		// At 60 FPS, that's ~17 ticks per frame
+		// Allow up to 100 ticks per frame to handle audio buffer delays
 		loops := 0
 
 		tickLock.Lock()
 		// We read global tickCount inside lock
-		for tickCount < currentTarget && loops < 10 {
+		for tickCount < currentTarget && loops < 100 {
 			tickCount++
 			currentTick := int(tickCount)
 			// Unlock during UpdateVM to avoid holding lock while VM runs (which might call Wait -> tickLock)
@@ -673,6 +676,14 @@ func runHeadless() {
 	fmt.Printf("[%s] runHeadless: Initializing headless execution\n",
 		startTime.Format("15:04:05.000"))
 
+	// Initialize audio context for MIDI playback
+	InitializeAudio()
+	fmt.Printf("[%s] runHeadless: Audio context initialized\n",
+		time.Now().Format("15:04:05.000"))
+
+	// Start audio processing goroutine for headless mode
+	go processHeadlessAudio()
+
 	// Execute script immediately
 	fmt.Printf("[%s] runHeadless: Executing script function\n",
 		time.Now().Format("15:04:05.000"))
@@ -704,6 +715,23 @@ func runHeadless() {
 
 		// Check if we should continue (could add completion detection here)
 		// For now, we just run until timeout or Ctrl+C
+	}
+}
+
+// processHeadlessAudio manually processes audio buffers in headless mode
+// This is necessary because Ebiten's audio system requires the game loop to be running
+func processHeadlessAudio() {
+	// Process audio at approximately 60 FPS (matching the VM update rate)
+	ticker := time.NewTicker(time.Second / 60)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// Check if MIDI player exists and is playing
+		if midiPlayer != nil && midiPlayer.IsPlaying() {
+			// The audio player will automatically call MidiStream.Read()
+			// when it needs more data, so we don't need to do anything here
+			// Just keep the ticker running to ensure the player stays active
+		}
 	}
 }
 

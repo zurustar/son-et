@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
@@ -138,33 +139,6 @@ func PlayMidiFile(path string) {
 	sequencer = meltysynth.NewMidiFileSequencer(synthesizer)
 	sequencer.Play(midiFile, false) // loop=false (User requested one-shot)
 
-	// Create a stream that reads from the synthesizer
-	stream := &MidiStream{
-		sequencer: sequencer,
-	}
-
-	// Create Ebiten player
-	if midiPlayer != nil {
-		midiPlayer.Close()
-	}
-	midiPlayer, err = audioContext.NewPlayer(stream)
-	if err != nil {
-		fmt.Printf("PlayMIDI Error: Failed to create audio player: %v\n", err)
-		return
-	}
-
-	// Set volume to 0 in headless mode
-	if headlessMode {
-		midiPlayer.SetVolume(0)
-		fmt.Println("PlayMIDI: Audio muted (headless mode)")
-	}
-
-	// Start playback in a goroutine to avoid blocking
-	go func() {
-		midiPlayer.Play()
-		fmt.Println("PlayMIDI: Playback started")
-	}()
-
 	// Parse Tempo Map and PPQ
 	tempoMap, ppq, err := parseMidiTempo(midiFileBytes)
 	if err != nil {
@@ -178,7 +152,44 @@ func PlayMidiFile(path string) {
 	}
 	fmt.Printf("PlayMIDI: Sync info - InitBPM=%.2f, PPQ=%d, Events=%d\n", initBPM, ppq, len(tempoMap))
 
-	// Start the Conductor
+	// Create TickGenerator
+	tickGen, err := NewTickGenerator(sampleRate, ppq, tempoMap)
+	if err != nil {
+		fmt.Printf("PlayMIDI Error: Failed to create tick generator: %v\n", err)
+		return
+	}
+
+	// Create a stream that reads from the synthesizer
+	stream := &MidiStream{
+		sequencer:     sequencer,
+		tickGenerator: tickGen,
+	}
+
+	// Create Ebiten player
+	if midiPlayer != nil {
+		midiPlayer.Close()
+	}
+	midiPlayer, err = audioContext.NewPlayer(stream)
+	if err != nil {
+		fmt.Printf("PlayMIDI Error: Failed to create audio player: %v\n", err)
+		return
+	}
+	fmt.Printf("PlayMIDI: Audio player created successfully\n")
+
+	// Set volume to 0 in headless mode
+	if headlessMode {
+		midiPlayer.SetVolume(0)
+		fmt.Println("PlayMIDI: Audio muted (headless mode)")
+	}
+
+	// Start playback in a goroutine to avoid blocking
+	go func() {
+		midiPlayer.Play()
+		fmt.Println("PlayMIDI: Playback started")
+		fmt.Printf("PlayMIDI: IsPlaying=%v\n", midiPlayer.IsPlaying())
+	}()
+
+	// Start the Conductor (legacy - now using TickGenerator)
 	StartConductor(tempoMap, ppq)
 }
 
@@ -192,11 +203,6 @@ var (
 	globalPPQ      int = 480
 	currentSamples int64
 )
-
-type TempoEvent struct {
-	Tick          int
-	MicrosPerBeat int
-}
 
 func StartConductor(tempoMap []TempoEvent, ppq int) {
 	// Setup globals for MidiStream to access
@@ -342,15 +348,24 @@ func readVarInt(data []byte) (int, int) {
 
 // MidiStream implements io.Reader to pipe synthesizer output to Ebiten
 type MidiStream struct {
-	sequencer *meltysynth.MidiFileSequencer
-	leftBuf   []float32
-	rightBuf  []float32
+	sequencer     *meltysynth.MidiFileSequencer
+	leftBuf       []float32
+	rightBuf      []float32
+	tickGenerator *TickGenerator
 }
 
 func (s *MidiStream) Read(p []byte) (n int, err error) {
 	// Ebiten requests bytes. Format is usually 16bit Little Endian Stereo.
 	// 4 bytes per sample (2 channels * 2 bytes).
 	numSamples := len(p) / 4
+
+	// Log first few Read() calls
+	if s.tickGenerator != nil && s.tickGenerator.currentSamples < 200000 {
+		fmt.Printf("[%s] MidiStream.Read: numSamples=%d, totalSamples=%d\n",
+			time.Now().Format("15:04:05.000"),
+			numSamples,
+			s.tickGenerator.currentSamples)
+	}
 
 	if len(s.leftBuf) < numSamples {
 		s.leftBuf = make([]float32, numSamples)
@@ -360,8 +375,13 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 	// Render samples
 	s.sequencer.Render(s.leftBuf[:numSamples], s.rightBuf[:numSamples])
 
-	// Update Clock
-	s.ProcessSamples(numSamples)
+	// Update Clock using TickGenerator
+	if s.tickGenerator != nil {
+		newTick := s.tickGenerator.ProcessSamples(numSamples)
+		if newTick >= 0 {
+			NotifyTick(newTick)
+		}
+	}
 
 	// Convert float32 [-1, 1] to int16 bytes
 	for i := 0; i < numSamples; i++ {
@@ -379,117 +399,7 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-var lastTick int = -1
-
-// ProcessSamples updates the clock based on samples rendered
-func (s *MidiStream) ProcessSamples(n int) {
-	// TODO: Implement MIDI_END detection
-	// The meltysynth library doesn't expose an EndOfSequence() method
-	// We need to track the MIDI file length and compare with rendered samples
-	// For now, MIDI_END events won't be triggered automatically
-
-	currentSamples += int64(n)
-
-	// Convert Samples -> Time -> Ticks
-	// Time (seconds) = samples / rate
-	// Ticks: accumulate based on tempo map
-
-	// Optimization: If constant tempo, easy. With map, need to traverse.
-	// Given we play sequentially, we can cache index.
-
-	// For now, let's implement the math.
-	timeSec := float64(currentSamples) / float64(sampleRate)
-
-	// Calculate Tick from Time
-	tick := CalculateTickFromTime(timeSec)
-
-	if tick > lastTick {
-		// Notify Engine
-		// We might jumped multiple ticks. Loop?
-		// NotifyTick() signals "UpdateVM".
-		// If we missed 10 ticks, VM should catch up.
-		// VM loop: "Handle Wait... Execute... Wait... Execute"
-		// UpdateVM runs ONE loop iteration per call?
-		// No, `UpdateVM` runs until `Wait`.
-		// So calling `NotifyTick` ONCE is enough to wake it up.
-		// But `Wait` implementation in VM decrements `waitTicks`.
-		// `waitTicks` in VM are decremented by 1 per UpdateVM call?
-		// NO! `waitTicks` decremented by 1 per `UpdateVM` call.
-		// If we advanced 10 ticks, we need to call `NotifyTick` 10 times?
-		// Or change standard: `UpdateVM` should take `deltaTicks`.
-		// Current `UpdateVM`:
-		// if seq.waitTicks > 0 { seq.waitTicks--; return }
-		// So yes, we need to call NotifyTick N times or change UpdateVM.
-
-		delta := tick - lastTick
-		for i := 0; i < delta; i++ {
-			// Calculate interpolated tick for this step
-			stepTick := lastTick + i + 1
-			NotifyTick(stepTick)
-		}
-		lastTick = tick
-	}
-}
-
-func CalculateTickFromTime(t float64) int {
-	if len(globalTempoMap) == 0 {
-		return 0
-	}
-
-	// We need to integrate time.
-	// This is expensive to do from scratch every valid sample block (44100/60 = 735 samples).
-	// Not too bad.
-
-	// Accumulator
-	var currentTime float64 = 0
-	var currentTick int = 0
-
-	for i := 0; i < len(globalTempoMap); i++ {
-		ev := globalTempoMap[i]
-		nextEvTick := -1
-		if i+1 < len(globalTempoMap) {
-			nextEvTick = globalTempoMap[i+1].Tick
-		}
-
-		// Duration of this segment?
-		// We know Tempo (MicrosPerBeat) starting at ev.Tick.
-		// Time = (DeltaTicks / PPQ) * (MicrosPerBeat / 1000000.0)
-
-		micros := float64(ev.MicrosPerBeat)
-		secPerTick := (micros / 1000000.0) / float64(globalPPQ)
-
-		var durationTicks int
-		if nextEvTick != -1 {
-			durationTicks = nextEvTick - ev.Tick
-		} else {
-			// Last segment, goes forever
-			durationTicks = 999999999
-		}
-
-		// Time covered by this segment
-		segmentTime := float64(durationTicks) * secPerTick
-
-		if currentTime+segmentTime >= t {
-			// Target is in this segment
-			remainTime := t - currentTime
-			remainTicks := remainTime / secPerTick
-			return ev.Tick + int(remainTicks)
-		}
-
-		currentTime += segmentTime
-		currentTick = nextEvTick
-	}
-
-	return currentTick
-}
-
 // GetCurrentTick returns the current MIDI tick for synchronization
-// Note: meltysynth sequencer might not expose tick directly in public API easily?
-// Checking meltysynth code references... it likely has a Position method or similar?
-// Since I can't check dependency code easily, I'll stub it or assume generic availability.
-// Actually, `sequencer` struct usually has public fields or methods.
-// For now, I'll omit if I'm not sure, or verify logic later.
-// Adding a placeholder.
 func GetCurrentTick() int {
 	// TODO: Expose tick from sequencer
 	return 0
