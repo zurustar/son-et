@@ -2306,7 +2306,9 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 			time.Now().Format("15:04:05.000"), steps, totalTicks)
 
 		// Set wait state in Sequencer
-		seq.waitTicks = totalTicks
+		// Subtract 1 because the wait will be decremented on the next tick
+		// This ensures we wait exactly totalTicks ticks from now
+		seq.waitTicks = totalTicks - 1
 
 		// Yield execution
 		return nil, true

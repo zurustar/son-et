@@ -133,6 +133,51 @@ func (tg *TickGenerator) updateTempoIfNeeded() {
 	}
 }
 
+// CalculateTickFromTime calculates the MIDI tick for a given elapsed time
+// This accounts for tempo changes in the tempo map
+func (tg *TickGenerator) CalculateTickFromTime(elapsedSeconds float64) int {
+	if len(tg.tempoMap) == 0 {
+		return 0
+	}
+
+	currentTime := 0.0
+	currentTick := 0
+
+	for i := 0; i < len(tg.tempoMap); i++ {
+		// Get tempo for this segment
+		tempo := 60000000.0 / float64(tg.tempoMap[i].MicrosPerBeat)
+
+		// Determine the end tick for this tempo segment
+		endTick := 0
+		if i+1 < len(tg.tempoMap) {
+			endTick = tg.tempoMap[i+1].Tick
+		} else {
+			// Last segment - calculate how many ticks we can fit in remaining time
+			remainingTime := elapsedSeconds - currentTime
+			ticksInSegment := int(remainingTime * (tempo / 60.0) * float64(tg.ppq))
+			return tg.tempoMap[i].Tick + ticksInSegment
+		}
+
+		// Calculate time duration of this tempo segment
+		ticksInSegment := endTick - tg.tempoMap[i].Tick
+		segmentDuration := float64(ticksInSegment) / (tempo / 60.0 * float64(tg.ppq))
+
+		// Check if elapsed time falls within this segment
+		if currentTime+segmentDuration > elapsedSeconds {
+			// We're in this segment
+			timeInSegment := elapsedSeconds - currentTime
+			ticksInSegment := int(timeInSegment * (tempo / 60.0) * float64(tg.ppq))
+			return tg.tempoMap[i].Tick + ticksInSegment
+		}
+
+		// Move to next segment
+		currentTime += segmentDuration
+		currentTick = endTick
+	}
+
+	return currentTick
+}
+
 // GetCurrentTick returns the current integer tick position
 func (tg *TickGenerator) GetCurrentTick() int {
 	return tg.lastDeliveredTick

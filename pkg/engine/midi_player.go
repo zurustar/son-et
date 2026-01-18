@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
@@ -162,6 +163,7 @@ func PlayMidiFile(path string) {
 	stream := &MidiStream{
 		sequencer:     sequencer,
 		tickGenerator: tickGen,
+		startTime:     time.Now(),
 	}
 
 	// Create Ebiten player
@@ -351,6 +353,7 @@ type MidiStream struct {
 	leftBuf       []float32
 	rightBuf      []float32
 	tickGenerator *TickGenerator
+	startTime     time.Time
 }
 
 func (s *MidiStream) Read(p []byte) (n int, err error) {
@@ -366,21 +369,23 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 	// Render samples
 	s.sequencer.Render(s.leftBuf[:numSamples], s.rightBuf[:numSamples])
 
-	// Update Clock using TickGenerator
-	// Process in smaller chunks to deliver ticks more frequently
-	// This reduces the "jerky" animation effect
+	// Update Clock using wall-clock time for maximum accuracy
+	// This avoids cumulative drift from sample-based calculation
 	if s.tickGenerator != nil {
-		chunkSize := 512 // Process ~11ms chunks (at 44100 Hz) = ~11 ticks
-		for offset := 0; offset < numSamples; offset += chunkSize {
-			size := chunkSize
-			if offset+size > numSamples {
-				size = numSamples - offset
-			}
+		elapsed := time.Since(s.startTime).Seconds()
 
-			newTick := s.tickGenerator.ProcessSamples(size)
-			if newTick >= 0 {
-				NotifyTick(newTick)
-			}
+		// Calculate current tick from elapsed time using tempo map
+		// This properly accounts for tempo changes
+		currentTick := s.tickGenerator.CalculateTickFromTime(elapsed)
+
+		// Notify all ticks from lastDeliveredTick+1 to currentTick
+		// This ensures we don't skip any ticks even if processing is delayed
+		for tick := s.tickGenerator.lastDeliveredTick + 1; tick <= currentTick; tick++ {
+			NotifyTick(tick)
+		}
+
+		if currentTick > s.tickGenerator.lastDeliveredTick {
+			s.tickGenerator.lastDeliveredTick = currentTick
 		}
 	}
 
