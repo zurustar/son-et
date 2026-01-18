@@ -41,20 +41,11 @@ func TestMesTimeExecutesOnce(t *testing.T) {
 	// Give VM time to start
 	time.Sleep(50 * time.Millisecond)
 
-	// Register sequence in TIME mode
-	done := make(chan bool)
-	go func() {
-		RegisterSequence(Time, ops)
-		done <- true
-	}()
+	// Register sequence in TIME mode (now non-blocking)
+	RegisterSequence(Time, ops)
 
-	// Wait for sequence to complete (with timeout)
-	select {
-	case <-done:
-		// Success - sequence completed
-	case <-time.After(2 * time.Second):
-		t.Fatal("RegisterSequence did not complete within timeout")
-	}
+	// Wait for sequence to execute (give VM time to process)
+	time.Sleep(200 * time.Millisecond)
 
 	// Verify sequence is no longer active
 	vmLock.Lock()
@@ -65,7 +56,7 @@ func TestMesTimeExecutesOnce(t *testing.T) {
 }
 
 // TestRegisterSequenceBlocksInTimeMode tests that RegisterSequence blocks until sequence completes in TIME mode
-func TestRegisterSequenceBlocksInTimeMode(t *testing.T) {
+func TestRegisterSequenceNonBlockingInTimeMode(t *testing.T) {
 	// Reset engine state
 	ResetEngineForTest()
 
@@ -78,7 +69,7 @@ func TestRegisterSequenceBlocksInTimeMode(t *testing.T) {
 	}
 
 	// Start UpdateVM in background BEFORE RegisterSequence
-	// This ensures the VM is running when RegisterSequence blocks
+	// This ensures the VM is running when RegisterSequence is called
 	stopVM := make(chan bool)
 	go func() {
 		ticker := time.NewTicker(10 * time.Millisecond)
@@ -100,26 +91,32 @@ func TestRegisterSequenceBlocksInTimeMode(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Track when RegisterSequence returns
-	completed := false
-	go func() {
-		RegisterSequence(Time, ops)
-		completed = true
-	}()
+	startTime := time.Now()
+	RegisterSequence(Time, ops)
+	elapsed := time.Since(startTime)
 
-	// RegisterSequence should block, so completed should still be false after 500ms
-	// (Wait is 10 steps = 120 ticks = 2 seconds)
-	time.Sleep(500 * time.Millisecond)
-	if completed {
-		t.Error("RegisterSequence should block in TIME mode, but it returned immediately")
+	// RegisterSequence should return immediately (within 100ms)
+	// This is the new non-blocking behavior
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("RegisterSequence should return immediately in TIME mode, but took %v", elapsed)
 	}
+
+	// Verify the sequence is registered and will execute
+	vmLock.Lock()
+	if len(sequencers) == 0 {
+		t.Error("Sequence should be registered")
+	}
+	vmLock.Unlock()
 
 	// Wait for sequence to complete (VM is already running)
 	time.Sleep(2 * time.Second)
 
-	// Now RegisterSequence should have completed
-	if !completed {
-		t.Error("RegisterSequence should have completed after sequence finished")
+	// Verify sequence completed
+	vmLock.Lock()
+	if len(sequencers) > 0 && sequencers[0].active {
+		t.Error("Sequence should have completed")
 	}
+	vmLock.Unlock()
 }
 
 // TestSubsequentCodeRunsAfterMesTime tests that code after mes(TIME) block executes

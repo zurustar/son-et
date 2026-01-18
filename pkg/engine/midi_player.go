@@ -183,7 +183,8 @@ func PlayMidiFile(path string) {
 		fmt.Println("PlayMIDI: Audio muted (headless mode)")
 	}
 
-	// Start playback in a goroutine to avoid blocking
+	// Start playback in a goroutine to avoid blocking the VM execution
+	// This allows the MIDI player to run concurrently with the game loop
 	go func() {
 		midiPlayer.Play()
 		fmt.Println("PlayMIDI: Playback started")

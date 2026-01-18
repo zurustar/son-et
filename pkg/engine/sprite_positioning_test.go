@@ -213,7 +213,7 @@ func TestCastOperationsWithVMScope(t *testing.T) {
 			}},
 		}
 
-		// Use MIDI_TIME mode to avoid blocking
+		// Register sequence for testing
 		RegisterSequence(MidiTime, ops)
 
 		// Verify variables are accessible

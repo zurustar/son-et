@@ -328,9 +328,19 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
-	// Check for program termination
+	// TERMINATION FLOW:
+	// Check for program termination FIRST before any other processing
+	// This ensures immediate response to termination requests
 	if programTerminated {
 		fmt.Println("Game.Update: Program terminated, returning Termination")
+		return ebiten.Termination
+	}
+
+	// Check for ESC key press to allow user to terminate execution
+	// ESC key is the primary user-initiated termination method
+	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+		fmt.Println("Game.Update: ESC pressed, terminating")
+		programTerminated = true
 		return ebiten.Termination
 	}
 
@@ -1628,6 +1638,15 @@ var (
 	GlobalPPQ int = 480 // Default pulses per quarter note
 
 	// Program termination flag
+	// When set to true, the engine will:
+	// 1. Stop executing new OpCodes in ExecuteOp
+	// 2. Mark all active sequences as inactive in UpdateVM
+	// 3. Return ebiten.Termination from Game.Update to close the window
+	// This flag can be set by:
+	// - User pressing ESC key (Game.Update)
+	// - User closing the window (handled by Ebiten)
+	// - Script calling ExitTitle() function
+	// - Critical errors during execution
 	programTerminated bool
 )
 
@@ -1844,18 +1863,11 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 	fmt.Printf("[%s] RegisterSequence: mode=%s (%d ops)\n",
 		time.Now().Format("15:04:05.000"), modeStr, len(ops))
 
-	var wg *sync.WaitGroup
-	// Only block for TIME mode (procedural execution like robot)
-	// MIDI_TIME must be non-blocking to allow PlayMIDI to execute
-	if mode != MidiTime {
-		wg = &sync.WaitGroup{}
-		wg.Add(1)
-		fmt.Printf("[%s] RegisterSequence: TIME mode - will block until complete\n",
-			time.Now().Format("15:04:05.000"))
-	} else {
-		fmt.Printf("[%s] RegisterSequence: MIDI_TIME mode - non-blocking\n",
-			time.Now().Format("15:04:05.000"))
-	}
+	// NO BLOCKING - both modes are now non-blocking
+	// This allows the script goroutine to complete immediately
+	// while the VM continues executing sequences through the game loop
+	fmt.Printf("[%s] RegisterSequence: Non-blocking mode (returns immediately)\n",
+		time.Now().Format("15:04:05.000"))
 
 	vmLock.Lock()
 
@@ -1875,10 +1887,8 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 		}
 	}
 
+	// No onComplete callback needed for non-blocking mode
 	var onCompleteFunc func()
-	if wg != nil {
-		onCompleteFunc = func() { wg.Done() }
-	}
 
 	// Save current sequencer as parent
 	parentSeq := mainSequencer
@@ -1920,14 +1930,9 @@ func RegisterSequence(mode int, ops []OpCode, initialVars ...map[string]any) {
 		time.Now().Format("15:04:05.000"), seqIndex, len(sequencers))
 	vmLock.Unlock()
 
-	// Wait for sequence to complete (only for TIME mode)
-	if wg != nil {
-		fmt.Printf("[%s] RegisterSequence: Blocking until sequence completes...\n",
-			time.Now().Format("15:04:05.000"))
-		wg.Wait()
-		fmt.Printf("[%s] RegisterSequence: Sequence completed, unblocking\n",
-			time.Now().Format("15:04:05.000"))
-	}
+	// Return immediately - no blocking
+	fmt.Printf("[%s] RegisterSequence: Returning immediately (non-blocking)\n",
+		time.Now().Format("15:04:05.000"))
 }
 
 // resumeStepExecution continues executing a Step block after a yield
@@ -1968,6 +1973,32 @@ func resumeStepExecution(seq *Sequencer) bool {
 // SetVMVar sets a variable in the VM for use in mes() blocks
 // Tick the VM (Called from Conductor/NotifyTick)
 func UpdateVM(currentTick int) {
+	// TERMINATION FLOW:
+	// Check for program termination FIRST before processing any sequences
+	// When termination is requested, mark all active sequences as inactive
+	// and skip all VM execution to allow graceful shutdown
+	if programTerminated {
+		vmLock.Lock()
+		defer vmLock.Unlock()
+
+		// Mark all active sequences as inactive
+		for _, seq := range sequencers {
+			if seq != nil && seq.active {
+				seq.active = false
+				if debugLevel >= 1 {
+					fmt.Printf("[%s] UpdateVM: Marking sequence as inactive due to termination\n",
+						time.Now().Format("15:04:05.000"))
+				}
+			}
+		}
+
+		if debugLevel >= 1 {
+			fmt.Printf("[%s] UpdateVM: Program terminated, skipping VM execution\n",
+				time.Now().Format("15:04:05.000"))
+		}
+		return
+	}
+
 	// Update global debug tick
 	tickCount = int64(currentTick)
 	vmLock.Lock()
@@ -2147,6 +2178,18 @@ func ExecuteOpDirect(op OpCode) {
 
 func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 	// Returns (Result, Yield)
+
+	// TERMINATION FLOW:
+	// Check for program termination BEFORE executing any OpCode
+	// This ensures we stop execution immediately when termination is requested
+	// and prevents any further operations from being executed
+	if programTerminated {
+		if debugLevel >= 1 {
+			fmt.Printf("[%s] ExecuteOp: Termination flag set, returning ebiten.Termination\n",
+				time.Now().Format("15:04:05.000"))
+		}
+		return ebiten.Termination, false
+	}
 
 	// Resolve Arguments first (except for Assign where first arg is name)
 	// Actually, resolvedArgs helper might be needed per command if we want lazy evaluation
@@ -3198,9 +3241,9 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 		// Expand any OpStep blocks in the body before registering
 		expandedBody := expandStepBlocks(body)
 
-		// Register the sequence in a goroutine to avoid blocking the main thread
-		// This is critical because RegisterSequence may call wg.Wait() which would
-		// block the Ebiten game loop
+		// Register the sequence in a goroutine to avoid blocking the VM execution
+		// This allows the current sequence to continue while the new sequence is registered
+		// Note: RegisterSequence is now non-blocking for both TIME and MIDI_TIME modes
 		go RegisterSequence(modeInt, expandedBody)
 		return nil, false
 
@@ -3223,7 +3266,8 @@ func ExecuteOp(op OpCode, seq *Sequencer) (any, bool) {
 				resolved := ResolveArg(arg, seq)
 				in[i] = reflect.ValueOf(resolved)
 			}
-			// Call asynchronously to prevent blocking the VM/UI thread
+			// Call asynchronously to prevent blocking the VM execution
+			// This allows the VM to continue processing while user functions execute
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -3443,7 +3487,7 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 
 		// IMPORTANT: Check for MIDI_TIME sequencers BEFORE deactivating mainSequencer
 		// because mainSequencer might BE the MIDI_TIME sequencer
-		vmLock.Lock()
+		// NOTE: vmLock is already held by UpdateVM, so we don't need to lock here
 		fmt.Printf("VM: del_me - checking %d sequencers\n", len(sequencers))
 		hasMidiTimeSequencers := false
 		for i, s := range sequencers {
@@ -3467,14 +3511,12 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 
 		if hasMidiTimeSequencers {
 			fmt.Printf("VM: del_me - MIDI_TIME sequencers active, continuing execution\n")
-			vmLock.Unlock()
 			return nil, false
 		}
 
 		// No MIDI_TIME sequencers, set termination flag
 		fmt.Printf("VM: del_me - no MIDI_TIME sequencers, setting termination flag\n")
 		programTerminated = true
-		vmLock.Unlock()
 		return nil, false
 
 	case "strprint":

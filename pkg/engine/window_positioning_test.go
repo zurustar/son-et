@@ -146,7 +146,7 @@ func TestVMVariableScope(t *testing.T) {
 			}},
 		}
 
-		// Use MIDI_TIME mode to avoid blocking (Time mode blocks until sequence completes)
+		// Register sequence (both TIME and MIDI_TIME modes are now non-blocking)
 		RegisterSequence(MidiTime, ops)
 
 		// Verify variables are accessible in the sequencer
@@ -187,7 +187,7 @@ func TestVMVariableScope(t *testing.T) {
 		// Set variable with mixed case
 		SetVMVar("WinW", 640)
 
-		// Use MIDI_TIME mode to avoid blocking
+		// Register empty sequence for testing
 		RegisterSequence(MidiTime, []OpCode{})
 
 		// Try to access with different cases
@@ -230,7 +230,7 @@ func TestVMVariableScope(t *testing.T) {
 			}},
 		}
 
-		// Use MIDI_TIME mode to avoid blocking
+		// Register sequence for testing
 		RegisterSequence(MidiTime, ops)
 
 		// Execute the OpCode to verify calculation works
