@@ -415,10 +415,23 @@ func (i *Interpreter) interpretExpression(expr ast.Expression) (OpCode, error) {
 		return OpCode{Cmd: OpLiteral, Args: []any{e.Value}}, nil
 
 	case *ast.Identifier:
-		// Variable reference - return as Variable type directly
+		// Check for special constants first
 		varName := normalizeVarName(e.Value)
-		// Return a special marker OpCode that will be unwrapped to Variable
-		return OpCode{Cmd: OpVarRef, Args: []any{Variable(varName)}}, nil
+		switch varName {
+		case "midi_time":
+			// MIDI_TIME constant = 1
+			return OpCode{Cmd: OpLiteral, Args: []any{1}}, nil
+		case "time":
+			// TIME constant = 0
+			return OpCode{Cmd: OpLiteral, Args: []any{0}}, nil
+		case "end_step":
+			// END_STEP constant = -1
+			return OpCode{Cmd: OpLiteral, Args: []any{-1}}, nil
+		default:
+			// Variable reference - return as Variable type directly
+			// Return a special marker OpCode that will be unwrapped to Variable
+			return OpCode{Cmd: OpVarRef, Args: []any{Variable(varName)}}, nil
+		}
 
 	case *ast.CallExpression:
 		// Function call: FUNC(ARG1, ARG2, ...)

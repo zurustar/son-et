@@ -696,74 +696,74 @@ This implementation plan covers the son-et core engine, including both the trans
   - Verify all requirements are implemented
   - Review code coverage (aim for >80% on critical paths)
 
-- [-] 22. Implement headless mode and auto-termination
+- [x] 22. Implement headless mode and auto-termination
   - [x] 22.1 Add command line flag parsing
     - Add --headless flag for GUI-less execution
     - Add --timeout flag for auto-termination (e.g., "5s", "500ms", "2m")
     - Add HEADLESS environment variable support
     - _Requirements: 43.1, 44.1, 44.2_
 
-  - [ ] 22.2 Implement headless execution mode
+  - [x] 22.2 Implement headless execution mode
     - Create runHeadless() function that simulates game loop without Ebiten
     - Implement 60 FPS ticker for VM updates
     - Stub out rendering operations (OpenWin, PutCast, MoveCast) with logging
     - Ensure script logic executes normally (timing, audio, state changes)
     - _Requirements: 43.1, 43.2, 43.3, 43.4, 43.5_
 
-  - [ ] 22.3 Implement timeout management
+  - [x] 22.3 Implement timeout management
     - Parse timeout duration from command line flag
     - Create timeout channel with time.After()
     - Integrate timeout check into game loop (both GUI and headless)
     - Log timeout message when auto-termination occurs
     - _Requirements: 44.1, 44.2, 44.3, 44.7_
 
-  - [ ] 22.4 Implement Exit() function
+  - [x] 22.4 Implement Exit() function
     - Add Exit() runtime function for immediate termination
     - Cleanup resources (audio, windows, files) before exit
     - Exit with status code 0
     - Override timeout when Exit() is called
     - _Requirements: 44.6_
 
-  - [ ] 22.5 Implement graceful shutdown
+  - [x] 22.5 Implement graceful shutdown
     - Ensure all resources are cleaned up on timeout
     - Close audio players, file handles, windows
     - Exit with status code 0 for normal termination
     - _Requirements: 44.3, 44.4_
 
-  - [ ] 22.6 Write unit tests for headless mode
+  - [x] 22.6 Write unit tests for headless mode
     - Test headless execution without Ebiten initialization
     - Test rendering operation stubs (verify logging, no crashes)
     - Test script logic execution in headless mode
     - Verify timing system works in headless mode
     - _Requirements: 43.1, 43.2, 43.3, 43.4_
 
-  - [ ] 22.7 Write unit tests for auto-termination
+  - [x] 22.7 Write unit tests for auto-termination
     - Test timeout parsing (various formats: "5s", "500ms", "2m")
     - Test timeout triggers termination
     - Test Exit() overrides timeout
     - Test graceful resource cleanup on timeout
     - _Requirements: 44.1, 44.2, 44.3, 44.4, 44.6_
 
-  - [ ] 22.8 Write property test for headless execution equivalence
+  - [x] 22.8 Write property test for headless execution equivalence
     - **Property 22: Headless mode execution equivalence**
     - **Validates: Requirements 43.3, 43.4**
 
-  - [ ] 22.9 Write property test for timeout termination
+  - [x] 22.9 Write property test for timeout termination
     - **Property 23: Timeout termination**
     - **Validates: Requirements 44.1, 44.3, 44.4**
 
-  - [ ] 22.10 Write property test for Exit immediate termination
+  - [x] 22.10 Write property test for Exit immediate termination
     - **Property 24: Exit immediate termination**
     - **Validates: Requirements 44.6**
 
-  - [ ] 22.11 Integration test with sample scenarios
+  - [x] 22.11 Integration test with sample scenarios
     - Test sample scenarios in headless mode with timeout
     - Verify logs are captured correctly
     - Verify no orphaned processes remain
     - Test both direct mode and embedded mode
     - _Requirements: 43.1, 43.5, 43.6, 44.5_
 
-  - [ ] 22.12 Update documentation
+  - [x] 22.12 Update documentation
     - Update README.md with headless mode usage examples
     - Update build-workflow.md with new execution commands
     - Document timeout format options
@@ -963,7 +963,7 @@ This implementation plan covers the son-et core engine, including both the trans
   - Run all existing tests to ensure no regressions
   - Ask user for verification if issues arise
 
-- [ ] 30. Fix robot sample infinite loop issue (for loop not terminating)
+- [x] 30. Fix robot sample infinite loop issue (for loop not terminating)
   - [x] 30.1 Investigate infinite LoadPic loop
     - Analyze why `for(i=0;i<=1;i=i+1)` loops infinitely
     - Review for loop code generation in transpiler

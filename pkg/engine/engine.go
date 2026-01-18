@@ -1625,6 +1625,9 @@ var (
 func NotifyTick(tick int) {
 	// Update target tick (Audio Thread)
 	// We do NOT execute VM here to avoid threading issues with Ebiten/GPU
+	if tick <= 5 || tick%100 == 0 {
+		fmt.Printf("[%s] NotifyTick: tick=%d\n", time.Now().Format("15:04:05.000"), tick)
+	}
 	atomic.StoreInt64(&targetTick, int64(tick))
 }
 
@@ -3409,15 +3412,45 @@ func CallEngineFunction(funcName string, args ...any) (any, bool) {
 		return nil, false
 
 	case "del_me":
-		// Delete current sequence and exit program
-		fmt.Printf("VM: del_me called - exiting program\n")
-		// Deactivate the sequencer
-		if mainSequencer != nil {
-			mainSequencer.active = false
+		// Delete current sequence
+		// In MIDI_TIME mode, this should NOT exit the program if other MIDI_TIME sequences are active
+		fmt.Printf("VM: del_me called\n")
+
+		// IMPORTANT: Check for MIDI_TIME sequencers BEFORE deactivating mainSequencer
+		// because mainSequencer might BE the MIDI_TIME sequencer
+		vmLock.Lock()
+		fmt.Printf("VM: del_me - checking %d sequencers\n", len(sequencers))
+		hasMidiTimeSequencers := false
+		for i, s := range sequencers {
+			if s != nil {
+				fmt.Printf("VM: del_me - sequencer[%d]: active=%v, mode=%d (MidiTime=%d)\n",
+					i, s.active, s.mode, MidiTime)
+				if s.active && s.mode == MidiTime {
+					hasMidiTimeSequencers = true
+					fmt.Printf("VM: del_me - found active MIDI_TIME sequencer at index %d\n", i)
+				}
+			}
 		}
-		// Signal program termination by returning error
-		// This will cause ebiten.RunGame to exit
-		return ebiten.Termination, true
+
+		// Only deactivate mainSequencer if it's NOT a MIDI_TIME sequencer
+		if mainSequencer != nil && mainSequencer.mode != MidiTime {
+			mainSequencer.active = false
+			fmt.Printf("VM: del_me - deactivated main sequencer (TIME mode)\n")
+		} else if mainSequencer != nil {
+			fmt.Printf("VM: del_me - keeping main sequencer active (MIDI_TIME mode)\n")
+		}
+
+		if hasMidiTimeSequencers {
+			fmt.Printf("VM: del_me - MIDI_TIME sequencers active, continuing execution\n")
+			vmLock.Unlock()
+			return nil, false
+		}
+
+		// No MIDI_TIME sequencers, set termination flag
+		fmt.Printf("VM: del_me - no MIDI_TIME sequencers, setting termination flag\n")
+		programTerminated = true
+		vmLock.Unlock()
+		return nil, false
 
 	case "strprint":
 		// StrPrint(format, args...) - sprintf-like function
