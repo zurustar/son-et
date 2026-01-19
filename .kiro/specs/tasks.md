@@ -73,10 +73,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement asset loading for both direct and embedded modes.
 
 **Subtasks**:
-- [ ] 0.4.1 Implement FilesystemAssetLoader (direct mode)
-- [ ] 0.4.2 Implement case-insensitive file matching (Windows 3.1 compatibility)
-- [ ] 0.4.3 Implement EmbedFSAssetLoader (embedded mode)
-- [ ] 0.4.4 Add unit tests for both implementations
+- [x] 0.4.1 Implement FilesystemAssetLoader (direct mode)
+- [x] 0.4.2 Implement case-insensitive file matching (Windows 3.1 compatibility)
+- [x] 0.4.3 Implement EmbedFSAssetLoader (embedded mode)
+- [x] 0.4.4 Add unit tests for both implementations
 
 **Acceptance Criteria**:
 - FilesystemAssetLoader reads from filesystem with case-insensitive matching
