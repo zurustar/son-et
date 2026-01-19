@@ -192,10 +192,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Clean, minimal lexer that tokenizes FILLY source code.
 
 **Subtasks**:
-- [ ] 2.2.1 Implement token types (keywords, operators, literals, identifiers)
-- [ ] 2.2.2 Implement lexer with position tracking
-- [ ] 2.2.3 Implement error reporting with line/column
-- [ ] 2.2.4 Add comprehensive lexer tests
+- [x] 2.2.1 Implement token types (keywords, operators, literals, identifiers)
+- [x] 2.2.2 Implement lexer with position tracking
+- [x] 2.2.3 Implement error reporting with line/column
+- [x] 2.2.4 Add comprehensive lexer tests
 
 **Acceptance Criteria**:
 - Lexer handles all FILLY syntax
