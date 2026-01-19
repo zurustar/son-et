@@ -18,10 +18,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Define clean, minimal data structures for OpCode and execution state.
 
 **Subtasks**:
-- [ ] 0.1.1 Define OpCmd enum type with all command types
-- [ ] 0.1.2 Define OpCode struct (Cmd, Args)
-- [ ] 0.1.3 Define Variable type wrapper
-- [ ] 0.1.4 Add unit tests for OpCode construction
+- [x] 0.1.1 Define OpCmd enum type with all command types
+- [x] 0.1.2 Define OpCode struct (Cmd, Args)
+- [x] 0.1.3 Define Variable type wrapper
+- [x] 0.1.4 Add unit tests for OpCode construction
 
 **Acceptance Criteria**:
 - OpCmd uses enum (not strings) for type safety
@@ -34,12 +34,12 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Define the execution context for sequences with clean scope management.
 
 **Subtasks**:
-- [ ] 0.2.1 Define Sequencer struct (commands, pc, active, mode, waitCount, stepSize, vars, parent)
-- [ ] 0.2.2 Implement NewSequencer constructor
-- [ ] 0.2.3 Implement variable resolution with scope chain walking
-- [ ] 0.2.4 Implement array storage and auto-expansion
-- [ ] 0.2.5 Add unit tests for variable scoping
-- [ ] 0.2.6 Add unit tests for array operations
+- [x] 0.2.1 Define Sequencer struct (commands, pc, active, mode, waitCount, stepSize, vars, parent)
+- [x] 0.2.2 Implement NewSequencer constructor
+- [x] 0.2.3 Implement variable resolution with scope chain walking
+- [x] 0.2.4 Implement array storage and auto-expansion
+- [x] 0.2.5 Add unit tests for variable scoping
+- [x] 0.2.6 Add unit tests for array operations
 
 **Acceptance Criteria**:
 - Sequencer maintains parent pointer for scope chain
@@ -56,10 +56,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Define clean interfaces for dependency injection.
 
 **Subtasks**:
-- [ ] 0.3.1 Define Renderer interface
-- [ ] 0.3.2 Define AssetLoader interface (ReadFile, Exists, ListFiles)
-- [ ] 0.3.3 Define ImageDecoder interface
-- [ ] 0.3.4 Define TickGenerator interface
+- [x] 0.3.1 Define Renderer interface
+- [x] 0.3.2 Define AssetLoader interface (ReadFile, Exists, ListFiles)
+- [x] 0.3.3 Define ImageDecoder interface
+- [x] 0.3.4 Define TickGenerator interface
 
 **Acceptance Criteria**:
 - Interfaces are minimal and focused
