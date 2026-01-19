@@ -208,14 +208,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Clean parser that builds AST from tokens.
 
 **Subtasks**:
-- [ ] 2.3.1 Define AST node types
-- [ ] 2.3.2 Implement expression parsing (precedence climbing)
-- [ ] 2.3.3 Implement statement parsing
-- [ ] 2.3.4 Implement control flow parsing (if, for, while, switch)
-- [ ] 2.3.5 Implement function definition parsing
-- [ ] 2.3.6 Implement mes() block parsing
-- [ ] 2.3.7 Implement array syntax parsing (arr[index])
-- [ ] 2.3.8 Add comprehensive parser tests
+- [x] 2.3.1 Define AST node types
+- [x] 2.3.2 Implement expression parsing (precedence climbing)
+- [x] 2.3.3 Implement statement parsing
+- [x] 2.3.4 Implement control flow parsing (if, for, while, switch)
+- [x] 2.3.5 Implement function definition parsing
+- [x] 2.3.6 Implement mes() block parsing
+- [x] 2.3.7 Implement array syntax parsing (arr[index])
+- [x] 2.3.8 Add comprehensive parser tests
 
 **Acceptance Criteria**:
 - Parser handles all FILLY syntax including arrays
