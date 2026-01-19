@@ -154,6 +154,43 @@ Root Scope (main function)
 - Default values for undefined variables (no errors)
 - Immutable parent references (set at sequence creation)
 
+**Array Design**:
+Arrays are dynamic integer arrays stored as Go slices in the variable map.
+
+```go
+type VariableValue interface{}  // Can be int, string, or []int
+
+// Variable storage in scope
+vars := map[string]VariableValue{
+    "x":      42,           // int
+    "name":   "FILLY",      // string
+    "scores": []int{85, 92, 78},  // array
+}
+```
+
+**Array Operations**:
+- **Access**: `arr[index]` - auto-expand if index >= len(arr)
+- **Assignment**: `arr[index] = value` - auto-expand if needed
+- **Size**: `ArraySize(arr)` - returns current length
+- **Insert**: `InsArrayAt(arr, index, value)` - insert at position
+- **Delete**: `DelArrayAt(arr, index)` - remove at position
+- **Clear**: `DelArrayAll(arr)` - remove all elements
+
+**Auto-Expansion**:
+```
+When accessing arr[10] and len(arr) == 5:
+1. Expand arr to length 11
+2. Fill new elements [5..9] with 0
+3. Set arr[10] = value (if assignment) or return 0 (if read)
+```
+
+**Key Design Decisions**:
+- Arrays are Go slices (efficient, dynamic)
+- Auto-expansion simplifies script authoring
+- Zero-fill maintains predictable behavior
+- Integer-only (no string arrays)
+- No multi-dimensional arrays
+
 ### Principle 5: Thread-Safe State Management
 
 **Principle**: Shared state must be protected from concurrent access by the script goroutine and main thread.
@@ -259,10 +296,43 @@ The system is organized into distinct layers with clear responsibilities:
 ### Component Boundaries
 
 **Compiler Package** (`pkg/compiler/`):
+- Preprocessor: Handles #info and #include directives
 - Lexer: Tokenizes TFY source code
 - Parser: Builds AST from tokens
 - AST: Represents program structure
 - Interpreter: Converts AST to OpCode sequences
+
+**Preprocessor Design**:
+```
+1. Read main TFY file (raw bytes)
+2. Detect and convert character encoding:
+   a. Try to decode as UTF-8
+   b. If UTF-8 decode fails, assume Shift-JIS
+   c. Convert Shift-JIS to UTF-8 using golang.org/x/text/encoding/japanese
+   d. If conversion fails, report error
+3. Process #info directives (store metadata)
+4. Process #include directives:
+   a. Resolve file path (case-insensitive)
+   b. Check for circular includes
+   c. Recursively preprocess included file (with encoding conversion)
+   d. Insert processed content at #include location
+5. Output preprocessed UTF-8 source to lexer
+```
+
+**Character Encoding Strategy**:
+- **Detection**: Try UTF-8 first, fall back to Shift-JIS
+- **Conversion**: Use `golang.org/x/text/transform` package
+- **Rationale**: Most legacy FILLY scripts are Shift-JIS, but modern scripts may be UTF-8
+- **Error Handling**: Clear error messages for unsupported encodings
+
+**Key Design Decisions**:
+- Preprocessing happens before lexing
+- All internal processing uses UTF-8
+- #info metadata stored separately (not in AST)
+- #include creates a single merged source file
+- Circular include detection uses file path tracking
+- Case-insensitive file matching for Windows 3.1 compatibility
+- Encoding conversion is transparent to the rest of the compiler
 
 **Engine Package** (`pkg/engine/`):
 - State: Manages all runtime state (graphics, audio, variables)
@@ -1054,6 +1124,519 @@ This section describes how the design supports future enhancements.
 
 ---
 
+## Part 12: Embedded Executable Architecture
+
+This section describes the design for creating standalone executables with embedded projects.
+
+### Execution Modes
+
+**son-et supports two execution modes**:
+
+1. **Direct Mode** (Development):
+   - Loads TFY scripts from filesystem at runtime
+   - Parses and compiles TFY to OpCode on startup
+   - Loads assets from filesystem
+   - Fast iteration cycle for development
+
+2. **Embedded Mode** (Distribution):
+   - TFY scripts pre-compiled to OpCode at build time
+   - OpCode embedded in executable binary
+   - Assets embedded in executable using Go's embed.FS
+   - Single-file distribution, no external dependencies
+
+### Build-Time Compilation
+
+**Compilation Strategy**:
+```
+Build Time:
+  1. Read TFY files from project directory
+  2. Parse TFY to AST
+  3. Convert AST to OpCode sequences
+  4. Serialize OpCode to Go source code
+  5. Embed assets using //go:embed directive
+  6. Compile to executable with build tags
+
+Runtime (Embedded Mode):
+  1. Deserialize embedded OpCode
+  2. Initialize engine with embedded AssetLoader
+  3. Execute OpCode directly (no parsing)
+```
+
+**Key Design Decisions**:
+- Build-time compilation eliminates parsing overhead
+- OpCode serialization format is Go source code (type-safe)
+- Assets embedded using standard Go embed.FS
+- No custom binary format needed
+
+### Asset Loading Abstraction
+
+**AssetLoader Interface**:
+```go
+type AssetLoader interface {
+    // ReadFile reads a file from the asset source
+    ReadFile(path string) ([]byte, error)
+    
+    // Exists checks if a file exists
+    Exists(path string) bool
+    
+    // ListFiles lists files matching a pattern
+    ListFiles(pattern string) ([]string, error)
+}
+```
+
+**Implementations**:
+
+1. **FilesystemAssetLoader** (Direct Mode):
+```go
+type FilesystemAssetLoader struct {
+    basePath string  // Project directory
+}
+
+func (f *FilesystemAssetLoader) ReadFile(path string) ([]byte, error) {
+    // Case-insensitive file matching (Windows 3.1 compatibility)
+    fullPath := filepath.Join(f.basePath, path)
+    return os.ReadFile(fullPath)
+}
+```
+
+2. **EmbedFSAssetLoader** (Embedded Mode):
+```go
+type EmbedFSAssetLoader struct {
+    fs embed.FS  // Embedded filesystem
+}
+
+func (e *EmbedFSAssetLoader) ReadFile(path string) ([]byte, error) {
+    // Read from embedded filesystem
+    return e.fs.ReadFile(path)
+}
+```
+
+**Key Design Decisions**:
+- Single interface for both modes
+- Case-insensitive file matching in both modes
+- No mode-specific code in engine
+- AssetLoader injected via dependency injection
+
+### Build Configuration
+
+**Build Tag Strategy**:
+```go
+// build_kuma2.go
+//go:build embed_kuma2
+
+package main
+
+import _ "embed"
+
+//go:embed samples/kuma2/*
+var embeddedFS embed.FS
+
+var embeddedProject = &EmbeddedProject{
+    Name:    "kuma2",
+    Assets:  embeddedFS,
+    OpCodes: kuma2OpCodes,  // Generated at build time
+}
+```
+
+**Build Commands**:
+```bash
+# Direct mode (development)
+go run ./cmd/son-et samples/kuma2
+
+# Embedded mode (distribution)
+go build -tags embed_kuma2 -o kuma2 ./cmd/son-et
+./kuma2  # Runs embedded project
+```
+
+**Key Design Decisions**:
+- Use Go build tags for mode selection
+- One build configuration file per project
+- Embedded projects registered at package init time
+- No runtime mode detection needed
+
+### OpCode Serialization
+
+**Serialization Format**:
+OpCode sequences are serialized as Go source code for type safety and simplicity.
+
+```go
+// Generated code example
+var kuma2OpCodes = map[string][]OpCode{
+    "main": {
+        {Cmd: OpCall, Args: []any{"LoadPic", 0, "TITLE.BMP"}},
+        {Cmd: OpCall, Args: []any{"OpenWin", 0, 0, 0, 640, 480}},
+        {Cmd: OpCall, Args: []any{"Wait", 100}},
+        // ... more opcodes
+    },
+    "animate": {
+        // ... function opcodes
+    },
+}
+```
+
+**Generator Design**:
+```go
+type OpCodeGenerator struct {
+    writer io.Writer
+}
+
+func (g *OpCodeGenerator) Generate(script *Script) error {
+    // 1. Write package declaration
+    // 2. Write imports
+    // 3. For each function, serialize OpCode sequence
+    // 4. Write variable declarations
+    // 5. Write initialization code
+}
+```
+
+**Key Design Decisions**:
+- Use Go source code, not binary format
+- Type-safe at compile time
+- Human-readable for debugging
+- No custom serialization format needed
+
+### Mode Detection and Initialization
+
+**Application Entry Point**:
+```go
+func main() {
+    // Check if embedded project is registered
+    if embeddedProject != nil {
+        // Embedded mode
+        runEmbedded(embeddedProject)
+    } else if len(os.Args) > 1 {
+        // Direct mode with project path
+        runDirect(os.Args[1])
+    } else {
+        // No project specified
+        printUsage()
+    }
+}
+```
+
+**Initialization Flow**:
+```
+Direct Mode:
+  1. Parse command-line arguments
+  2. Load TFY files from directory
+  3. Parse TFY to AST
+  4. Convert AST to OpCode
+  5. Create FilesystemAssetLoader
+  6. Initialize engine
+  7. Execute OpCode
+
+Embedded Mode:
+  1. Load embedded OpCode
+  2. Create EmbedFSAssetLoader
+  3. Initialize engine
+  4. Execute OpCode
+```
+
+**Key Design Decisions**:
+- Mode determined by presence of embedded project
+- Same engine initialization for both modes
+- Only AssetLoader differs between modes
+- No conditional logic in engine code
+
+### Headless Mode Integration
+
+**Headless mode works in both execution modes**:
+
+```bash
+# Direct mode + headless
+go run ./cmd/son-et --headless --timeout=10s samples/kuma2
+
+# Embedded mode + headless
+./kuma2 --headless --timeout=10s
+```
+
+**Implementation**:
+- Headless flag parsed before mode detection
+- MockRenderer injected regardless of mode
+- Logging works identically in both modes
+- Timeout applies to both modes
+
+**Key Design Decisions**:
+- Headless is orthogonal to execution mode
+- Same command-line interface for both modes
+- No mode-specific headless logic
+
+### Distribution Workflow
+
+**Creating Standalone Executables**:
+
+1. **Create build configuration**:
+```go
+// build_myproject.go
+//go:build embed_myproject
+
+package main
+
+import _ "embed"
+
+//go:embed samples/myproject/*
+var embeddedFS embed.FS
+
+var embeddedProject = &EmbeddedProject{
+    Name:   "myproject",
+    Assets: embeddedFS,
+}
+
+func init() {
+    // Generate OpCode at build time
+    embeddedProject.OpCodes = generateOpCodes("samples/myproject")
+}
+```
+
+2. **Build executable**:
+```bash
+go build -tags embed_myproject -o myproject ./cmd/son-et
+```
+
+3. **Distribute**:
+```bash
+# Single executable, no dependencies
+./myproject
+```
+
+**Key Design Decisions**:
+- One-step build process
+- No external tools required
+- Standard Go toolchain
+- Cross-platform support via Go's build system
+
+### Error Handling in Embedded Mode
+
+**Build-Time Errors**:
+- TFY parsing errors fail the build
+- Missing assets fail the build
+- OpCode generation errors fail the build
+- Clear error messages with file/line numbers
+
+**Runtime Errors**:
+- Same error handling as direct mode
+- Embedded mode has no parsing errors (pre-compiled)
+- Asset loading errors still possible (corrupted embed)
+- Error messages reference embedded paths
+
+**Key Design Decisions**:
+- Fail fast at build time
+- Catch errors before distribution
+- Runtime errors are rare in embedded mode
+- Same error reporting format for both modes
+
+### Performance Characteristics
+
+**Direct Mode**:
+- Startup time: ~100ms (parsing + compilation)
+- Memory: Higher (AST + OpCode in memory)
+- Iteration: Fast (no rebuild needed)
+
+**Embedded Mode**:
+- Startup time: ~10ms (no parsing)
+- Memory: Lower (only OpCode in memory)
+- Distribution: Single file, smaller size
+
+**Key Design Decisions**:
+- Embedded mode optimized for startup time
+- Direct mode optimized for iteration speed
+- Both modes have identical runtime performance
+- No performance penalty for abstraction
+
+### Window Drag Interaction
+
+**User Interaction Design**:
+Windows with captions can be dragged by the user to reposition them within the virtual desktop.
+
+**Drag Detection**:
+```
+1. Mouse down event occurs
+2. Check if mouse position is within any window's title bar region
+3. If yes, enter drag mode for that window
+4. Store initial mouse position and window position
+```
+
+**Drag Update**:
+```
+1. Mouse move event occurs while in drag mode
+2. Calculate delta: (currentMouseX - initialMouseX, currentMouseY - initialMouseY)
+3. Update window position: (initialWindowX + deltaX, initialWindowY + deltaY)
+4. Constrain window to virtual desktop bounds
+5. Trigger re-render
+```
+
+**Drag End**:
+```
+1. Mouse up event occurs
+2. Exit drag mode
+3. Finalize window position
+```
+
+**Title Bar Region**:
+- Height: Typically 20-30 pixels (configurable)
+- Width: Full window width
+- Position: Top of window
+
+**Boundary Constraints**:
+- Window must remain at least partially visible
+- Minimum visible area: Title bar must be within desktop
+- Prevents windows from being dragged completely off-screen
+
+**Key Design Decisions**:
+- Drag only by title bar (not entire window)
+- Real-time position updates during drag
+- Smooth visual feedback
+- Boundary constraints prevent lost windows
+- No script API needed (automatic behavior)
+
+### Multi-Project Menu System
+
+**Multi-Project Mode**:
+When multiple projects are embedded, the executable provides a menu-driven interface for project selection.
+
+**Application State Machine**:
+```
+┌─────────────┐
+│   Startup   │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────┐
+│  Project Menu   │◄─────────┐
+│  (List projects)│          │
+└────┬────────┬───┘          │
+     │        │              │
+     │ Select │         ESC pressed
+     │        │         or project
+     ▼        │         completes
+┌─────────────┐│              │
+│   Execute   ││              │
+│   Project   ├┘              │
+└─────────────┴───────────────┘
+     │
+     │ ESC in menu
+     ▼
+┌─────────────┐
+│  Terminate  │
+└─────────────┘
+```
+
+**Menu UI Design**:
+```
+┌────────────────────────────────────┐
+│     son-et Project Selector        │
+│                                    │
+│  1. Kuma2 Adventure                │
+│  2. Y-Saru Game                    │
+│  3. Robot Demo                     │
+│                                    │
+│  Select project (1-3) or ESC to exit│
+└────────────────────────────────────┘
+```
+
+**Menu Implementation**:
+- Simple text-based menu rendered on virtual desktop
+- Keyboard input for selection (1-9 for projects, ESC to exit)
+- Mouse click support for selection
+- Clear visual feedback for selection
+
+**ESC Key Behavior Context**:
+
+**Single Project Mode**:
+- ESC → Terminate program immediately
+
+**Multi-Project Mode - In Menu**:
+- ESC → Terminate program
+
+**Multi-Project Mode - In Project**:
+- ESC → Return to menu (not terminate)
+
+**Project Completion**:
+- When main() completes → Return to menu (multi-project mode)
+- When main() completes → Terminate (single project mode)
+
+**State Management**:
+```go
+type ApplicationMode int
+
+const (
+    SingleProject ApplicationMode = iota
+    MultiProjectMenu
+    MultiProjectRunning
+)
+
+type ApplicationState struct {
+    mode            ApplicationMode
+    projects        []EmbeddedProject
+    currentProject  *EmbeddedProject
+    menuSelection   int
+}
+
+func (s *ApplicationState) HandleESC() {
+    switch s.mode {
+    case SingleProject:
+        // Terminate immediately
+        terminate()
+    case MultiProjectMenu:
+        // Terminate from menu
+        terminate()
+    case MultiProjectRunning:
+        // Return to menu
+        s.mode = MultiProjectMenu
+        cleanupProject()
+    }
+}
+```
+
+**Project Lifecycle in Multi-Project Mode**:
+```
+1. Display menu
+2. User selects project
+3. Initialize engine with project's AssetLoader
+4. Load project's OpCode
+5. Execute project
+6. On completion or ESC:
+   a. Cleanup engine state
+   b. Reset graphics/audio
+   c. Return to menu
+7. Repeat from step 1
+```
+
+**Build Configuration for Multi-Project**:
+```go
+// build_collection.go
+//go:build embed_collection
+
+package main
+
+import _ "embed"
+
+//go:embed samples/kuma2/*
+var kuma2FS embed.FS
+
+//go:embed samples/y-saru/*
+var ysaruFS embed.FS
+
+//go:embed samples/robot/*
+var robotFS embed.FS
+
+var embeddedProjects = []EmbeddedProject{
+    {Name: "Kuma2 Adventure", Assets: kuma2FS, OpCodes: kuma2OpCodes},
+    {Name: "Y-Saru Game", Assets: ysaruFS, OpCodes: ysaruOpCodes},
+    {Name: "Robot Demo", Assets: robotFS, OpCodes: robotOpCodes},
+}
+```
+
+**Key Design Decisions**:
+- Menu is part of the application layer, not engine
+- ESC behavior is context-aware (menu vs project)
+- Clean state reset between projects
+- No cross-project state contamination
+- Simple, intuitive navigation
+- Supports up to 9 projects (keyboard 1-9)
+
+---
+
 ## Conclusion
 
 This design document describes the ideal architecture for son-et based on the requirements and architectural principles. The design emphasizes:
@@ -1064,6 +1647,7 @@ This design document describes the ideal architecture for son-et based on the re
 4. **Hierarchical variable scope** for lexical scoping
 5. **Thread-safe state management** for concurrent access
 6. **Non-blocking audio architecture** for responsive playback
+7. **Dual execution modes** for development and distribution
 
 The design is organized into clear layers with well-defined boundaries, uses dependency injection for testability, and provides extension points for future enhancements. All design decisions align with the core architectural principles and support the unique execution model of FILLY scripts.
 

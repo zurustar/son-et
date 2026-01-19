@@ -33,6 +33,30 @@ These requirements define the fundamental behavior of the FILLY execution model.
 5. WHEN the system encounters mes() blocks, THE System SHALL register and execute them correctly
 6. WHEN the system encounters function definitions, THE System SHALL execute function bodies correctly
 7. THE System SHALL maintain consistent variable scoping across all code constructs
+8. WHEN the system encounters preprocessor directives (#info, #include), THE System SHALL process them before execution
+9. WHEN the system encounters array operations, THE System SHALL handle dynamic arrays correctly
+
+**Preprocessor Directives:**
+10. WHEN a #info directive is encountered, THE System SHALL parse and store the metadata
+11. WHEN a #include directive is encountered, THE System SHALL load and parse the specified TFY file
+12. WHEN processing #include, THE System SHALL resolve file paths relative to the project directory
+13. WHEN processing #include, THE System SHALL use case-insensitive file matching (Windows 3.1 compatibility)
+14. WHEN a circular #include is detected, THE System SHALL report an error
+15. THE System SHALL process #include directives recursively (included files can include other files)
+16. THE System SHALL support all standard #info tags (INAM, IART, ICOP, GENR, WRIT, GRPC, COMP, PROD, CONT, MDFY, TRNS, JINT, VIDO, INST, ISBJ, ICMT)
+
+**Character Encoding:**
+17. WHEN reading TFY files, THE System SHALL detect if the file is Shift-JIS encoded
+18. WHEN a TFY file is Shift-JIS encoded, THE System SHALL convert it to UTF-8 before parsing
+19. WHEN conversion fails, THE System SHALL report a clear error message
+20. THE System SHALL support both Shift-JIS and UTF-8 encoded TFY files
+
+**Arrays:**
+21. THE System SHALL support dynamic integer arrays with automatic resizing
+22. THE System SHALL support 0-based array indexing
+23. WHEN an array element is accessed beyond current size, THE System SHALL expand the array automatically
+24. WHEN an uninitialized array element is read, THE System SHALL return 0
+25. THE System SHALL support array manipulation functions (ArraySize, DelArrayAll, DelArrayAt, InsArrayAt)
 
 ### Requirement A2: Step-Based Execution Model
 
@@ -168,6 +192,9 @@ These requirements define the multimedia capabilities that scripts can use.
 16. THE System SHALL support updating window properties (position, size, picture)
 17. THE System SHALL support window captions
 18. THE System SHALL render windows in creation order within the virtual desktop
+19. WHEN a window has a caption, THE System SHALL allow the user to drag the window by its title bar
+20. WHEN the user drags a window, THE System SHALL update the window position in real-time
+21. THE System SHALL constrain dragged windows to remain within the virtual desktop bounds
 
 ### Requirement B2: Audio Playback System
 
@@ -474,15 +501,26 @@ These requirements support development, testing, and debugging workflows.
 
 ### Requirement C6: Embedded Executable Generation
 
-**User Story:** As a developer, I want to create standalone executables, so that I can distribute applications.
+**User Story:** As a developer, I want to create standalone executables with one or more projects embedded, so that I can distribute applications or collections.
 
 #### Acceptance Criteria
 
+**Single Project Mode:**
 1. WHEN building with a project directory specified, THE System SHALL create an executable with the project embedded
 2. WHEN the embedded executable runs, THE System SHALL execute the embedded project without external TFY files
 3. WHEN the embedded executable runs, THE System SHALL load assets from embedded data
 4. WHEN building with embedded project, THE System SHALL convert TFY to executable form at build time
 5. WHEN the embedded executable runs without arguments, THE System SHALL execute the embedded project
+6. WHEN ESC is pressed during single project execution, THE System SHALL terminate the program
+
+**Multiple Project Mode:**
+7. WHEN building with multiple projects specified, THE System SHALL create an executable with all projects embedded
+8. WHEN the multi-project executable runs, THE System SHALL display a project selection menu
+9. WHEN the user selects a project from the menu, THE System SHALL execute that project
+10. WHEN ESC is pressed during project execution in multi-project mode, THE System SHALL return to the project selection menu
+11. WHEN a project completes normally in multi-project mode, THE System SHALL return to the project selection menu
+12. WHEN ESC is pressed in the project selection menu, THE System SHALL terminate the program
+13. THE System SHALL allow the user to select and run different projects without restarting the executable
 
 ### Requirement C7: Error Reporting
 

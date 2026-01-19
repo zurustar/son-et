@@ -37,13 +37,18 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [ ] 0.2.1 Define Sequencer struct (commands, pc, active, mode, waitCount, stepSize, vars, parent)
 - [ ] 0.2.2 Implement NewSequencer constructor
 - [ ] 0.2.3 Implement variable resolution with scope chain walking
-- [ ] 0.2.4 Add unit tests for variable scoping
+- [ ] 0.2.4 Implement array storage and auto-expansion
+- [ ] 0.2.5 Add unit tests for variable scoping
+- [ ] 0.2.6 Add unit tests for array operations
 
 **Acceptance Criteria**:
 - Sequencer maintains parent pointer for scope chain
 - Variable lookup walks up scope chain correctly
 - Case-insensitive variable resolution
 - Default values for undefined variables (0, "", [])
+- Arrays stored as Go slices
+- Array auto-expansion works correctly
+- Zero-fill for new array elements
 
 ---
 
@@ -52,7 +57,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 **Subtasks**:
 - [ ] 0.3.1 Define Renderer interface
-- [ ] 0.3.2 Define AssetLoader interface
+- [ ] 0.3.2 Define AssetLoader interface (ReadFile, Exists, ListFiles)
 - [ ] 0.3.3 Define ImageDecoder interface
 - [ ] 0.3.4 Define TickGenerator interface
 
@@ -60,6 +65,24 @@ This task list implements the requirements defined in [requirements.md](requirem
 - Interfaces are minimal and focused
 - Interfaces enable testing without platform dependencies
 - Interfaces support both production and mock implementations
+- AssetLoader supports both filesystem and embedded modes
+
+---
+
+### Task 0.4: AssetLoader Implementations
+**Goal**: Implement asset loading for both direct and embedded modes.
+
+**Subtasks**:
+- [ ] 0.4.1 Implement FilesystemAssetLoader (direct mode)
+- [ ] 0.4.2 Implement case-insensitive file matching (Windows 3.1 compatibility)
+- [ ] 0.4.3 Implement EmbedFSAssetLoader (embedded mode)
+- [ ] 0.4.4 Add unit tests for both implementations
+
+**Acceptance Criteria**:
+- FilesystemAssetLoader reads from filesystem with case-insensitive matching
+- EmbedFSAssetLoader reads from embed.FS
+- Both implementations satisfy AssetLoader interface
+- Tests verify both modes work correctly
 
 ---
 
@@ -137,14 +160,42 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ## Phase 2: Compilation Layer
 
-### Task 2.1: Lexer
+### Task 2.1: Preprocessor
+**Goal**: Implement #info and #include directive processing with character encoding support.
+
+**Subtasks**:
+- [ ] 2.1.1 Implement character encoding detection (UTF-8 vs Shift-JIS)
+- [ ] 2.1.2 Implement Shift-JIS to UTF-8 conversion using golang.org/x/text
+- [ ] 2.1.3 Implement #info directive parsing and metadata storage
+- [ ] 2.1.4 Implement #include directive parsing
+- [ ] 2.1.5 Implement file path resolution (case-insensitive)
+- [ ] 2.1.6 Implement circular include detection
+- [ ] 2.1.7 Implement recursive include processing (with encoding conversion)
+- [ ] 2.1.8 Implement preprocessed source merging
+- [ ] 2.1.9 Add tests for preprocessor with Shift-JIS files
+- [ ] 2.1.10 Add tests for encoding conversion edge cases
+
+**Acceptance Criteria**:
+- Shift-JIS files automatically converted to UTF-8
+- UTF-8 files processed without conversion
+- Encoding errors reported clearly
+- #info directives parsed and metadata stored
+- #include directives load and merge files correctly
+- Case-insensitive file matching works
+- Circular includes detected and reported
+- Recursive includes work correctly with proper encoding
+- All standard #info tags supported
+
+---
+
+### Task 2.2: Lexer
 **Goal**: Clean, minimal lexer that tokenizes FILLY source code.
 
 **Subtasks**:
-- [ ] 2.1.1 Implement token types (keywords, operators, literals, identifiers)
-- [ ] 2.1.2 Implement lexer with position tracking
-- [ ] 2.1.3 Implement error reporting with line/column
-- [ ] 2.1.4 Add comprehensive lexer tests
+- [ ] 2.2.1 Implement token types (keywords, operators, literals, identifiers)
+- [ ] 2.2.2 Implement lexer with position tracking
+- [ ] 2.2.3 Implement error reporting with line/column
+- [ ] 2.2.4 Add comprehensive lexer tests
 
 **Acceptance Criteria**:
 - Lexer handles all FILLY syntax
@@ -153,41 +204,67 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 2.2: Parser
+### Task 2.3: Parser
 **Goal**: Clean parser that builds AST from tokens.
 
 **Subtasks**:
-- [ ] 2.2.1 Define AST node types
-- [ ] 2.2.2 Implement expression parsing (precedence climbing)
-- [ ] 2.2.3 Implement statement parsing
-- [ ] 2.2.4 Implement control flow parsing (if, for, while, switch)
-- [ ] 2.2.5 Implement function definition parsing
-- [ ] 2.2.6 Implement mes() block parsing
-- [ ] 2.2.7 Add comprehensive parser tests
+- [ ] 2.3.1 Define AST node types
+- [ ] 2.3.2 Implement expression parsing (precedence climbing)
+- [ ] 2.3.3 Implement statement parsing
+- [ ] 2.3.4 Implement control flow parsing (if, for, while, switch)
+- [ ] 2.3.5 Implement function definition parsing
+- [ ] 2.3.6 Implement mes() block parsing
+- [ ] 2.3.7 Implement array syntax parsing (arr[index])
+- [ ] 2.3.8 Add comprehensive parser tests
 
 **Acceptance Criteria**:
-- Parser handles all FILLY syntax
+- Parser handles all FILLY syntax including arrays
 - Clear error messages with line/column numbers
 - AST structure is clean and minimal
 
 ---
 
-### Task 2.3: OpCode Generation
+### Task 2.4: OpCode Generation
 **Goal**: Convert AST to OpCode sequences uniformly.
 
 **Subtasks**:
-- [ ] 2.3.1 Implement statement conversion (assignments, function calls)
-- [ ] 2.3.2 Implement expression conversion (arithmetic, comparisons, nested)
-- [ ] 2.3.3 Implement control flow conversion (if, for, while, switch)
-- [ ] 2.3.4 Implement function definition conversion
-- [ ] 2.3.5 Implement mes() block conversion
-- [ ] 2.3.6 Add comprehensive OpCode generation tests
+- [ ] 2.4.1 Implement statement conversion (assignments, function calls)
+- [ ] 2.4.2 Implement expression conversion (arithmetic, comparisons, nested)
+- [ ] 2.4.3 Implement control flow conversion (if, for, while, switch)
+- [ ] 2.4.4 Implement function definition conversion
+- [ ] 2.4.5 Implement mes() block conversion
+- [ ] 2.4.6 Implement array access conversion (arr[index])
+- [ ] 2.4.7 Add comprehensive OpCode generation tests
 
 **Acceptance Criteria**:
 - All FILLY constructs convert to OpCode
 - Nested expressions become nested OpCode
 - Control flow uses OpCode with nested blocks
 - mes() blocks become OpCode sequences
+- Array operations convert correctly
+
+---
+
+### Task 2.5: OpCode Serialization (for Embedded Mode)
+**Goal**: Generate Go source code from OpCode for build-time compilation.
+
+**Subtasks**:
+- [ ] 2.5.1 Implement OpCodeGenerator (serialize OpCode to Go source)
+- [ ] 2.5.2 Implement function OpCode serialization
+- [ ] 2.5.3 Implement variable declaration serialization
+- [ ] 2.5.4 Implement asset reference tracking
+- [ ] 2.5.5 Implement #info metadata serialization
+- [ ] 2.5.6 Add tests for OpCode serialization
+
+**Acceptance Criteria**:
+- OpCode serializes to valid Go source code
+- Generated code is type-safe
+- Generated code is human-readable
+- All OpCode types supported
+- Metadata preserved in embedded mode
+- Generated code is type-safe
+- Generated code is human-readable
+- All OpCode types supported
 
 ---
 
@@ -313,26 +390,27 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 **Subtasks**:
 - [ ] 4.2.1 Define Picture struct (ID, Image, Width, Height)
-- [ ] 4.2.2 Implement LoadPic (load BMP, assign ID)
+- [ ] 4.2.2 Implement LoadPic using AssetLoader (supports both filesystem and embedded)
 - [ ] 4.2.3 Implement CreatePic (create empty buffer)
 - [ ] 4.2.4 Implement MovePic (copy pixels with transparency)
 - [ ] 4.2.5 Implement DelPic (release resources)
 - [ ] 4.2.6 Implement PicWidth, PicHeight queries
 - [ ] 4.2.7 Implement MoveSPic (scale and copy)
 - [ ] 4.2.8 Implement ReversePic (horizontal flip)
-- [ ] 4.2.9 Add tests for picture operations
+- [ ] 4.2.9 Add tests for picture operations with both AssetLoader implementations
 
 **Acceptance Criteria**:
-- BMP loading works correctly
+- BMP loading works via AssetLoader (both modes)
 - Sequential ID assignment
 - Transparency handled correctly
 - Resource cleanup on deletion
 - Scaling and flipping preserve transparency
+- Tests verify both filesystem and embedded loading
 
 ---
 
 ### Task 4.3: Window Management
-**Goal**: Implement window creation and management.
+**Goal**: Implement window creation and management with drag support.
 
 **Subtasks**:
 - [ ] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption)
@@ -342,13 +420,19 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [ ] 4.3.5 Implement CloseWinAll (close all windows)
 - [ ] 4.3.6 Implement CapTitle (set caption)
 - [ ] 4.3.7 Implement GetPicNo (query picture ID)
-- [ ] 4.3.8 Add tests for window operations
+- [ ] 4.3.8 Implement window drag detection (mouse down on title bar)
+- [ ] 4.3.9 Implement window drag update (mouse move while dragging)
+- [ ] 4.3.10 Implement window drag constraints (keep within virtual desktop)
+- [ ] 4.3.11 Add tests for window operations including drag
 
 **Acceptance Criteria**:
 - Windows display pictures correctly
 - Window properties update correctly
 - Windows render in creation order
 - All windows within virtual desktop
+- Windows with captions can be dragged by title bar
+- Dragged windows constrain to desktop bounds
+- Smooth drag interaction with real-time updates
 
 ---
 
@@ -396,14 +480,15 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement MIDI playback with tick generation.
 
 **Subtasks**:
-- [ ] 5.1.1 Implement PlayMIDI (load and start playback)
+- [ ] 5.1.1 Implement PlayMIDI using AssetLoader (supports both filesystem and embedded)
 - [ ] 5.1.2 Implement MIDI tick calculation (tempo, PPQ)
 - [ ] 5.1.3 Implement tick callbacks to VM
 - [ ] 5.1.4 Implement MIDI_END event triggering
-- [ ] 5.1.5 Add tests for MIDI playback
+- [ ] 5.1.5 Add tests for MIDI playback with both AssetLoader implementations
 
 **Acceptance Criteria**:
 - MIDI playback runs in background goroutine
+- MIDI loading works via AssetLoader (both modes)
 - Tick callbacks drive MIDI_TIME sequences
 - Accurate tick timing based on tempo
 - MIDI continues after starting sequence terminates
@@ -414,13 +499,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement WAV playback.
 
 **Subtasks**:
-- [ ] 5.2.1 Implement PlayWAVE (decode and play)
+- [ ] 5.2.1 Implement PlayWAVE using AssetLoader (supports both filesystem and embedded)
 - [ ] 5.2.2 Implement concurrent playback support
 - [ ] 5.2.3 Implement resource preloading (LoadRsc, PlayRsc, DelRsc)
-- [ ] 5.2.4 Add tests for WAV playback
+- [ ] 5.2.4 Add tests for WAV playback with both AssetLoader implementations
 
 **Acceptance Criteria**:
 - WAV playback runs asynchronously
+- WAV loading works via AssetLoader (both modes)
 - Multiple WAV files can play concurrently
 - Preloading enables fast playback start
 
@@ -551,53 +637,97 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ## Phase 7: Integration and Testing
 
-### Task 7.1: Property-Based Tests
+### Task 7.1: Embedded Executable Generation
+**Goal**: Implement build-time compilation and embedded mode with multi-project support.
+
+**Subtasks**:
+- [ ] 7.1.1 Implement CLI mode detection (direct vs single-project vs multi-project)
+- [ ] 7.1.2 Implement build configuration structure (EmbeddedProject)
+- [ ] 7.1.3 Create build script/tool for generating embedded executables
+- [ ] 7.1.4 Implement embedded project registration (build tags)
+- [ ] 7.1.5 Implement multi-project menu UI
+- [ ] 7.1.6 Implement project selection (keyboard and mouse)
+- [ ] 7.1.7 Implement context-aware ESC handling (menu vs project)
+- [ ] 7.1.8 Implement project lifecycle management (init, run, cleanup, return to menu)
+- [ ] 7.1.9 Implement state reset between projects
+- [ ] 7.1.10 Test single-project embedded executable generation
+- [ ] 7.1.11 Test multi-project embedded executable generation
+- [ ] 7.1.12 Test embedded executable execution (single and multi-project)
+- [ ] 7.1.13 Test headless mode with embedded executables
+- [ ] 7.1.14 Test ESC behavior in all contexts (menu, single-project, multi-project)
+
+**Acceptance Criteria**:
+- Build command creates standalone executable (single or multi-project)
+- Embedded executable runs without external TFY files
+- Assets load from embedded data
+- Multi-project mode displays menu on startup
+- User can select projects from menu
+- ESC in project returns to menu (multi-project mode)
+- ESC in menu terminates program
+- ESC in single-project mode terminates program
+- Project completion returns to menu (multi-project mode)
+- Clean state reset between project runs
+- Headless mode works with embedded executables
+- Build tags control which projects are embedded
+- Generated executables are cross-platform
+
+---
+
+### Task 7.2: Property-Based Tests
 **Goal**: Implement PBT for correctness properties.
 
 **Subtasks**:
-- [ ] 7.1.1 Write property tests for OpCode execution
-- [ ] 7.1.2 Write property tests for variable scoping
-- [ ] 7.1.3 Write property tests for timing accuracy
-- [ ] 7.1.4 Write property tests for concurrent execution
-- [ ] 7.1.5 Write property tests for sequence lifecycle
+- [ ] 7.2.1 Write property tests for OpCode execution
+- [ ] 7.2.2 Write property tests for variable scoping
+- [ ] 7.2.3 Write property tests for timing accuracy
+- [ ] 7.2.4 Write property tests for concurrent execution
+- [ ] 7.2.5 Write property tests for sequence lifecycle
+- [ ] 7.2.6 Write property tests for AssetLoader implementations
 
 **Acceptance Criteria**:
 - Properties verify universal invariants
 - Tests catch edge cases
 - Properties linked to requirements
+- Both AssetLoader modes tested
 
 ---
 
-### Task 7.2: Integration Tests
-**Goal**: Test complete sample scripts.
+### Task 7.3: Integration Tests
+**Goal**: Test complete sample scripts in both modes.
 
 **Subtasks**:
-- [ ] 7.2.1 Test kuma2 sample (TIME mode)
-- [ ] 7.2.2 Test y-saru sample (MIDI_TIME mode)
-- [ ] 7.2.3 Test yosemiya sample (multiple sequences)
-- [ ] 7.2.4 Test robot sample (MIDI_END event)
-- [ ] 7.2.5 Add headless integration tests
+- [ ] 7.3.1 Test kuma2 sample in direct mode (TIME mode)
+- [ ] 7.3.2 Test y-saru sample in direct mode (MIDI_TIME mode)
+- [ ] 7.3.3 Test yosemiya sample in direct mode (multiple sequences)
+- [ ] 7.3.4 Test robot sample in direct mode (MIDI_END event)
+- [ ] 7.3.5 Test kuma2 sample in embedded mode
+- [ ] 7.3.6 Test y-saru sample in embedded mode
+- [ ] 7.3.7 Add headless integration tests for both modes
 
 **Acceptance Criteria**:
-- All sample scripts execute correctly
+- All sample scripts execute correctly in direct mode
+- All sample scripts execute correctly in embedded mode
+- Behavior is identical between modes
 - Timing behavior matches expectations
-- Headless tests pass in CI/CD
+- Headless tests pass in CI/CD for both modes
 
 ---
 
-### Task 7.3: Backward Compatibility Tests
-**Goal**: Ensure existing scripts work.
+### Task 7.4: Backward Compatibility Tests
+**Goal**: Ensure existing scripts work in both modes.
 
 **Subtasks**:
-- [ ] 7.3.1 Test all sample scripts from _old_implementation
-- [ ] 7.3.2 Compare behavior with old implementation
-- [ ] 7.3.3 Document any intentional behavior changes
-- [ ] 7.3.4 Fix compatibility issues
+- [ ] 7.4.1 Test all sample scripts from _old_implementation in direct mode
+- [ ] 7.4.2 Test all sample scripts from _old_implementation in embedded mode
+- [ ] 7.4.3 Compare behavior with old implementation
+- [ ] 7.4.4 Document any intentional behavior changes
+- [ ] 7.4.5 Fix compatibility issues
 
 **Acceptance Criteria**:
-- All existing scripts work without modification
+- All existing scripts work without modification in both modes
 - Timing behavior is compatible
 - No regressions
+- Embedded mode produces identical behavior to direct mode
 
 ---
 
@@ -627,11 +757,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [ ] 8.2.2 Document key design decisions
 - [ ] 8.2.3 Document testing strategy
 - [ ] 8.2.4 Document deployment process
+- [ ] 8.2.5 Document embedded executable generation workflow
+- [ ] 8.2.6 Document build configuration examples
 
 **Acceptance Criteria**:
 - Design document reflects actual implementation
 - Design decisions explained
 - Testing strategy documented
+- Embedded mode workflow documented with examples
 
 ---
 
@@ -654,15 +787,15 @@ This task list implements the requirements defined in [requirements.md](requirem
 ## Notes
 
 **Implementation Order Rationale**:
-1. **Foundation first**: Core data structures enable everything else
+1. **Foundation first**: Core data structures, AssetLoader, and array support enable everything else
 2. **Infrastructure early**: Logging and testing infrastructure needed throughout
-3. **Compilation before execution**: Need OpCode before VM can run
+3. **Compilation before execution**: Preprocessor → Lexer → Parser → OpCode; OpCode serialization enables embedded mode
 4. **Execution core early**: mes() is central to FILLY, implement early
-5. **Graphics layer by layer**: Desktop → Picture → Window → Cast (dependency order)
-6. **Audio after graphics**: Audio is independent but benefits from working graphics
-7. **Runtime features last**: These depend on working execution and graphics
-8. **Integration testing**: Verify everything works together
-9. **Documentation**: Document the final, working system
+5. **Graphics layer by layer**: Desktop → Picture → Window → Cast (dependency order); LoadPic uses AssetLoader
+6. **Audio after graphics**: Audio is independent but benefits from working graphics; uses AssetLoader
+7. **Runtime features last**: These depend on working execution and graphics; includes array operations
+8. **Integration testing**: Verify everything works together; test both direct and embedded modes
+9. **Documentation**: Document the final, working system including embedded mode workflow and preprocessor directives
 
 **Testing Strategy**:
 - Write tests before or alongside implementation
