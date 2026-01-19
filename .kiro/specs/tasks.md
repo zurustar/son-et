@@ -145,10 +145,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement clear error messages.
 
 **Subtasks**:
-- [ ] 1.4.1 Implement parsing error reporting (line, column)
-- [ ] 1.4.2 Implement runtime error reporting (OpCode, args)
-- [ ] 1.4.3 Implement asset loading error reporting (filename)
-- [ ] 1.4.4 Add tests for error reporting
+- [x] 1.4.1 Implement parsing error reporting (line, column)
+- [x] 1.4.2 Implement runtime error reporting (OpCode, args)
+- [x] 1.4.3 Implement asset loading error reporting (filename)
+- [x] 1.4.4 Add tests for error reporting
 
 **Acceptance Criteria**:
 - Parsing errors include line/column
