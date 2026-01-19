@@ -92,10 +92,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement timestamped logging with debug levels.
 
 **Subtasks**:
-- [ ] 1.1.1 Implement timestamp formatting [HH:MM:SS.mmm]
-- [ ] 1.1.2 Implement DEBUG_LEVEL support (0, 1, 2)
-- [ ] 1.1.3 Implement log functions (LogError, LogInfo, LogDebug)
-- [ ] 1.1.4 Add tests for logging
+- [x] 1.1.1 Implement timestamp formatting [HH:MM:SS.mmm]
+- [x] 1.1.2 Implement DEBUG_LEVEL support (0, 1, 2)
+- [x] 1.1.3 Implement log functions (LogError, LogInfo, LogDebug)
+- [x] 1.1.4 Add tests for logging
 
 **Acceptance Criteria**:
 - Timestamps in all logs
