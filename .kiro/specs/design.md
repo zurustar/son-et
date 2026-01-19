@@ -561,42 +561,122 @@ type Renderer interface {
 
 This section describes the design of the audio subsystem.
 
+### Technology Stack
+
+**Graphics and Game Loop**:
+- **Ebitengine (github.com/hajimehoshi/ebiten/v2)**: 2D game engine
+  - Provides game loop (Update/Draw at 60 FPS)
+  - Cross-platform rendering
+  - Input handling
+  - Audio context for MIDI and WAV playback
+  - **Environment Variable**: Set `EBITENGINE_GRAPHICS_LIBRARY=opengl` to use OpenGL mode and avoid Metal deprecation warnings on macOS
+
+**MIDI Synthesis**:
+- **MeltySynth (github.com/sinshu/go-meltysynth/meltysynth)**: Software MIDI synthesizer
+  - Parses Standard MIDI Files (SMF) and extracts tempo, PPQ
+  - Loads SoundFont (.sf2) files for instrument samples
+  - Renders audio samples in real-time
+  - Provides accurate MIDI file sequencing
+
+**WAV Playback**:
+- **Ebiten Audio/WAV (github.com/hajimehoshi/ebiten/v2/audio/wav)**: WAV decoding and playback
+  - Decodes WAV files with sample rate conversion
+  - Supports concurrent playback of multiple WAV files
+  - Process MIDI events sequentially
+  - Provides timing information for synchronization
+- **FluidSynth Go bindings or alternative synthesizer**: MIDI synthesis with SF2 soundfonts
+  - Converts MIDI events to audio
+  - Supports General MIDI (GM) soundfonts
+  - Real-time synthesis
+
+**WAV Playback**:
+- **Ebitengine audio (github.com/hajimehoshi/ebiten/v2/audio)**: WAV decoding and playback
+  - Concurrent playback support
+  - Cross-platform audio output
+
 ### MIDI Architecture
 
 **MIDI Player Design**:
 - Global singleton (one MIDI file plays at a time)
-- Runs in separate goroutine
-- Generates ticks based on tempo and PPQ
-- Invokes callbacks to drive MIDI_TIME sequences
+- Runs in separate goroutine (audio thread)
+- Uses MeltySynth for MIDI synthesis with SoundFont (.sf2)
+- Implements io.Reader interface (MidiStream) for Ebiten audio integration
+- Generates ticks based on wall-clock time and tempo map
+- Invokes tick callbacks to drive MIDI_TIME sequences
 
 **MIDI Tick Calculation**:
 ```
 Tick Interval = (60 / tempo) / PPQ / 8
   where:
-    tempo = beats per minute
-    PPQ = pulses per quarter note
-    8 = 32nd notes per quarter note
+    tempo = beats per minute (from MIDI tempo events)
+    PPQ = pulses per quarter note (from MIDI file header)
+    8 = 32nd notes per quarter note (FILLY's tick resolution)
 ```
+
+**Wall-Clock Time Based Timing**:
+```
+currentTick = CalculateTickFromTime(elapsed_seconds)
+  where:
+    elapsed_seconds = time.Since(startTime).Seconds()
+    
+Algorithm:
+  1. Get elapsed time since playback started
+  2. Find current tempo from tempo map
+  3. Calculate ticks: elapsed * (tempo / 60) * PPQ
+  4. Adjust for tempo changes throughout the file
+```
+
+**Rationale for Wall-Clock Time**:
+- **Accuracy**: No cumulative drift from audio buffer processing delays
+- **Determinism**: Same elapsed time always produces same tick
+- **Tempo-awareness**: Properly handles tempo changes via tempo map
+- **Buffer independence**: Works correctly regardless of buffer size
 
 **MIDI Playback Lifecycle**:
 ```
 1. PlayMIDI(filename) called
-2. Load MIDI file and parse tempo/PPQ
-3. Start playback goroutine
-4. For each 32nd note:
-   a. Calculate elapsed time
-   b. Increment target tick counter (atomic)
-   c. VM processes ticks in Update loop
-5. On completion:
-   a. Trigger MIDI_END event
-   b. Clean up resources
+2. Load MIDI file and parse tempo/PPQ using MeltySynth
+3. Load SoundFont (.sf2) file for synthesis
+4. Create MidiStream (implements io.Reader):
+   a. Wraps MeltySynth sequencer
+   b. Stores tempo map and PPQ
+   c. Records start time (wall-clock)
+   d. Calculates total ticks for end detection
+5. Create Ebiten audio player with MidiStream
+6. Start playback in goroutine (non-blocking)
+7. MidiStream.Read() called by audio thread:
+   a. Render audio samples via MeltySynth
+   b. Calculate current tick from elapsed time
+   c. Deliver all ticks from lastTick+1 to currentTick sequentially
+   d. Detect MIDI end (currentTick >= totalTicks)
+   e. Trigger MIDI_END event when complete
+8. On completion:
+   a. Set midiFinished flag
+   b. Trigger MIDI_END event
+   c. Stop tick generation
+```
+
+**Sequential Tick Delivery**:
+To prevent animation frame skipping, MidiStream.Read() delivers ALL ticks from lastDeliveredTick+1 to currentTick sequentially. This ensures that even if processing is delayed, no ticks are skipped.
+
+Example: If lastDeliveredTick=100 and currentTick=105, Read() will call:
+```
+NotifyTick(101)
+NotifyTick(102)
+NotifyTick(103)
+NotifyTick(104)
+NotifyTick(105)
 ```
 
 **Key Design Decisions**:
 - MIDI player is independent from sequences
-- Tick delivery is asynchronous (atomic counter)
+- Tick delivery uses wall-clock time (not sample counting) for accuracy
+- Sequential tick delivery prevents frame skipping
+- MidiStream implements io.Reader for Ebiten audio integration
+- MeltySynth provides accurate MIDI synthesis with SoundFont support
 - MIDI continues playing even if starting sequence terminates
 - Only one MIDI file plays at a time (matches original behavior)
+- MIDI end detection based on tick count comparison
 
 ### WAV Architecture
 

@@ -477,20 +477,30 @@ This task list implements the requirements defined in [requirements.md](requirem
 ## Phase 5: Audio System
 
 ### Task 5.1: MIDI Player
-**Goal**: Implement MIDI playback with tick generation.
+**Goal**: Implement MIDI playback with tick generation using MeltySynth.
 
 **Subtasks**:
-- [ ] 5.1.1 Implement PlayMIDI using AssetLoader (supports both filesystem and embedded)
-- [ ] 5.1.2 Implement MIDI tick calculation (tempo, PPQ)
-- [ ] 5.1.3 Implement tick callbacks to VM
-- [ ] 5.1.4 Implement MIDI_END event triggering
-- [ ] 5.1.5 Add tests for MIDI playback with both AssetLoader implementations
+- [ ] 5.1.1 Integrate MeltySynth library (github.com/sinshu/go-meltysynth/meltysynth)
+- [ ] 5.1.2 Implement SoundFont (.sf2) loading
+- [ ] 5.1.3 Implement PlayMIDI using AssetLoader (supports both filesystem and embedded)
+- [ ] 5.1.4 Implement MIDI file parsing (tempo map, PPQ extraction)
+- [ ] 5.1.5 Implement MidiStream (io.Reader) with MeltySynth sequencer
+- [ ] 5.1.6 Implement wall-clock time based tick calculation
+- [ ] 5.1.7 Implement sequential tick delivery (no skipping)
+- [ ] 5.1.8 Implement MIDI end detection (currentTick >= totalTicks)
+- [ ] 5.1.9 Implement MIDI_END event triggering
+- [ ] 5.1.10 Add tests for MIDI playback with both AssetLoader implementations
+- [ ] 5.1.11 Add tests for tempo changes and tick accuracy
 
 **Acceptance Criteria**:
-- MIDI playback runs in background goroutine
+- MIDI playback runs in background goroutine (audio thread)
 - MIDI loading works via AssetLoader (both modes)
-- Tick callbacks drive MIDI_TIME sequences
-- Accurate tick timing based on tempo
+- SoundFont (.sf2) files load correctly
+- Tick calculation uses wall-clock time (not sample counting)
+- Ticks delivered sequentially without skipping
+- Tempo changes handled correctly via tempo map
+- Accurate tick timing based on tempo and PPQ (32nd note resolution)
+- MIDI_END event triggers when playback completes
 - MIDI continues after starting sequence terminates
 
 ---

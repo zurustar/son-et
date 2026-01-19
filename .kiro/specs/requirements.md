@@ -209,9 +209,12 @@ These requirements define the multimedia capabilities that scripts can use.
 **MIDI Playback:**
 1. THE System SHALL support loading and playing Standard MIDI Files (SMF)
 2. THE System SHALL use SoundFont (.sf2) files for software synthesis
-3. THE System SHALL generate tick callbacks to drive MIDI_TIME mode execution
-4. THE System SHALL calculate ticks accurately based on elapsed time, tempo, and PPQ
-5. THE System SHALL play MIDI files once (no looping by default)
+3. THE System SHALL generate tick callbacks at 32nd note resolution to drive MIDI_TIME mode execution
+4. THE System SHALL calculate ticks accurately based on elapsed time, tempo, and PPQ (Pulses Per Quarter note)
+5. WHEN MIDI tempo changes occur, THE System SHALL adjust tick timing accordingly
+6. THE System SHALL play MIDI files once (no looping by default)
+7. THE System SHALL trigger MIDI_END event when playback completes
+8. THE System SHALL deliver all ticks sequentially without skipping (even if processing is delayed)
 
 **WAV Playback:**
 6. THE System SHALL support decoding and playing WAV files
