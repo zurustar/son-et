@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 // TestHeadlessExecution tests that headless mode executes without Ebiten initialization
@@ -183,5 +185,201 @@ func TestHeadlessCleanExit(t *testing.T) {
 
 	// Verify cleanup
 	AssertResourceCount(t, engine, 0, 0, 0)
+	AssertStateConsistency(t, engine)
+}
+
+// TestHeadlessMesTimeExecution tests that mes(TIME) blocks execute in headless mode
+// Requirements: 9.1, 9.2
+func TestHeadlessMesTimeExecution(t *testing.T) {
+	// Reset engine state for clean test
+	ResetEngineForTest()
+
+	// Set headless mode
+	oldHeadlessMode := headlessMode
+	headlessMode = true
+	defer func() { headlessMode = oldHeadlessMode }()
+
+	engine := NewTestEngine()
+
+	// Test that mes(TIME) blocks execute without requiring window events
+	// Requirement 9.1: Execute mes(TIME) blocks without requiring window events
+
+	// Create a simple sequence with Wait operations
+	ops := []OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{"counter", 0}},
+		{Cmd: interpreter.OpWait, Args: []any{2}}, // Wait 2 steps (24 ticks at 60 FPS)
+		{Cmd: interpreter.OpAssign, Args: []any{"counter", 1}},
+		{Cmd: interpreter.OpWait, Args: []any{2}},
+		{Cmd: interpreter.OpAssign, Args: []any{"counter", 2}},
+	}
+
+	// Register the sequence in TIME mode
+	RegisterSequence(Time, ops)
+
+	// Verify sequence was registered
+	vmLock.Lock()
+	seqCount := len(sequencers)
+	vmLock.Unlock()
+
+	if seqCount == 0 {
+		t.Fatal("Sequence was not registered")
+	}
+
+	// Simulate VM execution for several ticks
+	// Requirement 9.2: Maintain timing accuracy
+	startTick := 0
+	for tick := startTick; tick < startTick+60; tick++ {
+		UpdateVM(tick)
+	}
+
+	// Verify the sequence executed and updated the counter variable
+	vmLock.Lock()
+	counter := globalVars["counter"] // Variable names are case-insensitive, stored as-is
+	vmLock.Unlock()
+
+	// After 60 ticks, the sequence should have executed and set counter
+	// The sequence loops, so counter might be 0, 1, or 2 depending on timing
+	// The important thing is that it was set (not nil)
+	if counter == nil {
+		t.Error("Counter variable was not set - sequence did not execute")
+	} else {
+		t.Logf("Counter value: %v (sequence executed successfully)", counter)
+	}
+
+	// Verify state consistency
+	AssertStateConsistency(t, engine)
+}
+
+// TestHeadlessTimingAccuracy tests that timing is maintained in headless mode
+// Requirements: 9.2
+func TestHeadlessTimingAccuracy(t *testing.T) {
+	// Reset engine state for clean test
+	ResetEngineForTest()
+
+	// Set headless mode
+	oldHeadlessMode := headlessMode
+	headlessMode = true
+	defer func() { headlessMode = oldHeadlessMode }()
+
+	engine := NewTestEngine()
+
+	// Create a sequence with precise Wait operations
+	ops := []OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{"tick1", 0}},
+		{Cmd: interpreter.OpWait, Args: []any{5}}, // Wait 5 steps = 60 ticks
+		{Cmd: interpreter.OpAssign, Args: []any{"tick2", 0}},
+		{Cmd: interpreter.OpWait, Args: []any{3}}, // Wait 3 steps = 36 ticks
+		{Cmd: interpreter.OpAssign, Args: []any{"tick3", 0}},
+	}
+
+	// Register the sequence
+	RegisterSequence(Time, ops)
+
+	// Track when each assignment happens
+	tick1Set := -1
+	tick2Set := -1
+	tick3Set := -1
+
+	// Simulate VM execution and track when variables are set
+	for tick := 0; tick < 120; tick++ {
+		UpdateVM(tick)
+
+		vmLock.Lock()
+		if tick1Set == -1 && globalVars["tick1"] != nil {
+			tick1Set = tick
+		}
+		if tick2Set == -1 && globalVars["tick2"] != nil {
+			tick2Set = tick
+		}
+		if tick3Set == -1 && globalVars["tick3"] != nil {
+			tick3Set = tick
+		}
+		vmLock.Unlock()
+	}
+
+	// Verify timing accuracy
+	// tick1 should be set at tick 0
+	if tick1Set != 0 {
+		t.Errorf("tick1 set at tick %d, expected 0", tick1Set)
+	}
+
+	// tick2 should be set at tick 60 (after Wait(5) = 60 ticks)
+	if tick2Set < 58 || tick2Set > 62 {
+		t.Errorf("tick2 set at tick %d, expected around 60 (±2)", tick2Set)
+	}
+
+	// tick3 should be set at tick 96 (60 + 36)
+	if tick3Set < 94 || tick3Set > 98 {
+		t.Errorf("tick3 set at tick %d, expected around 96 (±2)", tick3Set)
+	}
+
+	// Verify state consistency
+	AssertStateConsistency(t, engine)
+}
+
+// TestHeadlessTermination tests that headless mode can be terminated programmatically
+// Requirements: 9.3
+// Note: This tests the engine's termination mechanism, not the CLI --timeout flag
+func TestHeadlessTermination(t *testing.T) {
+	// Reset engine state for clean test
+	ResetEngineForTest()
+
+	// Set headless mode
+	oldHeadlessMode := headlessMode
+	headlessMode = true
+	defer func() { headlessMode = oldHeadlessMode }()
+
+	engine := NewTestEngine()
+
+	// Create a long-running sequence
+	ops := []OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{"counter", 0}},
+		{Cmd: interpreter.OpWait, Args: []any{10}}, // Wait 10 steps = 120 ticks
+		{Cmd: interpreter.OpAssign, Args: []any{"counter", 1}},
+	}
+
+	// Register the sequence
+	RegisterSequence(Time, ops)
+
+	// Execute for a few ticks
+	for tick := 0; tick < 10; tick++ {
+		UpdateVM(tick)
+	}
+
+	// Verify sequence is still active
+	vmLock.Lock()
+	activeCount := 0
+	for _, seq := range sequencers {
+		if seq.active {
+			activeCount++
+		}
+	}
+	vmLock.Unlock()
+
+	if activeCount == 0 {
+		t.Error("Expected at least one active sequence")
+	}
+
+	// Simulate termination (like what --timeout would do)
+	programTerminated = true
+
+	// Execute one more tick - sequence should stop
+	UpdateVM(11)
+
+	// Verify all sequences are now inactive
+	vmLock.Lock()
+	activeCount = 0
+	for _, seq := range sequencers {
+		if seq.active {
+			activeCount++
+		}
+	}
+	vmLock.Unlock()
+
+	if activeCount != 0 {
+		t.Errorf("Expected all sequences to be inactive after termination, but %d are still active", activeCount)
+	}
+
+	// Verify state consistency
 	AssertStateConsistency(t, engine)
 }

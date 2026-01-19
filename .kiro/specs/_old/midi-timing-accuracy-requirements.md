@@ -14,20 +14,20 @@ This specification addresses timing accuracy issues in the son-et MIDI synchroni
 - **Audio_Buffer**: A block of audio samples processed at once (variable size)
 - **Sample_Rate**: Audio samples per second (44100 Hz)
 - **Tempo**: Musical tempo in beats per minute (BPM)
-- **Tick_Generator**: Component that converts audio sample count to MIDI ticks
+- **Tick_Generator**: Component that converts elapsed wall-clock time to MIDI ticks
 
 ## Requirements
 
 ### Requirement 1: Accurate Tick Calculation
 
-**User Story:** As a developer, I want MIDI ticks to be calculated accurately from audio sample count, so that timing synchronization is mathematically correct.
+**User Story:** As a developer, I want MIDI ticks to be calculated accurately from elapsed wall-clock time, so that timing synchronization is mathematically correct.
 
 #### Acceptance Criteria
 
-1. WHEN audio samples are processed, THE Tick_Generator SHALL calculate the current tick position based on sample count, sample rate, tempo, and PPQ
+1. WHEN audio is playing, THE Tick_Generator SHALL calculate the current tick position based on elapsed time since playback start, tempo, and PPQ
 2. WHEN tempo changes occur in the MIDI file, THE Tick_Generator SHALL update tick calculations to reflect the new tempo
 3. THE Tick_Generator SHALL maintain fractional tick precision internally to prevent cumulative rounding errors
-4. WHEN calculating ticks from samples, THE Tick_Generator SHALL use the formula: `ticks = (samples * tempo * PPQ) / (sample_rate * 60)`
+4. WHEN calculating ticks from elapsed time, THE Tick_Generator SHALL use the formula: `ticks = elapsed_time * (tempo_bpm / 60) * ppq`
 
 ### Requirement 2: Smooth Tick Delivery
 

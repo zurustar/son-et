@@ -335,12 +335,23 @@ func (g *Game) Update() error {
 	// Program can only terminate if all sequences are done AND no MIDI is playing
 	if programTerminated {
 		// Check if MIDI is still playing (player exists and not finished)
+		// DEBUG: Log MIDI player state every 10 seconds
+		if debugLevel >= 2 && g.tickCount%600 == 0 {
+			fmt.Printf("[%s] Game.Update: Checking termination - midiPlayer=%v, midiFinished=%v\n",
+				time.Now().Format("15:04:05.000"), midiPlayer != nil, midiFinished)
+		}
+
 		if midiPlayer != nil && !midiFinished {
 			// MIDI is still playing, don't terminate yet
 			// Continue running the game loop
+			if debugLevel >= 2 && g.tickCount%600 == 0 {
+				fmt.Printf("[%s] Game.Update: MIDI still playing, continuing game loop\n",
+					time.Now().Format("15:04:05.000"))
+			}
 		} else {
 			// Either no MIDI player or MIDI has finished
-			fmt.Println("Game.Update: Program terminated (all sequences done, MIDI finished or not playing), returning Termination")
+			fmt.Printf("[%s] Game.Update: Program terminated (all sequences done, MIDI finished or not playing), returning Termination\n",
+				time.Now().Format("15:04:05.000"))
 			return ebiten.Termination
 		}
 	}
@@ -2077,8 +2088,8 @@ func UpdateVM(currentTick int) {
 		if debugLevel >= 1 {
 			// Log only once per 10 seconds when waiting for MIDI to finish
 			if currentTick%600 == 0 {
-				fmt.Printf("[%s] UpdateVM: Program terminated, waiting for MIDI to finish\n",
-					time.Now().Format("15:04:05.000"))
+				fmt.Printf("[%s] UpdateVM: Program terminated, waiting for MIDI to finish (midiPlayer=%v, midiFinished=%v, currentTick=%d)\n",
+					time.Now().Format("15:04:05.000"), midiPlayer != nil, midiFinished, currentTick)
 			}
 		}
 		return
@@ -2130,8 +2141,25 @@ func UpdateVM(currentTick int) {
 		// Note: In optimized mode, we may skip ticks, but UpdateVM is called
 		// at the correct frequency to maintain timing
 		if seq.waitTicks > 0 {
-			seq.waitTicks--
-			continue
+			// Check if MIDI has finished during wait (for MIDI_TIME mode)
+			if seq.mode == MidiTime && midiFinished {
+				// MIDI playback ended during wait, resume execution
+				if debugLevel >= 1 {
+					fmt.Printf("[%s] UpdateVM: MIDI playback ended during wait, resuming execution (was waiting %d ticks, currentTick=%d)\n",
+						time.Now().Format("15:04:05.000"), seq.waitTicks, currentTick)
+				}
+				seq.waitTicks = 0
+				// Don't execute instruction in this tick - wait for next UpdateVM call
+				continue
+			} else {
+				// DEBUG: Log wait state periodically
+				if debugLevel >= 2 && seq.waitTicks > 0 && currentTick%600 == 0 {
+					fmt.Printf("[%s] UpdateVM: Sequence %d waiting (%d ticks remaining, mode=%d, midiFinished=%v)\n",
+						time.Now().Format("15:04:05.000"), i, seq.waitTicks, seq.mode, midiFinished)
+				}
+				seq.waitTicks--
+				continue
+			}
 		}
 
 		// Resume Step execution if we were in the middle of one

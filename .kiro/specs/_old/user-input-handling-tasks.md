@@ -14,7 +14,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
   - Add logging to confirm non-blocking operation
   - _Requirements: 1.1, 1.4_
 
-- [ ]* 1.1 Write property test for RegisterSequence timing
+- [x] 1.1 Write property test for RegisterSequence timing
   - **Property 1: RegisterSequence Non-blocking**
   - **Validates: Requirements 1.1**
   - Test that RegisterSequence returns within 10ms for TIME mode
@@ -41,7 +41,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Add logging for termination detection
     - _Requirements: 2.5, 4.3, 6.4_
 
-- [ ]* 2.4 Write unit tests for ESC key handling
+- [x] 2.4 Write unit tests for ESC key handling
   - Test ESC key sets programTerminated flag
   - Test Update() returns ebiten.Termination when flag is set
   - Test termination check happens before VM execution
@@ -61,7 +61,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Propagate termination signal up to UpdateVM
     - _Requirements: 6.1, 6.2_
 
-- [ ]* 3.3 Write property test for termination stops execution
+- [x] 3.3 Write property test for termination stops execution
   - **Property 9: Termination Stops Execution**
   - **Validates: Requirements 6.1, 6.2**
   - Generate random sequences with Wait() operations
@@ -77,8 +77,8 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
   - Verify images display correctly
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Add timing accuracy tests
-  - [ ]* 5.1 Write property test for frame-accurate timing
+- [x] 5. Add timing accuracy tests
+  - [x] 5.1 Write property test for frame-accurate timing
     - **Property 6: Frame-Accurate Timing**
     - **Validates: Requirements 5.1**
     - Measure tick count increments over time
@@ -86,7 +86,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Test under various sequence loads
     - _Requirements: 5.1_
   
-  - [ ]* 5.2 Write property test for Wait() accuracy
+  - [x] 5.2 Write property test for Wait() accuracy
     - **Property 7: Wait Operation Accuracy**
     - **Validates: Requirements 5.2, 8.3**
     - Generate random Wait(N) operations
@@ -94,7 +94,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Verify exactly N ticks passed
     - _Requirements: 5.2, 8.3_
   
-  - [ ]* 5.3 Write property test for concurrent timing independence
+  - [x] 5.3 Write property test for concurrent timing independence
     - **Property 8: Concurrent Timing Independence**
     - **Validates: Requirements 5.3**
     - Register multiple sequences with different Wait() patterns
@@ -102,8 +102,8 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Verify sequences don't interfere with each other
     - _Requirements: 5.3_
 
-- [ ] 6. Add game loop continuity tests
-  - [ ]* 6.1 Write property test for game loop continuity
+- [x] 6. Add game loop continuity tests
+  - [x] 6.1 Write property test for game loop continuity
     - **Property 2: Game Loop Continuity**
     - **Validates: Requirements 1.2, 3.3, 4.4, 7.4**
     - Register long-running sequence
@@ -111,7 +111,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Verify approximately 16.67ms per frame (±2ms)
     - _Requirements: 1.2, 3.3, 4.4, 7.4_
   
-  - [ ]* 6.2 Write property test for rendering frame rate
+  - [x] 6.2 Write property test for rendering frame rate
     - **Property 3: Rendering Frame Rate**
     - **Validates: Requirements 1.3**
     - Measure time between Draw() calls
@@ -119,7 +119,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Test under various sequence loads
     - _Requirements: 1.3_
   
-  - [ ]* 6.3 Write property test for input responsiveness during Wait
+  - [x] 6.3 Write property test for input responsiveness during Wait
     - **Property 5: Input Responsiveness During Wait**
     - **Validates: Requirements 3.4**
     - Execute Wait(100) operation
@@ -128,8 +128,8 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Verify input events are processed
     - _Requirements: 3.4_
 
-- [ ] 7. Add concurrent execution tests
-  - [ ]* 7.1 Write property test for concurrent sequence execution
+- [x] 7. Add concurrent execution tests
+  - [x] 7.1 Write property test for concurrent sequence execution
     - **Property 4: Concurrent Sequence Execution**
     - **Validates: Requirements 1.4**
     - Register multiple mes(TIME) blocks concurrently
@@ -137,7 +137,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Verify no blocking between sequences
     - _Requirements: 1.4_
   
-  - [ ]* 7.2 Write property test for Update advances VM
+  - [x] 7.2 Write property test for Update advances VM
     - **Property 10: Update Advances VM**
     - **Validates: Requirements 7.1**
     - Call Game.Update() multiple times
@@ -145,7 +145,7 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Test in TIME mode only
     - _Requirements: 7.1_
   
-  - [ ]* 7.3 Write property test for UpdateVM non-blocking
+  - [x] 7.3 Write property test for UpdateVM non-blocking
     - **Property 11: UpdateVM Non-blocking**
     - **Validates: Requirements 7.3**
     - Measure UpdateVM() execution time
@@ -153,15 +153,15 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Test with various sequence complexities
     - _Requirements: 7.3_
 
-- [ ] 8. Add error handling tests
-  - [ ]* 8.1 Write unit test for OpCode execution errors
+- [x] 8. Add error handling tests
+  - [x] 8.1 Write unit test for OpCode execution errors
     - Trigger OpCode execution error
     - Verify error is logged with context
     - Verify sequence is marked inactive
     - Verify other sequences continue
     - _Requirements: 10.1, 10.2_
   
-  - [ ]* 8.2 Write property test for error recovery responsiveness
+  - [x] 8.2 Write property test for error recovery responsiveness
     - **Property 12: Error Recovery Responsiveness**
     - **Validates: Requirements 10.4**
     - Trigger OpCode execution error
@@ -169,34 +169,34 @@ This implementation plan converts the design for non-blocking mes(TIME) executio
     - Verify input events are still processed
     - _Requirements: 10.4_
 
-- [ ] 9. Add backward compatibility tests
-  - [ ]* 9.1 Write unit tests for existing scripts
+- [x] 9. Add backward compatibility tests
+  - [x] 9.1 Write unit tests for existing scripts
     - Test kuma2 sample behavior
     - Test robot sample behavior (if available)
     - Verify timing is preserved
     - Verify output matches expected behavior
     - _Requirements: 8.1, 8.2, 8.3, 8.4_
   
-  - [ ]* 9.2 Write unit test for MIDI_TIME mode unchanged
+  - [x] 9.2 Write unit test for MIDI_TIME mode unchanged
     - Verify MIDI_TIME mode is still non-blocking
     - Verify MIDI synchronization works correctly
     - Verify event handlers trigger correctly
     - _Requirements: 8.2, 8.4_
 
-- [ ] 10. Add headless mode tests
-  - [ ]* 10.1 Write unit test for headless execution
+- [x] 10. Add headless mode tests
+  - [x] 10.1 Write unit test for headless execution
     - Run sequence in headless mode
     - Verify execution completes without GUI
     - Verify timing accuracy maintained
     - _Requirements: 9.1, 9.2_
   
-  - [ ]* 10.2 Write unit test for headless timeout
+  - [x] 10.2 Write unit test for headless timeout
     - Run with --timeout flag
     - Verify program terminates after timeout
     - Verify exit code is 0
     - _Requirements: 9.3_
   
-  - [ ]* 10.3 Write unit test for headless logging
+  - [x] 10.3 Write unit test for headless logging
     - Verify log messages contain timestamps
     - Verify execution progress is logged
     - _Requirements: 9.4_

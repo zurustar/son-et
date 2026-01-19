@@ -22,7 +22,7 @@ The existing implementation in `pkg/engine/midi_player.go` had several issues:
 
 3. **Wait Timing Off-by-One**: The Wait operation was waiting for N+1 ticks instead of N ticks due to incorrect initialization.
 
-### Implemented Architecture
+### Implemented Architecture (Wall-Clock Time Based)
 
 ```
 Audio Thread                    Main Thread
@@ -32,6 +32,7 @@ Audio Thread                    Main Thread
 └──────┬──────┘                └────▲─────┘
        │                            │
        │ Wall-clock time            │
+       │ time.Since(startTime)      │
        ▼                            │
 ┌─────────────────┐                │
 │ TickGenerator   │                │
@@ -48,7 +49,7 @@ Audio Thread                    Main Thread
 ```
 
 The new architecture uses:
-- **Wall-clock time** instead of sample counts for tick calculation
+- **Wall-clock time** (`time.Since(startTime)`) instead of sample counts for tick calculation
 - **Tempo-aware calculation** that properly handles tempo changes
 - **Sequential tick delivery** to prevent skipping
 - **Wait timing fix** to ensure accurate wait durations
@@ -107,6 +108,7 @@ func (tg *TickGenerator) Reset()
 2. **Tempo-Aware Calculation**: `CalculateTickFromTime()` traverses the tempo map to handle tempo changes correctly
 3. **Sequential Tick Delivery**: Deliver all ticks from `lastDeliveredTick+1` to `currentTick` to prevent skipping
 4. **Accurate Wait Timing**: Initialize `waitTicks = totalTicks - 1` to account for the decrement on the next tick
+5. **Legacy Compatibility**: Keep `ProcessSamples()` method for backward compatibility, but primary method is `CalculateTickFromTime()`
 
 ### 2. Tempo Map Handler
 
@@ -166,9 +168,24 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
         elapsed := time.Since(s.startTime).Seconds()
         currentTick := s.tickGenerator.CalculateTickFromTime(elapsed)
         
+        // Check if we've reached the end of the MIDI file
+        if int64(currentTick) >= s.totalTicks && !s.endReported {
+            s.endReported = true
+            midiFinished = true
+            if midiEndHandler != nil && !midiEndTriggered {
+                TriggerMidiEnd()
+            }
+            return len(p), nil
+        }
+        
         // Notify all ticks from lastDeliveredTick+1 to currentTick
         // This ensures we don't skip any ticks even if processing is delayed
-        for tick := s.tickGenerator.lastDeliveredTick + 1; tick <= currentTick; tick++ {
+        endTick := int64(currentTick)
+        if endTick > s.totalTicks {
+            endTick = s.totalTicks
+        }
+        
+        for tick := s.tickGenerator.lastDeliveredTick + 1; tick <= int(endTick); tick++ {
             NotifyTick(tick)
         }
         
@@ -186,8 +203,11 @@ func (s *MidiStream) Read(p []byte) (n int, err error) {
 
 **Key Changes**:
 - Add `startTime time.Time` field to track playback start
+- Add `totalTicks int64` field to track MIDI file length
+- Add `endReported bool` flag to prevent duplicate MIDI_END events
 - Use `time.Since(startTime)` to get elapsed time
-- Call `CalculateTickFromTime()` to get current tick
+- Call `CalculateTickFromTime()` to get current tick (not `ProcessSamples()`)
+- Check for MIDI end condition and trigger MIDI_END event
 - **Deliver all ticks sequentially** to prevent skipping
 - Update `lastDeliveredTick` after delivery
 
@@ -332,37 +352,37 @@ Where:
 
 ### Property 1: Tick Calculation Formula Accuracy
 
-*For any* sample count, tempo (in BPM), PPQ value, and sample rate, when calculating ticks from samples, the result should equal `(samples * tempo * PPQ) / (sample_rate * 60)` within floating-point precision tolerance.
+*For any* elapsed time, tempo (in BPM), and PPQ value, when calculating ticks from elapsed time, the result should equal `elapsed_time * (tempo_bpm / 60) * ppq` within floating-point precision tolerance.
 
 **Validates: Requirements 1.1, 1.4**
 
 ### Property 2: Fractional Precision Preservation
 
-*For any* sequence of audio buffer processing calls, the internal fractional tick value should be preserved without truncation, and the cumulative error between the fractional tick and the sum of individual buffer tick calculations should remain below 0.01 ticks.
+*For any* sequence of tick calculations at different elapsed times, the internal fractional tick value should be preserved without truncation, and the cumulative error should remain below 0.01 ticks.
 
 **Validates: Requirements 1.3, 5.2**
 
 ### Property 3: Tempo Change Correctness
 
-*For any* tempo map and sample position, when samples cross a tempo boundary, subsequent tick calculations should use the new tempo value, and the tick value at the boundary should be continuous (no jumps or gaps).
+*For any* tempo map and elapsed time, when elapsed time crosses a tempo boundary, subsequent tick calculations should use the new tempo value, and the tick value at the boundary should be continuous (no jumps or gaps).
 
 **Validates: Requirements 1.2, 4.1, 4.2, 4.3, 4.4**
 
-### Property 4: Single Tick Delivery
+### Property 4: Sequential Tick Delivery
 
-*For any* audio buffer size, when ProcessSamples is called and ticks advance by N positions (where N >= 1), NotifyTick should be called exactly once with the new tick value, not N times.
+*For any* elapsed time interval, when ticks advance by N positions (where N >= 1), NotifyTick should be called N times sequentially (once for each tick from lastDeliveredTick+1 to currentTick).
 
 **Validates: Requirements 2.1, 2.2**
 
 ### Property 5: Monotonic Tick Progression
 
-*For any* sequence of ProcessSamples calls, each delivered tick value should be strictly greater than the previous delivered tick value (monotonically increasing), with no repeated values or backwards movement.
+*For any* sequence of tick calculations, each delivered tick value should be strictly greater than the previous delivered tick value (monotonically increasing), with no repeated values or backwards movement.
 
 **Validates: Requirements 2.4, 4.3**
 
 ### Property 6: Regular Tick Delivery Intervals
 
-*For any* constant tempo and buffer size, the time interval between tick deliveries should be regular and correspond to the buffer processing rate, with variance less than one buffer period.
+*For any* constant tempo, the time interval between tick deliveries should be regular and correspond to the tick duration, with variance less than 10ms (accounting for audio buffer processing granularity).
 
 **Validates: Requirements 2.3**
 
@@ -390,15 +410,15 @@ Where:
 
 **Validates: Requirements 6.3**
 
-### Property 11: Buffer Size Determinism
+### Property 11: Time-Based Determinism
 
-*For any* total sample count S, when processing S samples using different buffer size patterns (e.g., all at once vs. many small buffers), the final tick value and fractional tick should be identical within floating-point precision tolerance.
+*For any* total elapsed time T, the calculated tick value should be deterministic and depend only on T and the tempo map, not on how frequently `CalculateTickFromTime()` is called.
 
 **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
 ### Property 12: Headless Mode Equivalence
 
-*For any* MIDI file and sample count, when running in headless mode vs GUI mode, the tick values at the same sample positions should be identical.
+*For any* MIDI file and elapsed time, when running in headless mode vs GUI mode, the tick values at the same elapsed times should be identical.
 
 **Validates: Requirements 3.4, 7.1, 7.4**
 
@@ -410,13 +430,13 @@ Where:
 
 ### Property 14: Timing Information Logging
 
-*For any* tick advancement event, the log output should contain the current tick value, current tempo, and current sample position for debugging purposes.
+*For any* tick advancement event, the log output should contain the current tick value, current tempo, and current elapsed time for debugging purposes.
 
 **Validates: Requirements 3.3, 7.3**
 
 ### Property 15: Delayed Processing Catch-Up
 
-*For any* sequence of audio buffer processing calls where some calls are delayed, the tick generator should catch up smoothly by processing the accumulated samples, maintaining tick continuity without skipping tick values.
+*For any* sequence of tick calculations where some calculations are delayed, the tick generator should catch up smoothly by calculating the correct tick for the current elapsed time, maintaining tick continuity without skipping tick notifications.
 
 **Validates: Requirements 8.3**
 
@@ -509,16 +529,16 @@ func TestProperty_TickCalculationFormula(t *testing.T) {
     
     properties.Property("tick calculation matches formula", 
         prop.ForAll(
-            func(samples int64, tempoBPM float64, ppq int, sampleRate int) bool {
+            func(elapsedSeconds float64, tempoBPM float64, ppq int) bool {
                 // Generate valid inputs
-                // Calculate expected vs actual
+                // Calculate expected: elapsedSeconds * (tempoBPM / 60) * ppq
+                // Calculate actual using CalculateTickFromTime()
                 // Verify within tolerance
                 return true
             },
-            gen.Int64Range(0, 1000000),
+            gen.Float64Range(0.0, 100.0),
             gen.Float64Range(30.0, 300.0),
             gen.IntRange(120, 960),
-            gen.IntRange(22050, 96000),
         ))
     
     properties.TestingRun(t, gopter.ConsoleReporter(false))
@@ -529,10 +549,10 @@ func TestProperty_TickCalculationFormula(t *testing.T) {
 
 **Core Functionality**:
 - `TestTickGenerator_NewTickGenerator`: Initialization with valid/invalid parameters
-- `TestTickGenerator_ProcessSamples_SingleBuffer`: Basic tick advancement
-- `TestTickGenerator_ProcessSamples_MultipleBuffers`: Sequential processing
-- `TestTickGenerator_ProcessSamples_TempoChange`: Crossing tempo boundaries
-- `TestTickGenerator_ProcessSamples_ZeroSamples`: Edge case handling
+- `TestTickGenerator_CalculateTickFromTime_SingleTempo`: Basic tick calculation from elapsed time
+- `TestTickGenerator_CalculateTickFromTime_MultipleTempos`: Tick calculation across tempo changes
+- `TestTickGenerator_CalculateTickFromTime_TempoChange`: Crossing tempo boundaries
+- `TestTickGenerator_CalculateTickFromTime_ZeroTime`: Edge case handling
 
 **Integration Tests**:
 - `TestMidiStream_TickGeneration`: Integration with MidiStream
@@ -553,16 +573,14 @@ func TestProperty_TickCalculationFormula(t *testing.T) {
 - Tempo change at tick 0
 - Invalid tempo values
 
-**Buffer Sizes**:
-- Small: 256 samples (~5.8ms at 44100 Hz)
-- Medium: 2048 samples (~46ms at 44100 Hz)
-- Large: 8192 samples (~186ms at 44100 Hz)
-- Variable: Random sizes between 64-8192
+**Elapsed Times**:
+- Short: 0.1 seconds
+- Medium: 10 seconds
+- Long: 100 seconds
+- Variable: Random times between 0-100 seconds
 
 **Sample Rates**:
-- Standard: 44100 Hz
-- High: 48000 Hz, 96000 Hz
-- Low: 22050 Hz
+- Standard: 44100 Hz (for compatibility testing with ProcessSamples)
 
 ### Verification Approach
 
@@ -579,13 +597,13 @@ func TestProperty_TickCalculationFormula(t *testing.T) {
 1. **Wall-Clock Time**: Using `time.Since()` is more accurate than sample counting and avoids cumulative drift
 2. **Sequential Tick Delivery**: Delivering all ticks prevents animation skipping but may cause brief catch-up if processing is delayed
 3. **Tempo Map Traversal**: `CalculateTickFromTime()` traverses the tempo map on each call, but this is acceptable for typical MIDI files with few tempo changes
-4. **Atomic Operations**: Use atomic operations for `targetTick` to avoid locks in audio thread
+4. **No Atomic Operations Needed**: Since `CalculateTickFromTime()` is called only from the audio thread and tick delivery is sequential, no atomic operations are required
 
 ### Thread Safety
 
 1. **Audio Thread**: `MidiStream.Read()` runs in audio thread, calls `CalculateTickFromTime()`
-2. **Main Thread**: `UpdateVM()` runs in main thread, reads `targetTick`
-3. **Synchronization**: Use `atomic.StoreInt64()` and `atomic.LoadInt64()` for `targetTick`
+2. **Main Thread**: `UpdateVM()` runs in main thread, receives tick notifications via `NotifyTick()`
+3. **Synchronization**: Tick notifications are sent from audio thread to main thread via channel or callback
 4. **No Locks in Audio Thread**: Avoid mutex locks in audio callback to prevent audio glitches
 
 ### Timing Accuracy Results
