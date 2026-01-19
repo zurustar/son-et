@@ -403,6 +403,30 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
+### Task 5.6: User Input Handling
+**Goal**: Implement keyboard and mouse input event handling.
+
+**Subtasks**:
+- [ ] 5.6.1 Implement mes(KEY) event registration and triggering
+- [ ] 5.6.2 Implement mes(CLICK) event registration and triggering
+- [ ] 5.6.3 Implement mes(RBDOWN) event registration and triggering
+- [ ] 5.6.4 Implement mes(RBDBLCLK) event registration and triggering
+- [ ] 5.6.5 Implement ESC key special handling (programTerminated flag)
+- [ ] 5.6.6 Implement event parameter passing (MesP1-MesP4)
+- [ ] 5.6.7 Implement PostMes for custom messages
+- [ ] 5.6.8 Add tests for input event handling
+
+**Acceptance Criteria**:
+- Keyboard events trigger KEY sequences
+- Mouse events trigger appropriate sequences
+- ESC key immediately sets termination flag
+- Termination check happens before VM execution
+- Multiple sequences can respond to same event
+- Event parameters passed correctly
+- PostMes delivers custom messages
+
+---
+
 ## Phase 6: Development Features
 
 ### Task 6.1: Headless Mode

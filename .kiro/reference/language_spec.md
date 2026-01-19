@@ -1,57 +1,62 @@
 # FILLY Script Language Specification
 
-Based on analysis of existing scripts and current implementation.
+## 概要
 
-## Syntax Overview
-*   **Style**: Procedural, C-like function calls.
-*   **Entry Point**: The script must contain a `main() { ... }` function.
-*   **Comments**: `//` for single line comments.
-*   **Statement Terminator**: `;` (Semicolon).
-*   **Case Sensitivity**: 
-    - **File names**: Case-insensitive (Windows 3.1 compatibility)
-    - **Identifiers**: Case-insensitive (variables, functions)
-*   **Wait Syntax**:
-    *   **MIDI Sync (`mes(MIDI_TIME)`)**:
-        *   `step(n)` defining 32nd note multiples.
-        *   Example: `step(8)` = Quarter note.
-    *   **Time Mode (`mes(TIME)`)**:
-        *   `step(n)` defines wait unit in milliseconds.
-        *   Formula: `1 step = n * 50ms`.
-        *   Example: `step(20)` = 1 second (1000ms).
+このドキュメントは、FILLY スクリプト言語の完全なリファレンスです。FILLY は Windows 3.1 時代のマルチメディアアプリケーション用スクリプト言語で、son-et はそのモダンな実装です。
 
-## Data Types
+**参考資料**: 秀丸エディタ用TOFFYライターマクロ「らくらくTOFFYライター for 秀丸エディタ Ver.1.30」
 
-### Variables
-Variables are implicitly typed. Common types:
-- `int`: Integer values, picture handles, window handles
-- `str`: String values
-- `int[]`: Integer arrays
+---
 
-### Implicit Constants
-- `TIME` / `time`: Time mode constant (value: 0)
-- `USER` / `user`: User event constant (value: 1)
-- `MIDI_END` / `midi_end`: MIDI end constant (value: 0)
-- `MIDI_TIME` / `MidiTime`: MIDI Sync mode constant (value: 1)
+## 構文概要
 
-### Implicit Global Variables
-- `MidiTime`: Current MIDI time
-- `MesP1`, `MesP2`, `MesP3`, `MesP4`: Message parameters
+### 基本構文
+- **スタイル**: 手続き型、C言語風の関数呼び出し
+- **エントリーポイント**: `main() { ... }` 関数が必須
+- **コメント**: `//` で単一行コメント
+- **文の終端**: `;` (セミコロン)
+- **大文字小文字**: 
+  - **ファイル名**: 大文字小文字を区別しない (Windows 3.1 互換性)
+  - **識別子**: 大文字小文字を区別しない (変数名、関数名)
 
+### ウェイト構文
+FILLY の最も特徴的な機能は、ステップベースの実行モデルです。
 
-このドキュメントは、秀丸エディタ用TOFFYライターマクロ「らくらくTOFFYライター for 秀丸エディタ Ver.1.30」を参考に予想したFILLY関数の詳細リファレンスです。
+**MIDI同期モード (`mes(MIDI_TIME)`)**:
+- `step(n)` で32分音符の倍数を指定
+- 例: `step(8)` = 4分音符
 
+**タイムモード (`mes(TIME)`)**:
+- `step(n)` でウェイト単位をミリ秒で指定
+- 計算式: `1 step = n × 50ms`
+- 例: `step(20)` = 1秒 (1000ms)
 
-## 実装状況の凡例
+---
 
-- ✅ **実装済み**: 現在のエンジンで実装されている関数
-- ⚠️ **部分実装**: 基本機能は実装されているが、一部の引数や機能が未実装
-- ❌ **未実装**: まだ実装されていない関数
+## データ型
+
+### 変数
+変数は暗黙的に型付けされます。
+
+- `int`: 整数値、ピクチャーハンドル、ウィンドウハンドル
+- `str`: 文字列値
+- `int[]`: 整数配列
+
+### 暗黙的定数
+- `TIME` / `time`: タイムモード定数 (値: 0)
+- `USER` / `user`: ユーザーイベント定数 (値: 1)
+- `MIDI_END` / `midi_end`: MIDI終了定数 (値: 0)
+- `MIDI_TIME` / `MidiTime`: MIDI同期モード定数 (値: 1)
+
+### 暗黙的グローバル変数
+- `MidiTime`: 現在のMIDI時刻
+- `MesP1`, `MesP2`, `MesP3`, `MesP4`: メッセージパラメータ
 
 ---
 
 ## ウィンドウ関連関数
 
-### OpenWin ✅
+### OpenWin
 仮想デスクトップ上に仮想ウインドウを開く
 
 **シンプル版**:
@@ -74,7 +79,7 @@ OpenWin(pic, x, y, width, height, pic_x, pic_y, color)
 - `pic_y`: ピクチャーの左上 Y座標
 - `color`: ピクチャーが無い位置の色(16進数)
 
-### MoveWin ✅
+### MoveWin
 仮想ウインドウの設定を変更
 
 ```filly
@@ -92,43 +97,43 @@ MoveWin(win, pic) // 短縮形（ピクチャー変更のみ）
 - `pic_x`: ピクチャーの左上 X座標
 - `pic_y`: ピクチャーの左上 Y座標
 
-### CloseWin ✅
+### CloseWin
 仮想ウインドウを閉じる
 
 ```filly
 CloseWin(win_no)
 ```
 
-### CloseWinAll ✅
+### CloseWinAll
 すべての仮想ウインドウを閉じる
 
 ```filly
 CloseWinAll()
 ```
 
-### CapTitle ✅
+### CapTitle
 ウィンドウのキャプションの文字を指定
 
 ```filly
 CapTitle(win_no, title)
 ```
 
-### GetPicNo ❌ (未実装)
+### GetPicNo
 ウィンドウに関連付けされたピクチャー番号を得る
 
 ```filly
-GetPicNo(win_no)
+pic_no = GetPicNo(win_no)
 ```
 
 ---
 
 ## ピクチャー関連関数
 
-### LoadPic ✅
+### LoadPic
 画像ファイルの読み込み
 
 ```filly
-LoadPic(filename)
+pic_id = LoadPic(filename)
 ```
 
 **引数**:
@@ -143,7 +148,7 @@ pic1 = LoadPic("image2.bmp");  // ID=1 が返される
 pic2 = LoadPic("image3.bmp");  // ID=2 が返される
 ```
 
-### MovePic ✅
+### MovePic
 画像データの転送
 
 ```filly
@@ -164,7 +169,7 @@ MovePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y, mode)
   - `1`: 透明色転送モード
   - `2`: シーンチェンジモード
 
-### MoveSPic ❌ (未実装)
+### MoveSPic
 画像データを拡大縮小して転送
 
 ```filly
@@ -185,19 +190,19 @@ MoveSPic(src_pic, src_x, src_y, src_w, src_h, dst_pic, dst_x, dst_y, dst_w, dst_
 - `dst_h`: 移動先のサイズ 高さ
 - `trans_color`: 透明色(16進数) - 透明色転送をする場合
 
-### DelPic ✅
+### DelPic
 画像データの破棄
 
 ```filly
 DelPic(pic_no)
 ```
 
-### CreatePic ✅
+### CreatePic
 ピクチャーの生成
 
 ```filly
-CreatePic(pic_no, width, height)
-CreatePic(pic_no, width, height, 0)  // デスクトップの取得
+pic_id = CreatePic(pic_no, width, height)
+pic_id = CreatePic(pic_no, width, height, 0)  // デスクトップの取得
 ```
 
 **引数**:
@@ -206,21 +211,21 @@ CreatePic(pic_no, width, height, 0)  // デスクトップの取得
 - `height`: サイズ 高さ
 - 第4引数に `0` を指定するとデスクトップの取得
 
-### PicWidth ✅
+### PicWidth
 ピクチャーの幅の取得
 
 ```filly
-PicWidth(pic_no)
+width = PicWidth(pic_no)
 ```
 
-### PicHeight ✅
+### PicHeight
 ピクチャーの高さの取得
 
 ```filly
-PicHeight(pic_no)
+height = PicHeight(pic_no)
 ```
 
-### ReversePic ⚠️ (部分実装)
+### ReversePic
 左右反転イメージの転写
 
 ```filly
@@ -237,39 +242,884 @@ ReversePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y)
 - `dst_x`: 移動先の始点 X座標
 - `dst_y`: 移動先の始点 Y座標
 
-**注**: 現在はスタブ実装のみ
+---
+
+## キャスト（スプライト）関連関数
+
+### PutCast
+キャストの配置
+
+```filly
+PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
+```
+
+**引数**:
+- `win_no`: ウィンドウ番号
+- `pic_no`: ピクチャー番号
+- `x`: 配置位置 X座標
+- `y`: 配置位置 Y座標
+- `src_x`: ピクチャーの切り出し始点 X座標
+- `src_y`: ピクチャーの切り出し始点 Y座標
+- `width`: 切り出しサイズ 幅
+- `height`: 切り出しサイズ 高さ
+
+### MoveCast
+キャストの移動
+
+```filly
+MoveCast(cast_no, x, y)
+MoveCast(cast_no, x, y, src_x, src_y, width, height)
+```
+
+**引数**:
+- `cast_no`: キャスト番号
+- `x`: 配置位置 X座標
+- `y`: 配置位置 Y座標
+- `src_x`: ピクチャーの切り出し始点 X座標
+- `src_y`: ピクチャーの切り出し始点 Y座標
+- `width`: 切り出しサイズ 幅
+- `height`: 切り出しサイズ 高さ
+
+### DelCast
+キャストの削除
+
+```filly
+DelCast(cast_no)
+```
 
 ---
 
-*[Due to length, the rest of the file continues with all function definitions as in the original...]*
+## 文字表示関連関数
 
-## 実装状況サマリー
+### SetFont
+フォントの設定
 
-### 実装済み関数 (✅)
-**ウィンドウ**: `OpenWin`, `MoveWin`, `CloseWin`, `CloseWinAll`, `CapTitle`  
-**ピクチャー**: `LoadPic`, `MovePic`, `DelPic`, `CreatePic`, `PicWidth`, `PicHeight`  
-**文字表示**: `SetFont`, `TextWrite`, `TextColor`, `BgColor`, `BackMode`, `StrPrint`  
-**文字列**: `StrLen`, `SubStr`, `StrFind`  
-**整数**: `Random`  
-**メッセージ**: `GetMesNo`, `DelMes`  
-**システム**: `WinInfo`  
-**キャスト**: `PutCast`, `MoveCast`, `DelCast`  
-**タイミング**: `Wait`, `SetStep`, `EnterMes`, `ExitMes`  
-**制御構文**: `mes`, `step`  
-**特殊キーワード**: `end_step`, `del_me`, `del_us`, `del_all`
+```filly
+SetFont(font_name, size, charset, weight, italic, underline, strikeout)
+```
 
-### 部分実装関数 (⚠️)
-`ReversePic`, `StrCode`, `PlayMIDI`, `PostMes`
+**引数**:
+- `font_name`: フォント名
+- `size`: フォントサイズ
+- `charset`: 文字セット (128=日本語)
+- `weight`: 太さ (400=標準, 700=太字)
+- `italic`: イタリック (0=なし, 1=あり)
+- `underline`: 下線 (0=なし, 1=あり)
+- `strikeout`: 取り消し線 (0=なし, 1=あり)
 
-### 未実装関数 (❌)
-**描画系**: `DrawLine`, `DrawCircle`, `DrawRect`, `SetLineSize`, `SetPaintColor`, `GetColor`, `SetROP`  
-**ピクチャー**: `MoveSPic`, `GetPicNo`  
-**ファイル操作系**: INIファイル操作、ディレクトリ操作、ファイルI/O全般  
-**文字列**: `StrInput`, `CharCode`, `StrUp`, `StrLow`  
-**配列操作系**: `ArraySize`, `DelArrayAll`, `DelArrayAt`, `InsArrayAt`  
-**整数**: `MakeLong`, `GetHiWord`, `GetLowWord`  
-**マルチメディア系**: `PlayWAVE`, `PlayAVI`, `PlayCD`, `MCI`, `StrMCI`, `LoadRsc`, `PlayRsc`, `DelRsc`  
-**メッセージ**: `FreezeMes`, `ActivateMes`  
-**Windows API系**: `Shell`, `GetSysTime`, `WhatDay`, `WhatTime`, `SysParam`, `GetCmdLine`, `SetRegStr`, `GetRegStr`  
-**制御構文**: `for`, `if`, `while`, `do-while`, `switch-case`, `break`, `continue`, `return`, `goto`  
-**特殊キーワード**: `maint`
+### TextWrite
+文字列の描画
+
+```filly
+TextWrite(pic_no, x, y, text)
+```
+
+**引数**:
+- `pic_no`: ピクチャー番号
+- `x`: 描画位置 X座標
+- `y`: 描画位置 Y座標
+- `text`: 描画する文字列
+
+### TextColor
+文字色の設定
+
+```filly
+TextColor(color)
+```
+
+**引数**:
+- `color`: 色(16進数)
+
+### BgColor
+背景色の設定
+
+```filly
+BgColor(color)
+```
+
+**引数**:
+- `color`: 色(16進数)
+
+### BackMode
+背景モードの設定
+
+```filly
+BackMode(mode)
+```
+
+**引数**:
+- `mode`: 背景モード (0=透明, 1=不透明)
+
+---
+
+## 描画関連関数
+
+### DrawLine
+直線の描画
+
+```filly
+DrawLine(pic_no, x1, y1, x2, y2)
+```
+
+### DrawCircle
+円の描画
+
+```filly
+DrawCircle(pic_no, x, y, radius, fill_mode)
+```
+
+**引数**:
+- `fill_mode`: 塗りつぶしモード (0=なし, 1=ハッチ, 2=ソリッド)
+
+### DrawRect
+矩形の描画
+
+```filly
+DrawRect(pic_no, x1, y1, x2, y2, fill_mode)
+```
+
+### SetLineSize
+線の太さの設定
+
+```filly
+SetLineSize(size)
+```
+
+### SetPaintColor
+描画色の設定
+
+```filly
+SetPaintColor(color)
+```
+
+### GetColor
+ピクセルの色の取得
+
+```filly
+color = GetColor(pic_no, x, y)
+```
+
+### SetROP
+ラスタオペレーションの設定
+
+```filly
+SetROP(rop_mode)
+```
+
+**ROP モード**:
+- `COPYPEN`: 通常コピー
+- `XORPEN`: XOR
+- `MERGEPEN`: OR
+- その他のラスタオペレーション
+
+---
+
+## 文字列関連関数
+
+### StrLen
+文字列の長さを取得
+
+```filly
+length = StrLen(str)
+```
+
+### SubStr
+部分文字列の取得
+
+```filly
+substr = SubStr(str, start, length)
+```
+
+### StrFind
+文字列の検索
+
+```filly
+pos = StrFind(str, search_str)
+```
+
+**戻り値**: 見つかった位置（0から始まる）、見つからない場合は-1
+
+### StrPrint
+書式付き文字列の生成
+
+```filly
+result = StrPrint(format, arg1, arg2, ...)
+```
+
+**使用例**:
+```filly
+msg = StrPrint("Score: %d", score);
+```
+
+### StrInput
+文字列の入力
+
+```filly
+input = StrInput(prompt, default_value)
+```
+
+### CharCode
+文字コードの取得
+
+```filly
+code = CharCode(str, index)
+```
+
+### StrCode
+文字コードから文字列を生成
+
+```filly
+str = StrCode(code)
+```
+
+### StrUp
+大文字に変換
+
+```filly
+upper = StrUp(str)
+```
+
+### StrLow
+小文字に変換
+
+```filly
+lower = StrLow(str)
+```
+
+---
+
+## ファイル操作関連関数
+
+### INIファイル操作
+
+#### WriteIniInt
+INIファイルに整数を書き込み
+
+```filly
+WriteIniInt(filename, section, key, value)
+```
+
+#### GetIniInt
+INIファイルから整数を読み込み
+
+```filly
+value = GetIniInt(filename, section, key, default_value)
+```
+
+#### WriteIniStr
+INIファイルに文字列を書き込み
+
+```filly
+WriteIniStr(filename, section, key, value)
+```
+
+#### GetIniStr
+INIファイルから文字列を読み込み
+
+```filly
+value = GetIniStr(filename, section, key, default_value)
+```
+
+### バイナリファイルI/O
+
+#### OpenF
+ファイルを開く
+
+```filly
+handle = OpenF(filename, mode)
+```
+
+**モード**:
+- `"r"`: 読み込み
+- `"w"`: 書き込み
+- `"a"`: 追記
+
+#### CloseF
+ファイルを閉じる
+
+```filly
+CloseF(handle)
+```
+
+#### ReadF
+ファイルから読み込み
+
+```filly
+value = ReadF(handle, size)
+```
+
+#### WriteF
+ファイルに書き込み
+
+```filly
+WriteF(handle, value)
+```
+
+#### SeekF
+ファイルポインタの移動
+
+```filly
+SeekF(handle, offset, origin)
+```
+
+#### StrReadF
+ファイルから文字列を読み込み
+
+```filly
+str = StrReadF(handle)
+```
+
+#### StrWriteF
+ファイルに文字列を書き込み
+
+```filly
+StrWriteF(handle, str)
+```
+
+### ファイル管理
+
+#### CopyFile
+ファイルのコピー
+
+```filly
+CopyFile(src_file, dst_file)
+```
+
+#### DelFile
+ファイルの削除
+
+```filly
+DelFile(filename)
+```
+
+#### IsExist
+ファイルの存在確認
+
+```filly
+exists = IsExist(filename)
+```
+
+#### MkDir
+ディレクトリの作成
+
+```filly
+MkDir(dirname)
+```
+
+#### RmDir
+ディレクトリの削除
+
+```filly
+RmDir(dirname)
+```
+
+#### ChDir
+カレントディレクトリの変更
+
+```filly
+ChDir(dirname)
+```
+
+#### GetCwd
+カレントディレクトリの取得
+
+```filly
+dir = GetCwd()
+```
+
+---
+
+## 配列操作関連関数
+
+### ArraySize
+配列のサイズを取得
+
+```filly
+size = ArraySize(array)
+```
+
+### DelArrayAll
+配列の全要素を削除
+
+```filly
+DelArrayAll(array)
+```
+
+### DelArrayAt
+配列の指定位置の要素を削除
+
+```filly
+DelArrayAt(array, index)
+```
+
+### InsArrayAt
+配列の指定位置に要素を挿入
+
+```filly
+InsArrayAt(array, index, value)
+```
+
+---
+
+## 整数関連関数
+
+### Random
+乱数の生成
+
+```filly
+value = Random(max)
+```
+
+**戻り値**: 0 から max-1 までの乱数
+
+### MakeLong
+2つの16ビット値を32ビット値に結合
+
+```filly
+long_value = MakeLong(low_word, high_word)
+```
+
+### GetHiWord
+32ビット値の上位16ビットを取得
+
+```filly
+high_word = GetHiWord(long_value)
+```
+
+### GetLowWord
+32ビット値の下位16ビットを取得
+
+```filly
+low_word = GetLowWord(long_value)
+```
+
+---
+
+## オーディオ関連関数
+
+### PlayMIDI
+MIDIファイルの再生
+
+```filly
+PlayMIDI(filename)
+```
+
+**引数**:
+- `filename`: MIDIファイル名
+
+**注意**: 
+- 再生は非同期（バックグラウンド）で行われる
+- `mes(MIDI_TIME)` ブロックと組み合わせて使用
+
+### PlayWAVE
+WAVファイルの再生
+
+```filly
+PlayWAVE(filename)
+```
+
+**引数**:
+- `filename`: WAVファイル名
+
+### リソース管理
+
+#### LoadRsc
+リソースの読み込み
+
+```filly
+LoadRsc(id, filename)
+```
+
+#### PlayRsc
+リソースの再生
+
+```filly
+PlayRsc(id)
+```
+
+#### DelRsc
+リソースの削除
+
+```filly
+DelRsc(id)
+```
+
+---
+
+## メッセージ関連関数
+
+### GetMesNo
+現在のメッセージ番号を取得
+
+```filly
+mes_no = GetMesNo()
+```
+
+### DelMes
+指定したメッセージブロックを削除
+
+```filly
+DelMes(mes_no)
+```
+
+### FreezeMes
+メッセージブロックを一時停止
+
+```filly
+FreezeMes(mes_no)
+```
+
+### ActivateMes
+メッセージブロックを再開
+
+```filly
+ActivateMes(mes_no)
+```
+
+### PostMes
+カスタムメッセージの送信
+
+```filly
+PostMes(mes_type, p1, p2, p3, p4)
+```
+
+**引数**:
+- `mes_type`: メッセージタイプ
+- `p1`, `p2`, `p3`, `p4`: メッセージパラメータ
+
+---
+
+## システム関連関数
+
+### WinInfo
+ウィンドウ情報の取得
+
+```filly
+width = WinInfo(0)   // デスクトップ幅 (1280)
+height = WinInfo(1)  // デスクトップ高さ (720)
+```
+
+### GetSysTime
+システム時刻の取得
+
+```filly
+time = GetSysTime()
+```
+
+### WhatDay
+日付の取得
+
+```filly
+day = WhatDay()
+```
+
+### WhatTime
+時刻の取得
+
+```filly
+time = WhatTime()
+```
+
+### GetCmdLine
+コマンドライン引数の取得
+
+```filly
+cmdline = GetCmdLine()
+```
+
+### Shell
+外部プログラムの実行
+
+```filly
+Shell(command, working_dir)
+```
+
+---
+
+## 制御構文
+
+### mes ブロック
+イベント駆動の実行ブロック
+
+```filly
+mes(TIME) {
+    // タイムモードのコード
+}
+
+mes(MIDI_TIME) {
+    // MIDI同期モードのコード
+}
+
+mes(MIDI_END) {
+    // MIDI終了時のコード
+}
+
+mes(KEY) {
+    // キーボード入力時のコード
+    // 任意のキーが押されたときに実行
+}
+
+mes(CLICK) {
+    // マウスクリック時のコード
+    // マウスがクリックされたときに実行
+}
+
+mes(RBDOWN) {
+    // 右ボタンダウン時のコード
+    // 右マウスボタンが押されたときに実行
+}
+
+mes(RBDBLCLK) {
+    // 右ボタンダブルクリック時のコード
+    // 右マウスボタンがダブルクリックされたときに実行
+}
+
+mes(USER) {
+    // ユーザーイベントのコード
+    // PostMes()で送信されたカスタムメッセージを受信
+}
+```
+
+**イベントタイプ**:
+- `TIME`: 60 FPSのフレーム更新で駆動（ブロッキング）
+- `MIDI_TIME`: MIDI再生のティックで駆動（ノンブロッキング）
+- `MIDI_END`: MIDI再生終了時に1回実行
+- `KEY`: キーボード入力時に実行
+- `CLICK`: マウスクリック時に実行
+- `RBDOWN`: 右マウスボタンダウン時に実行
+- `RBDBLCLK`: 右マウスボタンダブルクリック時に実行
+- `USER`: カスタムメッセージ受信時に実行
+
+### step ブロック
+ステップ単位の実行
+
+```filly
+step(n) {
+    // n ステップごとに実行されるコード
+    command1;,
+    command2;,
+    command3;,
+    end_step;
+}
+```
+
+**注意**: 
+- コマンドの後に `,` を付けると次のステップで実行
+- `end_step` でブロックを終了
+
+### if-else
+条件分岐
+
+```filly
+if (condition) {
+    // 真の場合
+} else {
+    // 偽の場合
+}
+```
+
+### for
+繰り返し
+
+```filly
+for (init; condition; increment) {
+    // ループ本体
+}
+```
+
+### while
+条件付き繰り返し
+
+```filly
+while (condition) {
+    // ループ本体
+}
+```
+
+### do-while
+後判定繰り返し
+
+```filly
+do {
+    // ループ本体
+} while (condition);
+```
+
+### switch-case
+多分岐
+
+```filly
+switch (value) {
+    case 1:
+        // value が 1 の場合
+        break;
+    case 2:
+        // value が 2 の場合
+        break;
+    default:
+        // その他の場合
+        break;
+}
+```
+
+### break
+ループの中断
+
+```filly
+break;
+```
+
+### continue
+ループの次の反復へ
+
+```filly
+continue;
+```
+
+---
+
+## 特殊キーワード
+
+### ESCキー（特別なハンドリング）
+
+**ESCキー**は特別な扱いを受けます：
+
+```filly
+// ESCキーが押されると、プログラムは即座に終了します
+// mes()ブロックや明示的なハンドラは不要
+```
+
+**動作**:
+1. ESCキーが押されると、システムは終了フラグを設定
+2. 現在実行中のOpCodeが完了した後、VM実行を停止
+3. すべてのシーケンスを停止
+4. プログラムを終了
+
+**注意**: 
+- ESCキーは`mes(KEY)`では捕捉できません
+- ESCキーは常にプログラム終了として扱われます
+- スクリプトからESCキーの動作を変更することはできません
+
+### del_me
+現在のシーケンスを終了
+
+```filly
+del_me;
+```
+
+**注意**: 
+- 括弧なしで呼び出し可能
+- 現在のシーケンスのみを終了（他のシーケンスは継続）
+
+### del_us
+同じグループのシーケンスを終了
+
+```filly
+del_us;
+```
+
+### del_all
+すべてのシーケンスを終了し、リソースをクリーンアップ
+
+```filly
+del_all;
+```
+
+**注意**: 
+- すべてのウィンドウを閉じる
+- グラフィックスリソースをクリーンアップ
+- MIDI再生は継続
+
+### end_step
+step ブロックの終了
+
+```filly
+end_step;
+```
+
+---
+
+## サポート範囲
+
+### son-et で実装される機能
+
+**コア機能**:
+- すべてのウィンドウ、ピクチャー、キャスト操作
+- テキストレンダリング
+- 基本的な描画機能
+- 文字列操作
+- ファイルI/O（INI、バイナリ）
+- 配列操作
+- MIDI/WAV再生
+- メッセージシステム
+- すべての制御構文
+
+### son-et で実装されない機能
+
+**Windows固有のAPI**:
+- `PlayCD` - CD-ROMオーディオ（廃止されたハードウェア）
+- `MCI`, `StrMCI` - Windows MCIコマンド
+- `SetRegStr`, `GetRegStr` - Windowsレジストリアクセス
+- `PlayAVI` - AVIビデオ再生（複雑なコーデックサポート）
+
+**代替手段**:
+- CD audio → `PlayMIDI` または `PlayWAVE` でデジタルオーディオファイルを使用
+- MCI commands → `PlayMIDI`, `PlayWAVE`, またはプラットフォーム固有の代替手段
+- Registry access → INIファイル (`WriteIniInt`, `GetIniInt`, `WriteIniStr`, `GetIniStr`)
+- AVI playback → 外部プレーヤーでモダンなビデオフォーマットを使用
+
+---
+
+## 使用例
+
+### 基本的なウィンドウ表示
+
+```filly
+main() {
+    pic = LoadPic("image.bmp");
+    OpenWin(pic);
+}
+```
+
+### MIDI同期アニメーション
+
+```filly
+main() {
+    pic = LoadPic("sprite.bmp");
+    
+    mes(MIDI_TIME) {
+        step(8) {
+            MoveCast(0, x, y);,
+            x = x + 10;,
+            end_step;
+        }
+    }
+    
+    PlayMIDI("music.mid");
+}
+```
+
+### タイムモードアニメーション
+
+```filly
+main() {
+    pic = LoadPic("background.bmp");
+    OpenWin(pic);
+    
+    mes(TIME) {
+        step(20) {
+            // 1秒ごとに実行
+            TextWrite(pic, 10, 10, "Hello World");,
+            end_step;
+        }
+    }
+}
+```
+
+---
+
+## 参考資料
+
+- [requirements.md](../.kiro/specs/requirements.md) - son-et の要求仕様
+- [design.md](../.kiro/specs/design.md) - son-et のアーキテクチャ設計
+- [tasks.md](../.kiro/specs/tasks.md) - 実装タスクリスト

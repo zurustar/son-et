@@ -195,7 +195,39 @@ These requirements define the multimedia capabilities that scripts can use.
 9. THE System SHALL support playing preloaded resources
 10. THE System SHALL support releasing preloaded resources
 
-### Requirement B3: Text Rendering
+### Requirement B3: User Input Handling
+
+**User Story:** As a script author, I want to respond to user input events (keyboard, mouse), so that I can create interactive applications.
+
+**Rationale:** FILLY supports event-driven programming through `mes()` blocks that respond to user input. This enables interactive multimedia applications.
+
+#### Acceptance Criteria
+
+**Keyboard Input:**
+1. WHEN mes(KEY) is registered, THE System SHALL trigger the sequence when any key is pressed
+2. THE System SHALL provide key code information to the sequence
+3. THE System SHALL support multiple KEY sequences concurrently
+
+**Mouse Input:**
+4. WHEN mes(CLICK) is registered, THE System SHALL trigger the sequence when the mouse is clicked
+5. WHEN mes(RBDOWN) is registered, THE System SHALL trigger the sequence when the right mouse button is pressed
+6. WHEN mes(RBDBLCLK) is registered, THE System SHALL trigger the sequence when the right mouse button is double-clicked
+7. THE System SHALL provide mouse position information to the sequence
+8. THE System SHALL support multiple mouse event sequences concurrently
+
+**ESC Key Handling:**
+9. WHEN the ESC key is pressed, THE System SHALL set a termination flag
+10. WHEN the termination flag is set, THE System SHALL stop all VM execution immediately
+11. WHEN the termination flag is set, THE System SHALL return termination signal to the game loop
+12. THE System SHALL check the termination flag before executing any OpCode
+13. THE System SHALL allow graceful cleanup before termination
+
+**Event Delivery:**
+14. THE System SHALL deliver events to all matching mes() blocks
+15. THE System SHALL not block the main thread while delivering events
+16. THE System SHALL queue events if sequences are busy
+
+### Requirement B5: Text Rendering
 
 **User Story:** As a script author, I want to draw text on images, so that I can display messages and UI elements.
 
