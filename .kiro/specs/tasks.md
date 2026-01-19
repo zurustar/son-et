@@ -4,9 +4,11 @@
 
 This task list implements the requirements defined in [requirements.md](requirements.md) following the architecture described in [design.md](design.md).
 
-**Strategy**: Incremental refactoring - build clean modules alongside existing code, then replace module by module.
+**Strategy**: Incremental implementation from foundation to features, following dependency order.
 
-**Reference**: Existing code in `main` branch can be referenced but should not constrain the new design.
+**Principle**: Build from generic to specific, from lower layers to higher layers.
+
+**Reference**: Existing code in `_old_implementation/` can be referenced but should not constrain the new design.
 
 ---
 
@@ -61,33 +63,107 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-## Phase 1: Compilation Layer
+## Phase 1: System Infrastructure
 
-### Task 1.1: Lexer Refactoring
+### Task 1.1: Logging System
+**Goal**: Implement timestamped logging with debug levels.
+
+**Subtasks**:
+- [ ] 1.1.1 Implement timestamp formatting [HH:MM:SS.mmm]
+- [ ] 1.1.2 Implement DEBUG_LEVEL support (0, 1, 2)
+- [ ] 1.1.3 Implement log functions (LogError, LogInfo, LogDebug)
+- [ ] 1.1.4 Add tests for logging
+
+**Acceptance Criteria**:
+- Timestamps in all logs
+- Debug levels control verbosity (0=errors, 1=info, 2=debug)
+- Thread-safe logging
+
+---
+
+### Task 1.2: Headless Mode
+**Goal**: Implement headless execution for testing.
+
+**Subtasks**:
+- [ ] 1.2.1 Implement --headless flag parsing
+- [ ] 1.2.2 Implement MockRenderer for headless mode
+- [ ] 1.2.3 Implement headless execution loop (60 FPS)
+- [ ] 1.2.4 Implement rendering operation logging
+- [ ] 1.2.5 Add tests for headless mode
+
+**Acceptance Criteria**:
+- Scripts execute without GUI
+- All logic executes normally
+- Rendering operations logged
+- 60 FPS tick generation
+
+---
+
+### Task 1.3: Program Termination
+**Goal**: Implement clean program termination.
+
+**Subtasks**:
+- [ ] 1.3.1 Implement --timeout flag parsing and timer
+- [ ] 1.3.2 Implement programTerminated flag (atomic)
+- [ ] 1.3.3 Implement ESC key detection and termination
+- [ ] 1.3.4 Implement graceful shutdown (cleanup resources)
+- [ ] 1.3.5 Add tests for termination
+
+**Acceptance Criteria**:
+- Timeout formats supported (5s, 500ms, 2m)
+- ESC key sets termination flag immediately
+- Termination check happens before VM execution
+- Graceful resource cleanup
+- Exit code 0 on normal termination
+
+---
+
+### Task 1.4: Error Reporting
+**Goal**: Implement clear error messages.
+
+**Subtasks**:
+- [ ] 1.4.1 Implement parsing error reporting (line, column)
+- [ ] 1.4.2 Implement runtime error reporting (OpCode, args)
+- [ ] 1.4.3 Implement asset loading error reporting (filename)
+- [ ] 1.4.4 Add tests for error reporting
+
+**Acceptance Criteria**:
+- Parsing errors include line/column
+- Runtime errors include OpCode context
+- Asset errors include filename
+- Errors logged with appropriate level
+
+---
+
+## Phase 2: Compilation Layer
+
+### Task 2.1: Lexer
 **Goal**: Clean, minimal lexer that tokenizes FILLY source code.
 
 **Subtasks**:
-- [ ] 1.1.1 Review existing lexer for simplification opportunities
-- [ ] 1.1.2 Ensure all FILLY tokens are supported
-- [ ] 1.1.3 Add comprehensive lexer tests
-- [ ] 1.1.4 Document token types and lexing rules
+- [ ] 2.1.1 Implement token types (keywords, operators, literals, identifiers)
+- [ ] 2.1.2 Implement lexer with position tracking
+- [ ] 2.1.3 Implement error reporting with line/column
+- [ ] 2.1.4 Add comprehensive lexer tests
 
 **Acceptance Criteria**:
 - Lexer handles all FILLY syntax
 - Clear error messages with line/column numbers
-- No unnecessary complexity
+- Case-insensitive keywords
 
 ---
 
-
-### Task 1.2: Parser Refactoring
+### Task 2.2: Parser
 **Goal**: Clean parser that builds AST from tokens.
 
 **Subtasks**:
-- [ ] 1.2.1 Review existing parser for simplification opportunities
-- [ ] 1.2.2 Ensure all FILLY constructs are parsed correctly
-- [ ] 1.2.3 Add comprehensive parser tests
-- [ ] 1.2.4 Document AST structure
+- [ ] 2.2.1 Define AST node types
+- [ ] 2.2.2 Implement expression parsing (precedence climbing)
+- [ ] 2.2.3 Implement statement parsing
+- [ ] 2.2.4 Implement control flow parsing (if, for, while, switch)
+- [ ] 2.2.5 Implement function definition parsing
+- [ ] 2.2.6 Implement mes() block parsing
+- [ ] 2.2.7 Add comprehensive parser tests
 
 **Acceptance Criteria**:
 - Parser handles all FILLY syntax
@@ -96,16 +172,16 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 1.3: OpCode Generation (Interpreter)
+### Task 2.3: OpCode Generation
 **Goal**: Convert AST to OpCode sequences uniformly.
 
 **Subtasks**:
-- [ ] 1.3.1 Implement statement conversion (assignments, function calls)
-- [ ] 1.3.2 Implement expression conversion (arithmetic, comparisons, nested expressions)
-- [ ] 1.3.3 Implement control flow conversion (if, for, while, switch)
-- [ ] 1.3.4 Implement function definition conversion
-- [ ] 1.3.5 Implement mes() block conversion
-- [ ] 1.3.6 Add comprehensive OpCode generation tests
+- [ ] 2.3.1 Implement statement conversion (assignments, function calls)
+- [ ] 2.3.2 Implement expression conversion (arithmetic, comparisons, nested)
+- [ ] 2.3.3 Implement control flow conversion (if, for, while, switch)
+- [ ] 2.3.4 Implement function definition conversion
+- [ ] 2.3.5 Implement mes() block conversion
+- [ ] 2.3.6 Add comprehensive OpCode generation tests
 
 **Acceptance Criteria**:
 - All FILLY constructs convert to OpCode
@@ -115,20 +191,20 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-## Phase 2: Execution Layer
+## Phase 3: Execution Layer
 
-### Task 2.1: VM Core
+### Task 3.1: VM Core
 **Goal**: Implement clean VM that executes OpCode uniformly.
 
 **Subtasks**:
-- [ ] 2.1.1 Implement ExecuteOp dispatcher (switch on OpCmd)
-- [ ] 2.1.2 Implement OpAssign handler
-- [ ] 2.1.3 Implement OpCall handler
-- [ ] 2.1.4 Implement OpIf handler
-- [ ] 2.1.5 Implement OpFor handler
-- [ ] 2.1.6 Implement OpWhile handler
-- [ ] 2.1.7 Implement OpWait handler
-- [ ] 2.1.8 Add unit tests for each OpCode handler
+- [ ] 3.1.1 Implement ExecuteOp dispatcher (switch on OpCmd)
+- [ ] 3.1.2 Implement OpAssign handler
+- [ ] 3.1.3 Implement OpCall handler (stub for now)
+- [ ] 3.1.4 Implement OpIf handler
+- [ ] 3.1.5 Implement OpFor handler
+- [ ] 3.1.6 Implement OpWhile handler
+- [ ] 3.1.7 Implement OpWait handler
+- [ ] 3.1.8 Add unit tests for each OpCode handler
 
 **Acceptance Criteria**:
 - Single execution path through ExecuteOp
@@ -137,16 +213,16 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 2.2: Sequence Management
+### Task 3.2: Sequence Management
 **Goal**: Implement sequence lifecycle and concurrent execution.
 
 **Subtasks**:
-- [ ] 2.2.1 Implement RegisterSequence (create sequencer, link parent scope)
-- [ ] 2.2.2 Implement sequence activation/deactivation
-- [ ] 2.2.3 Implement del_me (deactivate current sequence)
-- [ ] 2.2.4 Implement del_us (deactivate group)
-- [ ] 2.2.5 Implement del_all (cleanup all sequences)
-- [ ] 2.2.6 Add tests for sequence lifecycle
+- [ ] 3.2.1 Implement RegisterSequence (create sequencer, link parent scope)
+- [ ] 3.2.2 Implement sequence activation/deactivation
+- [ ] 3.2.3 Implement del_me (deactivate current sequence)
+- [ ] 3.2.4 Implement del_us (deactivate group)
+- [ ] 3.2.5 Implement del_all (cleanup all sequences)
+- [ ] 3.2.6 Add tests for sequence lifecycle
 
 **Acceptance Criteria**:
 - Sequences register without blocking (except TIME mode)
@@ -156,15 +232,39 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 2.3: Tick-Driven Execution
+### Task 3.3: mes() Block Support
+**Goal**: Implement all mes() event types.
+
+**Subtasks**:
+- [ ] 3.3.1 Implement mes(TIME) - blocking, frame-driven
+- [ ] 3.3.2 Implement mes(MIDI_TIME) - non-blocking, MIDI-driven
+- [ ] 3.3.3 Implement mes(MIDI_END) - MIDI completion event
+- [ ] 3.3.4 Implement mes(KEY) - keyboard input event
+- [ ] 3.3.5 Implement mes(CLICK) - mouse click event
+- [ ] 3.3.6 Implement mes(RBDOWN) - right button down event
+- [ ] 3.3.7 Implement mes(RBDBLCLK) - right button double-click event
+- [ ] 3.3.8 Implement mes(USER) - custom message event
+- [ ] 3.3.9 Add tests for all mes() types
+
+**Acceptance Criteria**:
+- TIME mode blocks until completion
+- MIDI_TIME mode returns immediately
+- Event handlers trigger on appropriate events
+- Multiple handlers can respond to same event
+- Event parameters passed via MesP1-MesP4
+
+---
+
+### Task 3.4: Tick-Driven Execution
 **Goal**: Implement step-based execution model.
 
 **Subtasks**:
-- [ ] 2.3.1 Implement UpdateVM (process one tick for all sequences)
-- [ ] 2.3.2 Implement wait counter decrement
-- [ ] 2.3.3 Implement program counter advancement
-- [ ] 2.3.4 Implement sequence completion detection
-- [ ] 2.3.5 Add tests for tick processing
+- [ ] 3.4.1 Implement UpdateVM (process one tick for all sequences)
+- [ ] 3.4.2 Implement wait counter decrement
+- [ ] 3.4.3 Implement program counter advancement
+- [ ] 3.4.4 Implement sequence completion detection
+- [ ] 3.4.5 Implement tick generation for TIME mode (60 FPS)
+- [ ] 3.4.6 Add tests for tick processing
 
 **Acceptance Criteria**:
 - Each tick advances all active sequences by one step
@@ -174,125 +274,133 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 2.4: Timing Modes
+### Task 3.5: Timing Modes
 **Goal**: Implement TIME and MIDI_TIME modes correctly.
 
 **Subtasks**:
-- [ ] 2.4.1 Implement TIME mode (blocking RegisterSequence)
-- [ ] 2.4.2 Implement MIDI_TIME mode (non-blocking RegisterSequence)
-- [ ] 2.4.3 Implement step(n) interpretation for each mode
-- [ ] 2.4.4 Implement tick generation for TIME mode (60 FPS)
-- [ ] 2.4.5 Implement tick generation for MIDI_TIME mode (MIDI callbacks)
-- [ ] 2.4.6 Add tests for both timing modes
+- [ ] 3.5.1 Implement step(n) interpretation for TIME mode (n × 50ms)
+- [ ] 3.5.2 Implement step(n) interpretation for MIDI_TIME mode (n × 32nd note)
+- [ ] 3.5.3 Implement blocking behavior for TIME mode
+- [ ] 3.5.4 Implement non-blocking behavior for MIDI_TIME mode
+- [ ] 3.5.5 Add tests for both timing modes
 
 **Acceptance Criteria**:
-- TIME mode blocks until sequence completes
-- MIDI_TIME mode returns immediately
 - Step duration calculated correctly for each mode
 - No mixing of timing mode logic
+- TIME mode blocks, MIDI_TIME doesn't
 
 ---
 
-## Phase 3: Graphics System
+## Phase 4: Graphics Foundation
 
-### Task 3.1: State Management
-**Goal**: Implement clean graphics state with thread safety.
+### Task 4.1: Virtual Desktop
+**Goal**: Implement fixed 1280×720 virtual desktop.
 
 **Subtasks**:
-- [ ] 3.1.1 Define Picture struct (ID, Image, Width, Height)
-- [ ] 3.1.2 Define Cast struct (ID, PictureID, Position, Clipping, Transparency)
-- [ ] 3.1.3 Define Window struct (ID, PictureID, Position, Size, Caption)
-- [ ] 3.1.4 Implement render mutex for thread safety
-- [ ] 3.1.5 Add tests for state management
+- [ ] 4.1.1 Define virtual desktop dimensions (1280×720)
+- [ ] 4.1.2 Implement WinInfo(0) - return desktop width
+- [ ] 4.1.3 Implement WinInfo(1) - return desktop height
+- [ ] 4.1.4 Add tests for virtual desktop
 
 **Acceptance Criteria**:
-- Clean data structures without unnecessary fields
-- Thread-safe access to graphics state
-- Sequential ID assignment
+- Virtual desktop is always 1280×720
+- WinInfo returns correct dimensions
 
 ---
 
-### Task 3.2: Picture Operations
+### Task 4.2: Picture Management
 **Goal**: Implement picture loading, creation, and management.
 
 **Subtasks**:
-- [ ] 3.2.1 Implement LoadPic (load BMP, assign ID)
-- [ ] 3.2.2 Implement CreatePic (create empty buffer)
-- [ ] 3.2.3 Implement MovePic (copy pixels with transparency)
-- [ ] 3.2.4 Implement DelPic (release resources)
-- [ ] 3.2.5 Implement PicWidth, PicHeight queries
-- [ ] 3.2.6 Add tests for picture operations
+- [ ] 4.2.1 Define Picture struct (ID, Image, Width, Height)
+- [ ] 4.2.2 Implement LoadPic (load BMP, assign ID)
+- [ ] 4.2.3 Implement CreatePic (create empty buffer)
+- [ ] 4.2.4 Implement MovePic (copy pixels with transparency)
+- [ ] 4.2.5 Implement DelPic (release resources)
+- [ ] 4.2.6 Implement PicWidth, PicHeight queries
+- [ ] 4.2.7 Implement MoveSPic (scale and copy)
+- [ ] 4.2.8 Implement ReversePic (horizontal flip)
+- [ ] 4.2.9 Add tests for picture operations
 
 **Acceptance Criteria**:
 - BMP loading works correctly
 - Sequential ID assignment
 - Transparency handled correctly
 - Resource cleanup on deletion
+- Scaling and flipping preserve transparency
 
 ---
 
-### Task 3.3: Cast (Sprite) Operations
+### Task 4.3: Window Management
+**Goal**: Implement window creation and management.
+
+**Subtasks**:
+- [ ] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption)
+- [ ] 4.3.2 Implement OpenWin (create window)
+- [ ] 4.3.3 Implement MoveWin (update properties)
+- [ ] 4.3.4 Implement CloseWin (close window)
+- [ ] 4.3.5 Implement CloseWinAll (close all windows)
+- [ ] 4.3.6 Implement CapTitle (set caption)
+- [ ] 4.3.7 Implement GetPicNo (query picture ID)
+- [ ] 4.3.8 Add tests for window operations
+
+**Acceptance Criteria**:
+- Windows display pictures correctly
+- Window properties update correctly
+- Windows render in creation order
+- All windows within virtual desktop
+
+---
+
+### Task 4.4: Cast (Sprite) Management
 **Goal**: Implement sprite creation and management.
 
 **Subtasks**:
-- [ ] 3.3.1 Implement PutCast (create sprite with clipping)
-- [ ] 3.3.2 Implement MoveCast (update position)
-- [ ] 3.3.3 Implement DelCast (remove sprite)
-- [ ] 3.3.4 Implement z-ordering (creation order)
-- [ ] 3.3.5 Add tests for cast operations
+- [ ] 4.4.1 Define Cast struct (ID, PictureID, Position, Clipping, Transparency)
+- [ ] 4.4.2 Implement PutCast (create sprite with clipping)
+- [ ] 4.4.3 Implement MoveCast (update position)
+- [ ] 4.4.4 Implement DelCast (remove sprite)
+- [ ] 4.4.5 Implement z-ordering (creation order)
+- [ ] 4.4.6 Add tests for cast operations
 
 **Acceptance Criteria**:
 - Sprites created with transparency and clipping
 - Creation order determines z-order
 - Position updates work correctly
+- Sprites render within windows
 
 ---
 
-### Task 3.4: Window Operations
-**Goal**: Implement window creation and management.
-
-**Subtasks**:
-- [ ] 3.4.1 Implement OpenWin (create window)
-- [ ] 3.4.2 Implement MoveWin (update properties)
-- [ ] 3.4.3 Implement CloseWin (close window)
-- [ ] 3.4.4 Implement WinInfo (query desktop dimensions)
-- [ ] 3.4.5 Add tests for window operations
-
-**Acceptance Criteria**:
-- Windows display pictures correctly
-- Window properties update correctly
-- Virtual desktop is 1280×720
-
----
-
-### Task 3.5: Renderer Implementation
+### Task 4.5: Renderer Implementation
 **Goal**: Implement clean renderer with mock support.
 
 **Subtasks**:
-- [ ] 3.5.1 Implement EbitenRenderer (production)
-- [ ] 3.5.2 Implement MockRenderer (testing)
-- [ ] 3.5.3 Implement rendering pipeline (windows → casts → scale)
-- [ ] 3.5.4 Implement double buffering
-- [ ] 3.5.5 Add tests for rendering
+- [ ] 4.5.1 Implement EbitenRenderer (production)
+- [ ] 4.5.2 Enhance MockRenderer (testing)
+- [ ] 4.5.3 Implement rendering pipeline (desktop → windows → casts)
+- [ ] 4.5.4 Implement double buffering
+- [ ] 4.5.5 Implement render mutex for thread safety
+- [ ] 4.5.6 Add tests for rendering
 
 **Acceptance Criteria**:
 - Renderer reads state but doesn't modify it
 - MockRenderer enables headless testing
-- Rendering is stateless (no frame dependencies)
+- Rendering is stateless
+- Thread-safe rendering
 
 ---
 
-## Phase 4: Audio System
+## Phase 5: Audio System
 
-### Task 4.1: MIDI Player
+### Task 5.1: MIDI Player
 **Goal**: Implement MIDI playback with tick generation.
 
 **Subtasks**:
-- [ ] 4.1.1 Implement PlayMIDI (load and start playback)
-- [ ] 4.1.2 Implement MIDI tick calculation (tempo, PPQ)
-- [ ] 4.1.3 Implement tick callbacks to VM
-- [ ] 4.1.4 Implement MIDI_END event
-- [ ] 4.1.5 Add tests for MIDI playback
+- [ ] 5.1.1 Implement PlayMIDI (load and start playback)
+- [ ] 5.1.2 Implement MIDI tick calculation (tempo, PPQ)
+- [ ] 5.1.3 Implement tick callbacks to VM
+- [ ] 5.1.4 Implement MIDI_END event triggering
+- [ ] 5.1.5 Add tests for MIDI playback
 
 **Acceptance Criteria**:
 - MIDI playback runs in background goroutine
@@ -302,14 +410,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 4.2: WAV Player
+### Task 5.2: WAV Player
 **Goal**: Implement WAV playback.
 
 **Subtasks**:
-- [ ] 4.2.1 Implement PlayWAVE (decode and play)
-- [ ] 4.2.2 Implement concurrent playback support
-- [ ] 4.2.3 Implement resource preloading (LoadRsc, PlayRsc, DelRsc)
-- [ ] 4.2.4 Add tests for WAV playback
+- [ ] 5.2.1 Implement PlayWAVE (decode and play)
+- [ ] 5.2.2 Implement concurrent playback support
+- [ ] 5.2.3 Implement resource preloading (LoadRsc, PlayRsc, DelRsc)
+- [ ] 5.2.4 Add tests for WAV playback
 
 **Acceptance Criteria**:
 - WAV playback runs asynchronously
@@ -318,17 +426,17 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-## Phase 5: Runtime Features
+## Phase 6: Runtime Features
 
-### Task 5.1: Text Rendering
+### Task 6.1: Text Rendering
 **Goal**: Implement text drawing on pictures.
 
 **Subtasks**:
-- [ ] 5.1.1 Implement SetFont (load font)
-- [ ] 5.1.2 Implement TextWrite (draw text)
-- [ ] 5.1.3 Implement TextColor, BgColor (set colors)
-- [ ] 5.1.4 Implement BackMode (transparent background)
-- [ ] 5.1.5 Add tests for text rendering
+- [ ] 6.1.1 Implement SetFont (load font)
+- [ ] 6.1.2 Implement TextWrite (draw text)
+- [ ] 6.1.3 Implement TextColor, BgColor (set colors)
+- [ ] 6.1.4 Implement BackMode (transparent background)
+- [ ] 6.1.5 Add tests for text rendering
 
 **Acceptance Criteria**:
 - Text draws correctly on pictures
@@ -337,16 +445,17 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 5.2: Drawing Functions
+### Task 6.2: Drawing Functions
 **Goal**: Implement vector drawing primitives.
 
 **Subtasks**:
-- [ ] 5.2.1 Implement DrawLine
-- [ ] 5.2.2 Implement DrawCircle
-- [ ] 5.2.3 Implement DrawRect
-- [ ] 5.2.4 Implement SetLineSize, SetPaintColor
-- [ ] 5.2.5 Implement raster operations (ROP)
-- [ ] 5.2.6 Add tests for drawing functions
+- [ ] 6.2.1 Implement DrawLine
+- [ ] 6.2.2 Implement DrawCircle
+- [ ] 6.2.3 Implement DrawRect
+- [ ] 6.2.4 Implement SetLineSize, SetPaintColor
+- [ ] 6.2.5 Implement raster operations (ROP)
+- [ ] 6.2.6 Implement GetColor (pixel query)
+- [ ] 6.2.7 Add tests for drawing functions
 
 **Acceptance Criteria**:
 - Drawing primitives work correctly
@@ -355,14 +464,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 5.3: File Operations
+### Task 6.3: File Operations
 **Goal**: Implement file I/O.
 
 **Subtasks**:
-- [ ] 5.3.1 Implement INI file operations (WriteIniInt, GetIniInt, WriteIniStr, GetIniStr)
-- [ ] 5.3.2 Implement binary file I/O (OpenF, CloseF, ReadF, WriteF, SeekF)
-- [ ] 5.3.3 Implement file management (CopyFile, DelFile, IsExist, MkDir, RmDir, ChDir, GetCwd)
-- [ ] 5.3.4 Add tests for file operations
+- [ ] 6.3.1 Implement INI file operations (WriteIniInt, GetIniInt, WriteIniStr, GetIniStr)
+- [ ] 6.3.2 Implement binary file I/O (OpenF, CloseF, ReadF, WriteF, SeekF)
+- [ ] 6.3.3 Implement file management (CopyFile, DelFile, IsExist, MkDir, RmDir, ChDir, GetCwd)
+- [ ] 6.3.4 Add tests for file operations
 
 **Acceptance Criteria**:
 - INI files read/write correctly
@@ -371,15 +480,16 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 5.4: String Operations
+### Task 6.4: String Operations
 **Goal**: Implement string manipulation functions.
 
 **Subtasks**:
-- [ ] 5.4.1 Implement StrLen, SubStr, StrFind
-- [ ] 5.4.2 Implement StrPrint (printf-style)
-- [ ] 5.4.3 Implement StrUp, StrLow (case conversion)
-- [ ] 5.4.4 Implement CharCode, StrCode
-- [ ] 5.4.5 Add tests for string operations
+- [ ] 6.4.1 Implement StrLen, SubStr, StrFind
+- [ ] 6.4.2 Implement StrPrint (printf-style)
+- [ ] 6.4.3 Implement StrUp, StrLow (case conversion)
+- [ ] 6.4.4 Implement CharCode, StrCode
+- [ ] 6.4.5 Implement StrInput (user input)
+- [ ] 6.4.6 Add tests for string operations
 
 **Acceptance Criteria**:
 - String operations work correctly
@@ -388,14 +498,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 5.5: Array Operations
+### Task 6.5: Array Operations
 **Goal**: Implement dynamic array manipulation.
 
 **Subtasks**:
-- [ ] 5.5.1 Implement ArraySize
-- [ ] 5.5.2 Implement DelArrayAll
-- [ ] 5.5.3 Implement DelArrayAt, InsArrayAt
-- [ ] 5.5.4 Add tests for array operations
+- [ ] 6.5.1 Implement ArraySize
+- [ ] 6.5.2 Implement DelArrayAll
+- [ ] 6.5.3 Implement DelArrayAt, InsArrayAt
+- [ ] 6.5.4 Add tests for array operations
 
 **Acceptance Criteria**:
 - Arrays resize automatically
@@ -403,94 +513,39 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 5.6: User Input Handling
-**Goal**: Implement keyboard and mouse input event handling.
+### Task 6.6: System Functions
+**Goal**: Implement system information and utility functions.
 
 **Subtasks**:
-- [ ] 5.6.1 Implement mes(KEY) event registration and triggering
-- [ ] 5.6.2 Implement mes(CLICK) event registration and triggering
-- [ ] 5.6.3 Implement mes(RBDOWN) event registration and triggering
-- [ ] 5.6.4 Implement mes(RBDBLCLK) event registration and triggering
-- [ ] 5.6.5 Implement ESC key special handling (programTerminated flag)
-- [ ] 5.6.6 Implement event parameter passing (MesP1-MesP4)
-- [ ] 5.6.7 Implement PostMes for custom messages
-- [ ] 5.6.8 Add tests for input event handling
+- [ ] 6.6.1 Implement Random (random number generation)
+- [ ] 6.6.2 Implement GetSysTime, WhatDay, WhatTime (time/date)
+- [ ] 6.6.3 Implement GetCmdLine (command line args)
+- [ ] 6.6.4 Implement Shell (external process execution)
+- [ ] 6.6.5 Implement MakeLong, GetHiWord, GetLowWord (bit operations)
+- [ ] 6.6.6 Add tests for system functions
 
 **Acceptance Criteria**:
-- Keyboard events trigger KEY sequences
-- Mouse events trigger appropriate sequences
-- ESC key immediately sets termination flag
-- Termination check happens before VM execution
-- Multiple sequences can respond to same event
-- Event parameters passed correctly
-- PostMes delivers custom messages
+- Random numbers generated correctly
+- Time/date functions work
+- External processes launch correctly
+- Bit operations preserve patterns
 
 ---
 
-## Phase 6: Development Features
-
-### Task 6.1: Headless Mode
-**Goal**: Implement headless execution for testing.
+### Task 6.7: Message System
+**Goal**: Implement message management functions.
 
 **Subtasks**:
-- [ ] 6.1.1 Implement --headless flag parsing
-- [ ] 6.1.2 Implement headless execution loop (60 FPS)
-- [ ] 6.1.3 Implement rendering operation logging
-- [ ] 6.1.4 Add tests for headless mode
+- [ ] 6.7.1 Implement GetMesNo (query message number)
+- [ ] 6.7.2 Implement DelMes (terminate specific message)
+- [ ] 6.7.3 Implement FreezeMes, ActivateMes (pause/resume)
+- [ ] 6.7.4 Implement PostMes (send custom message)
+- [ ] 6.7.5 Add tests for message system
 
 **Acceptance Criteria**:
-- Scripts execute without GUI
-- All logic executes normally
-- Rendering operations logged
-
----
-
-### Task 6.2: Auto-Termination
-**Goal**: Implement timeout for automated testing.
-
-**Subtasks**:
-- [ ] 6.2.1 Implement --timeout flag parsing
-- [ ] 6.2.2 Implement timeout timer
-- [ ] 6.2.3 Implement graceful shutdown on timeout
-- [ ] 6.2.4 Add tests for timeout
-
-**Acceptance Criteria**:
-- Timeout formats supported (5s, 500ms, 2m)
-- Graceful shutdown on timeout
-- Exit code 0 on timeout
-
----
-
-### Task 6.3: Logging System
-**Goal**: Implement timestamped logging with debug levels.
-
-**Subtasks**:
-- [ ] 6.3.1 Implement timestamp formatting [HH:MM:SS.mmm]
-- [ ] 6.3.2 Implement DEBUG_LEVEL support (0, 1, 2)
-- [ ] 6.3.3 Implement logging for VM execution
-- [ ] 6.3.4 Implement logging for asset loading
-- [ ] 6.3.5 Implement logging for rendering
-
-**Acceptance Criteria**:
-- Timestamps in all logs
-- Debug levels control verbosity
-- Logs help verify timing accuracy
-
----
-
-### Task 6.4: Error Reporting
-**Goal**: Implement clear error messages.
-
-**Subtasks**:
-- [ ] 6.4.1 Implement parsing error reporting (line, column)
-- [ ] 6.4.2 Implement runtime error reporting (OpCode, args)
-- [ ] 6.4.3 Implement asset loading error reporting (filename)
-- [ ] 6.4.4 Add tests for error reporting
-
-**Acceptance Criteria**:
-- Parsing errors include line/column
-- Runtime errors include OpCode context
-- Asset errors include filename
+- Message queries work correctly
+- Message control functions work
+- Custom messages delivered correctly
 
 ---
 
@@ -534,7 +589,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Ensure existing scripts work.
 
 **Subtasks**:
-- [ ] 7.3.1 Test all sample scripts from main branch
+- [ ] 7.3.1 Test all sample scripts from _old_implementation
 - [ ] 7.3.2 Compare behavior with old implementation
 - [ ] 7.3.3 Document any intentional behavior changes
 - [ ] 7.3.4 Fix compatibility issues
@@ -598,6 +653,17 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ## Notes
 
+**Implementation Order Rationale**:
+1. **Foundation first**: Core data structures enable everything else
+2. **Infrastructure early**: Logging and testing infrastructure needed throughout
+3. **Compilation before execution**: Need OpCode before VM can run
+4. **Execution core early**: mes() is central to FILLY, implement early
+5. **Graphics layer by layer**: Desktop → Picture → Window → Cast (dependency order)
+6. **Audio after graphics**: Audio is independent but benefits from working graphics
+7. **Runtime features last**: These depend on working execution and graphics
+8. **Integration testing**: Verify everything works together
+9. **Documentation**: Document the final, working system
+
 **Testing Strategy**:
 - Write tests before or alongside implementation
 - Use property-based tests for universal properties
@@ -605,13 +671,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 - Use integration tests for end-to-end behavior
 
 **Reference Code**:
-- Existing code in `main` branch can be referenced
+- Existing code in `_old_implementation/` can be referenced
 - Don't copy implementation details blindly
 - Focus on simplicity and correctness
 - Follow design.md principles
-
-**Incremental Approach**:
-- Complete one phase before moving to next
-- Each phase should have passing tests
-- Commit frequently with clear messages
-- Review and refactor as needed
