@@ -228,13 +228,13 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Convert AST to OpCode sequences uniformly.
 
 **Subtasks**:
-- [ ] 2.4.1 Implement statement conversion (assignments, function calls)
-- [ ] 2.4.2 Implement expression conversion (arithmetic, comparisons, nested)
-- [ ] 2.4.3 Implement control flow conversion (if, for, while, switch)
-- [ ] 2.4.4 Implement function definition conversion
-- [ ] 2.4.5 Implement mes() block conversion
-- [ ] 2.4.6 Implement array access conversion (arr[index])
-- [ ] 2.4.7 Add comprehensive OpCode generation tests
+- [x] 2.4.1 Implement statement conversion (assignments, function calls)
+- [x] 2.4.2 Implement expression conversion (arithmetic, comparisons, nested)
+- [x] 2.4.3 Implement control flow conversion (if, for, while, switch)
+- [x] 2.4.4 Implement function definition conversion
+- [x] 2.4.5 Implement mes() block conversion
+- [x] 2.4.6 Implement array access conversion (arr[index])
+- [x] 2.4.7 Add comprehensive OpCode generation tests
 
 **Acceptance Criteria**:
 - All FILLY constructs convert to OpCode
