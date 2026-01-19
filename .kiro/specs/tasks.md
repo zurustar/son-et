@@ -164,16 +164,16 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement #info and #include directive processing with character encoding support.
 
 **Subtasks**:
-- [ ] 2.1.1 Implement character encoding detection (UTF-8 vs Shift-JIS)
-- [ ] 2.1.2 Implement Shift-JIS to UTF-8 conversion using golang.org/x/text
-- [ ] 2.1.3 Implement #info directive parsing and metadata storage
-- [ ] 2.1.4 Implement #include directive parsing
-- [ ] 2.1.5 Implement file path resolution (case-insensitive)
-- [ ] 2.1.6 Implement circular include detection
-- [ ] 2.1.7 Implement recursive include processing (with encoding conversion)
-- [ ] 2.1.8 Implement preprocessed source merging
-- [ ] 2.1.9 Add tests for preprocessor with Shift-JIS files
-- [ ] 2.1.10 Add tests for encoding conversion edge cases
+- [x] 2.1.1 Implement character encoding detection (UTF-8 vs Shift-JIS)
+- [x] 2.1.2 Implement Shift-JIS to UTF-8 conversion using golang.org/x/text
+- [x] 2.1.3 Implement #info directive parsing and metadata storage
+- [x] 2.1.4 Implement #include directive parsing
+- [x] 2.1.5 Implement file path resolution (case-insensitive)
+- [x] 2.1.6 Implement circular include detection
+- [x] 2.1.7 Implement recursive include processing (with encoding conversion)
+- [x] 2.1.8 Implement preprocessed source merging
+- [x] 2.1.9 Add tests for preprocessor with Shift-JIS files
+- [x] 2.1.10 Add tests for encoding conversion edge cases
 
 **Acceptance Criteria**:
 - Shift-JIS files automatically converted to UTF-8
