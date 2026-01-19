@@ -108,11 +108,11 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement headless execution for testing.
 
 **Subtasks**:
-- [ ] 1.2.1 Implement --headless flag parsing
-- [ ] 1.2.2 Implement MockRenderer for headless mode
-- [ ] 1.2.3 Implement headless execution loop (60 FPS)
-- [ ] 1.2.4 Implement rendering operation logging
-- [ ] 1.2.5 Add tests for headless mode
+- [x] 1.2.1 Implement --headless flag parsing
+- [x] 1.2.2 Implement MockRenderer for headless mode
+- [x] 1.2.3 Implement headless execution loop (60 FPS)
+- [x] 1.2.4 Implement rendering operation logging
+- [x] 1.2.5 Add tests for headless mode
 
 **Acceptance Criteria**:
 - Scripts execute without GUI
@@ -126,11 +126,11 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement clean program termination.
 
 **Subtasks**:
-- [ ] 1.3.1 Implement --timeout flag parsing and timer
-- [ ] 1.3.2 Implement programTerminated flag (atomic)
-- [ ] 1.3.3 Implement ESC key detection and termination
-- [ ] 1.3.4 Implement graceful shutdown (cleanup resources)
-- [ ] 1.3.5 Add tests for termination
+- [x] 1.3.1 Implement --timeout flag parsing and timer
+- [x] 1.3.2 Implement programTerminated flag (atomic)
+- [x] 1.3.3 Implement ESC key detection and termination
+- [x] 1.3.4 Implement graceful shutdown (cleanup resources)
+- [x] 1.3.5 Add tests for termination
 
 **Acceptance Criteria**:
 - Timeout formats supported (5s, 500ms, 2m)
