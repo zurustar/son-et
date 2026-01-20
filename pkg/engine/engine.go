@@ -189,6 +189,21 @@ func (e *Engine) GetLogger() *Logger {
 	return e.logger
 }
 
+// WinInfo returns information about the virtual desktop.
+// index 0: desktop width (1280)
+// index 1: desktop height (720)
+// Returns 0 for invalid indices.
+func (e *Engine) WinInfo(index int) int {
+	switch index {
+	case 0:
+		return e.state.GetDesktopWidth()
+	case 1:
+		return e.state.GetDesktopHeight()
+	default:
+		return 0
+	}
+}
+
 // RegisterSequence registers a new sequence with the engine.
 // If groupID is 0, a new group ID is allocated.
 // Returns the sequence ID.

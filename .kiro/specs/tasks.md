@@ -374,10 +374,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement fixed 1280×720 virtual desktop.
 
 **Subtasks**:
-- [ ] 4.1.1 Define virtual desktop dimensions (1280×720)
-- [ ] 4.1.2 Implement WinInfo(0) - return desktop width
-- [ ] 4.1.3 Implement WinInfo(1) - return desktop height
-- [ ] 4.1.4 Add tests for virtual desktop
+- [x] 4.1.1 Define virtual desktop dimensions (1280×720)
+- [x] 4.1.2 Implement WinInfo(0) - return desktop width
+- [x] 4.1.3 Implement WinInfo(1) - return desktop height
+- [x] 4.1.4 Add tests for virtual desktop
 
 **Acceptance Criteria**:
 - Virtual desktop is always 1280×720

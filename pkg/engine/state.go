@@ -7,6 +7,12 @@ import (
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
+// Virtual desktop dimensions (fixed at 1280×720)
+const (
+	VirtualDesktopWidth  = 1280
+	VirtualDesktopHeight = 720
+)
+
 // EngineState holds all runtime state for the FILLY engine.
 // It is the central data structure that contains graphics, audio, and execution state.
 type EngineState struct {
@@ -111,6 +117,16 @@ func (e *EngineState) GetTickCount() int64 {
 // IncrementTick increments the global tick counter.
 func (e *EngineState) IncrementTick() {
 	e.tickCount++
+}
+
+// GetDesktopWidth returns the virtual desktop width (always 1280).
+func (e *EngineState) GetDesktopWidth() int {
+	return VirtualDesktopWidth
+}
+
+// GetDesktopHeight returns the virtual desktop height (always 720).
+func (e *EngineState) GetDesktopHeight() int {
+	return VirtualDesktopHeight
 }
 
 // RegisterSequence registers a new sequence with the engine.
