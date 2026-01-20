@@ -3,11 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image/color"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/zurustar/son-et/pkg/compiler/codegen"
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
 	"github.com/zurustar/son-et/pkg/compiler/parser"
@@ -24,6 +26,28 @@ var (
 	timeoutFlag  = flag.String("timeout", "", "Execution timeout (e.g., 5s, 500ms, 2m)")
 	debugFlag    = flag.Int("debug", 0, "Debug level (0=errors, 1=info, 2=debug)")
 )
+
+// Game implements ebiten.Game interface
+type Game struct {
+	engine *engine.Engine
+}
+
+func (g *Game) Update() error {
+	return g.engine.Update()
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+	// Fill virtual desktop with background color (teal)
+	screen.Fill(color.RGBA{0x1F, 0x7E, 0x7F, 0xff})
+
+	// TODO: Actual rendering will be implemented in Phase 4
+	g.engine.Render()
+}
+
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	// Return virtual desktop size
+	return engine.VirtualDesktopWidth, engine.VirtualDesktopHeight
+}
 
 func main() {
 	flag.Parse()
@@ -95,7 +119,7 @@ func main() {
 	if *headlessFlag {
 		runHeadless(eng)
 	} else {
-		log.Fatal("GUI mode not yet implemented - please use --headless flag")
+		runGUI(eng)
 	}
 }
 
@@ -199,6 +223,20 @@ func runHeadless(eng *engine.Engine) {
 			log.Println("Engine terminated")
 			break
 		}
+	}
+
+	eng.Shutdown()
+}
+
+func runGUI(eng *engine.Engine) {
+	ebiten.SetWindowSize(engine.VirtualDesktopWidth, engine.VirtualDesktopHeight)
+	ebiten.SetWindowTitle("son-et - FILLY Script Interpreter")
+	ebiten.SetTPS(targetFPS)
+
+	game := &Game{engine: eng}
+
+	if err := ebiten.RunGame(game); err != nil {
+		log.Fatal(err)
 	}
 
 	eng.Shutdown()
