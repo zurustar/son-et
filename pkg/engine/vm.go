@@ -85,7 +85,10 @@ func (vm *VM) executeAssign(seq *Sequencer, op interpreter.OpCode) error {
 }
 
 // executeCall handles function calls (stub for now)
+// seq parameter will be used when full function call implementation is added
 func (vm *VM) executeCall(seq *Sequencer, op interpreter.OpCode) error {
+	_ = seq // Will be used in full implementation
+
 	if len(op.Args) == 0 {
 		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpCall requires at least 1 argument (function name)")
 	}
