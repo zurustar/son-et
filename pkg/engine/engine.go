@@ -193,16 +193,14 @@ func (e *Engine) RegisterMesBlock(eventType EventType, opcodes []interpreter.OpC
 		mode = MIDI_TIME
 	}
 
-	// Create sequencer for the mes() block
-	seq := NewSequencer(opcodes, mode, parent)
-
-	// Register as event handler
-	handlerID := e.state.RegisterEventHandler(eventType, seq, userID)
+	// Register as event handler (stores OpCode template, not Sequencer)
+	handlerID := e.state.RegisterEventHandler(eventType, opcodes, mode, parent, userID)
 	e.logger.LogDebug("Registered mes(%s) handler %d (user ID: %d)", eventType.String(), handlerID, userID)
 
 	// For TIME mode, execute immediately and block
 	if eventType == EventTIME {
-		// Register as regular sequence
+		// Create a new sequencer for immediate execution
+		seq := NewSequencer(opcodes, mode, parent)
 		seqID := e.RegisterSequence(seq, 0)
 		e.logger.LogDebug("TIME mode: executing sequence %d (blocking)", seqID)
 
@@ -215,39 +213,47 @@ func (e *Engine) RegisterMesBlock(eventType EventType, opcodes []interpreter.OpC
 
 // TriggerEvent triggers all event handlers for a given event type.
 // Event parameters are passed via EventData.
+// Each trigger creates a new Sequencer instance from the handler's OpCode template.
 func (e *Engine) TriggerEvent(eventType EventType, data *EventData) {
 	handlers := e.state.GetEventHandlers(eventType)
 	e.logger.LogDebug("Triggering %s event (%d handlers)", eventType.String(), len(handlers))
 
 	for _, handler := range handlers {
-		// Set event parameters in the sequencer's scope
+		// Create a NEW sequencer instance from the handler's template
+		seq := NewSequencer(handler.Commands, handler.Mode, handler.Parent)
+
+		// Set event parameters in the NEW sequencer's scope
 		if data != nil {
-			handler.Sequencer.SetVariable("MesP1", int64(data.MesP1))
-			handler.Sequencer.SetVariable("MesP2", int64(data.MesP2))
-			handler.Sequencer.SetVariable("MesP3", int64(data.MesP3))
-			handler.Sequencer.SetVariable("MesP4", int64(data.MesP4))
+			seq.SetVariable("MesP1", int64(data.MesP1))
+			seq.SetVariable("MesP2", int64(data.MesP2))
+			seq.SetVariable("MesP3", int64(data.MesP3))
+			seq.SetVariable("MesP4", int64(data.MesP4))
 		}
 
-		// Register the sequencer for execution
-		e.RegisterSequence(handler.Sequencer, 0)
+		// Register the NEW sequencer for execution
+		e.RegisterSequence(seq, 0)
 	}
 }
 
 // TriggerUserEvent triggers all USER event handlers for a specific user ID.
+// Each trigger creates a new Sequencer instance from the handler's OpCode template.
 func (e *Engine) TriggerUserEvent(userID int, data *EventData) {
 	handlers := e.state.GetUserEventHandlers(userID)
 	e.logger.LogDebug("Triggering USER event %d (%d handlers)", userID, len(handlers))
 
 	for _, handler := range handlers {
-		// Set event parameters in the sequencer's scope
+		// Create a NEW sequencer instance from the handler's template
+		seq := NewSequencer(handler.Commands, handler.Mode, handler.Parent)
+
+		// Set event parameters in the NEW sequencer's scope
 		if data != nil {
-			handler.Sequencer.SetVariable("MesP1", int64(data.MesP1))
-			handler.Sequencer.SetVariable("MesP2", int64(data.MesP2))
-			handler.Sequencer.SetVariable("MesP3", int64(data.MesP3))
-			handler.Sequencer.SetVariable("MesP4", int64(data.MesP4))
+			seq.SetVariable("MesP1", int64(data.MesP1))
+			seq.SetVariable("MesP2", int64(data.MesP2))
+			seq.SetVariable("MesP3", int64(data.MesP3))
+			seq.SetVariable("MesP4", int64(data.MesP4))
 		}
 
-		// Register the sequencer for execution
-		e.RegisterSequence(handler.Sequencer, 0)
+		// Register the NEW sequencer for execution
+		e.RegisterSequence(seq, 0)
 	}
 }

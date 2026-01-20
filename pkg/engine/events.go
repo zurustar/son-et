@@ -1,5 +1,9 @@
 package engine
 
+import (
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
+)
+
 // EventType represents the type of mes() event.
 type EventType int
 
@@ -47,12 +51,15 @@ func (e EventType) String() string {
 }
 
 // EventHandler represents a registered event handler (mes() block).
+// It stores the OpCode template and creates new Sequencer instances when triggered.
 type EventHandler struct {
-	ID        int        // Unique handler ID
-	EventType EventType  // Type of event to handle
-	Sequencer *Sequencer // The sequencer that handles this event
-	Active    bool       // Is this handler active?
-	UserID    int        // For USER events, the custom message ID
+	ID        int                  // Unique handler ID
+	EventType EventType            // Type of event to handle
+	Commands  []interpreter.OpCode // OpCode template for creating sequencers
+	Mode      TimingMode           // Timing mode (TIME or MIDI_TIME)
+	Parent    *Sequencer           // Parent scope for variable lookup
+	Active    bool                 // Is this handler active?
+	UserID    int                  // For USER events, the custom message ID
 }
 
 // EventData holds parameters passed to event handlers.

@@ -3,6 +3,8 @@ package engine
 import (
 	"image"
 	"sync"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 // EngineState holds all runtime state for the FILLY engine.
@@ -180,11 +182,13 @@ func (e *EngineState) CleanupInactiveSequences() {
 
 // RegisterEventHandler registers a new event handler.
 // Returns the handler ID.
-func (e *EngineState) RegisterEventHandler(eventType EventType, seq *Sequencer, userID int) int {
+func (e *EngineState) RegisterEventHandler(eventType EventType, commands []interpreter.OpCode, mode TimingMode, parent *Sequencer, userID int) int {
 	handler := &EventHandler{
 		ID:        e.nextHandlerID,
 		EventType: eventType,
-		Sequencer: seq,
+		Commands:  commands,
+		Mode:      mode,
+		Parent:    parent,
 		Active:    true,
 		UserID:    userID,
 	}

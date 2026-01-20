@@ -27,9 +27,14 @@ func TestRegisterMesBlock_TIME(t *testing.T) {
 		t.Errorf("Expected 1 handler, got %d", len(handlers))
 	}
 
-	// Verify sequencer was created with TIME mode
-	if handlers[0].Sequencer.GetMode() != TIME {
-		t.Errorf("Expected TIME mode, got %d", handlers[0].Sequencer.GetMode())
+	// Verify handler was created with TIME mode
+	if handlers[0].Mode != TIME {
+		t.Errorf("Expected TIME mode, got %d", handlers[0].Mode)
+	}
+
+	// Verify handler stores the OpCode template
+	if len(handlers[0].Commands) != 1 {
+		t.Errorf("Expected 1 command in template, got %d", len(handlers[0].Commands))
 	}
 }
 
@@ -54,9 +59,14 @@ func TestRegisterMesBlock_MIDI_TIME(t *testing.T) {
 		t.Errorf("Expected 1 handler, got %d", len(handlers))
 	}
 
-	// Verify sequencer was created with MIDI_TIME mode
-	if handlers[0].Sequencer.GetMode() != MIDI_TIME {
-		t.Errorf("Expected MIDI_TIME mode, got %d", handlers[0].Sequencer.GetMode())
+	// Verify handler was created with MIDI_TIME mode
+	if handlers[0].Mode != MIDI_TIME {
+		t.Errorf("Expected MIDI_TIME mode, got %d", handlers[0].Mode)
+	}
+
+	// Verify handler stores the OpCode template
+	if len(handlers[0].Commands) != 1 {
+		t.Errorf("Expected 1 command in template, got %d", len(handlers[0].Commands))
 	}
 }
 
@@ -238,10 +248,9 @@ func TestDeactivateEventHandler(t *testing.T) {
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
 	}
-	seq := NewSequencer(opcodes, TIME, nil)
 
 	// Register handler
-	handlerID := state.RegisterEventHandler(EventKEY, seq, 0)
+	handlerID := state.RegisterEventHandler(EventKEY, opcodes, TIME, nil, 0)
 
 	// Verify handler is active
 	handlers := state.GetEventHandlers(EventKEY)
@@ -267,13 +276,9 @@ func TestCleanupInactiveEventHandlers(t *testing.T) {
 	}
 
 	// Register multiple handlers
-	seq1 := NewSequencer(opcodes, TIME, nil)
-	seq2 := NewSequencer(opcodes, TIME, nil)
-	seq3 := NewSequencer(opcodes, TIME, nil)
-
-	id1 := state.RegisterEventHandler(EventKEY, seq1, 0)
-	state.RegisterEventHandler(EventKEY, seq2, 0)
-	id3 := state.RegisterEventHandler(EventKEY, seq3, 0)
+	id1 := state.RegisterEventHandler(EventKEY, opcodes, TIME, nil, 0)
+	state.RegisterEventHandler(EventKEY, opcodes, TIME, nil, 0)
+	id3 := state.RegisterEventHandler(EventKEY, opcodes, TIME, nil, 0)
 
 	// Deactivate some handlers
 	state.DeactivateEventHandler(id1)
@@ -286,5 +291,177 @@ func TestCleanupInactiveEventHandlers(t *testing.T) {
 	handlers := state.GetEventHandlers(EventKEY)
 	if len(handlers) != 1 {
 		t.Errorf("Expected 1 handler after cleanup, got %d", len(handlers))
+	}
+}
+
+// TestTriggerEventMultipleTimes verifies that triggering the same event multiple times
+// creates independent sequencer instances for each trigger.
+// This is a regression test for the Sequencer reuse bug.
+func TestTriggerEventMultipleTimes(t *testing.T) {
+	engine := NewEngine(nil, nil, nil)
+
+	opcodes := []interpreter.OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
+	}
+
+	// Register a single KEY event handler
+	engine.RegisterMesBlock(EventKEY, opcodes, nil, 0)
+
+	// Trigger the event twice with different parameters
+	data1 := NewEventData(100, 0, 0, 0)
+	engine.TriggerEvent(EventKEY, data1)
+
+	data2 := NewEventData(200, 0, 0, 0)
+	engine.TriggerEvent(EventKEY, data2)
+
+	// Should have 2 independent sequencers
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 2 {
+		t.Fatalf("Expected 2 sequencers after 2 triggers, got %d", len(sequencers))
+	}
+
+	// Each sequencer should have its own MesP1 value
+	// First trigger should have MesP1=100, second should have MesP1=200
+	seq1 := sequencers[0]
+	seq2 := sequencers[1]
+
+	mesP1_1 := seq1.GetVariable("MesP1")
+	mesP1_2 := seq2.GetVariable("MesP1")
+
+	if mesP1_1 == mesP1_2 {
+		t.Errorf("Both sequencers have the same MesP1 value (%v), they should be independent", mesP1_1)
+	}
+
+	if mesP1_1 != int64(100) {
+		t.Errorf("First sequencer should have MesP1=100, got %v", mesP1_1)
+	}
+
+	if mesP1_2 != int64(200) {
+		t.Errorf("Second sequencer should have MesP1=200, got %v", mesP1_2)
+	}
+}
+
+// TestTriggerEventSequencerIndependence verifies that each triggered sequencer
+// has independent execution state (pc, waitCount, active).
+func TestTriggerEventSequencerIndependence(t *testing.T) {
+	engine := NewEngine(nil, nil, nil)
+
+	opcodes := []interpreter.OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(1)}},
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("y"), int64(2)}},
+	}
+
+	// Register a KEY event handler
+	engine.RegisterMesBlock(EventKEY, opcodes, nil, 0)
+
+	// Trigger the event twice
+	engine.TriggerEvent(EventKEY, nil)
+	engine.TriggerEvent(EventKEY, nil)
+
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 2 {
+		t.Fatalf("Expected 2 sequencers, got %d", len(sequencers))
+	}
+
+	// Modify the first sequencer's state
+	sequencers[0].IncrementPC()
+	sequencers[0].SetWait(10)
+
+	// Second sequencer should be unaffected
+	if sequencers[1].GetPC() != 0 {
+		t.Errorf("Second sequencer PC should be 0, got %d", sequencers[1].GetPC())
+	}
+
+	if sequencers[1].IsWaiting() {
+		t.Errorf("Second sequencer should not be waiting")
+	}
+
+	// Verify they are different instances
+	if sequencers[0] == sequencers[1] {
+		t.Errorf("Sequencers should be different instances, but they are the same pointer")
+	}
+}
+
+// TestTriggerUserEventMultipleTimes verifies that USER events also create
+// independent sequencer instances for each trigger.
+func TestTriggerUserEventMultipleTimes(t *testing.T) {
+	engine := NewEngine(nil, nil, nil)
+
+	opcodes := []interpreter.OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
+	}
+
+	// Register a USER event handler
+	engine.RegisterMesBlock(EventUSER, opcodes, nil, 100)
+
+	// Trigger the event twice with different parameters
+	data1 := NewEventData(10, 20, 30, 40)
+	engine.TriggerUserEvent(100, data1)
+
+	data2 := NewEventData(50, 60, 70, 80)
+	engine.TriggerUserEvent(100, data2)
+
+	// Should have 2 independent sequencers
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 2 {
+		t.Fatalf("Expected 2 sequencers after 2 triggers, got %d", len(sequencers))
+	}
+
+	// Each sequencer should have its own parameter values
+	seq1 := sequencers[0]
+	seq2 := sequencers[1]
+
+	if seq1.GetVariable("MesP1") != int64(10) {
+		t.Errorf("First sequencer should have MesP1=10, got %v", seq1.GetVariable("MesP1"))
+	}
+
+	if seq2.GetVariable("MesP1") != int64(50) {
+		t.Errorf("Second sequencer should have MesP1=50, got %v", seq2.GetVariable("MesP1"))
+	}
+
+	// Verify they are different instances
+	if seq1 == seq2 {
+		t.Errorf("Sequencers should be different instances")
+	}
+}
+
+// TestEventHandlerPreservesTemplate verifies that the original event handler
+// is not modified when events are triggered.
+func TestEventHandlerPreservesTemplate(t *testing.T) {
+	engine := NewEngine(nil, nil, nil)
+
+	opcodes := []interpreter.OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
+	}
+
+	// Register a KEY event handler
+	engine.RegisterMesBlock(EventKEY, opcodes, nil, 0)
+
+	// Get the handler before triggering
+	handlers := engine.GetState().GetEventHandlers(EventKEY)
+	if len(handlers) != 1 {
+		t.Fatalf("Expected 1 handler, got %d", len(handlers))
+	}
+
+	// Trigger the event multiple times
+	for i := 0; i < 5; i++ {
+		data := NewEventData(i*10, 0, 0, 0)
+		engine.TriggerEvent(EventKEY, data)
+	}
+
+	// The handler should still be active and unchanged
+	handlersAfter := engine.GetState().GetEventHandlers(EventKEY)
+	if len(handlersAfter) != 1 {
+		t.Errorf("Handler count changed after triggers: expected 1, got %d", len(handlersAfter))
+	}
+
+	if !handlersAfter[0].Active {
+		t.Errorf("Handler should still be active after triggers")
+	}
+
+	// Should have 5 independent sequencers
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 5 {
+		t.Errorf("Expected 5 sequencers after 5 triggers, got %d", len(sequencers))
 	}
 }
