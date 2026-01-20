@@ -340,8 +340,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 3.4.2 Implement wait counter decrement
 - [x] 3.4.3 Implement program counter advancement
 - [x] 3.4.4 Implement sequence completion detection
-- [ ] 3.4.5 Implement tick generation for TIME mode (60 FPS)
-- [x] 3.4.6 Add tests for tick processing
+- [x] 3.4.5 Add tests for tick processing
 
 **Acceptance Criteria**:
 - Each tick advances all active sequences by one step
@@ -712,13 +711,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [ ] 7.3.4 Test robot sample in direct mode (MIDI_END event)
 - [ ] 7.3.5 Test kuma2 sample in embedded mode
 - [ ] 7.3.6 Test y-saru sample in embedded mode
-- [ ] 7.3.7 Add headless integration tests for both modes
+- [ ] 7.3.7 Verify 60 FPS tick generation for TIME mode
+- [ ] 7.3.8 Add headless integration tests for both modes
 
 **Acceptance Criteria**:
 - All sample scripts execute correctly in direct mode
 - All sample scripts execute correctly in embedded mode
 - Behavior is identical between modes
-- Timing behavior matches expectations
+- Timing behavior matches expectations (60 FPS for TIME mode)
 - Headless tests pass in CI/CD for both modes
 
 ---
