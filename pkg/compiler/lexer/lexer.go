@@ -55,6 +55,11 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.COMMENT
 			tok.Literal = l.readComment()
 			return tok
+		} else if l.peekChar() == '*' {
+			// Multi-line comment
+			tok.Type = token.COMMENT
+			tok.Literal = l.readMultiLineComment()
+			return tok
 		}
 		tok = l.newToken(token.DIV, l.ch)
 	case '%':
@@ -116,7 +121,7 @@ func (l *Lexer) NextToken() token.Token {
 	case ';':
 		tok = l.newToken(token.SEMICOLON, l.ch)
 	case '"':
-		tok.Type = token.STRING
+		tok.Type = token.STRING_LIT
 		tok.Literal = l.readString()
 	case 0:
 		tok.Literal = ""
@@ -191,9 +196,9 @@ func (l *Lexer) readNumber(line, column int) token.Token {
 
 	literal := l.input[position:l.position]
 	if isFloat {
-		return token.Token{Type: token.FLOAT, Literal: literal, Line: line, Column: column}
+		return token.Token{Type: token.FLOAT_LIT, Literal: literal, Line: line, Column: column}
 	}
-	return token.Token{Type: token.INT, Literal: literal, Line: line, Column: column}
+	return token.Token{Type: token.INT_LIT, Literal: literal, Line: line, Column: column}
 }
 
 // readString reads a string literal.
@@ -214,6 +219,27 @@ func (l *Lexer) readComment() string {
 	for l.ch != '\n' && l.ch != 0 {
 		l.readChar()
 	}
+	return l.input[position:l.position]
+}
+
+// readMultiLineComment reads a multi-line comment /* ... */
+func (l *Lexer) readMultiLineComment() string {
+	position := l.position
+	l.readChar() // consume /
+	l.readChar() // consume *
+
+	for {
+		if l.ch == 0 {
+			break // EOF
+		}
+		if l.ch == '*' && l.peekChar() == '/' {
+			l.readChar() // consume *
+			l.readChar() // consume /
+			break
+		}
+		l.readChar()
+	}
+
 	return l.input[position:l.position]
 }
 

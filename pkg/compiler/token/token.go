@@ -10,10 +10,10 @@ const (
 	COMMENT
 
 	// Literals
-	IDENT  // identifier
-	INT    // integer literal
-	FLOAT  // float literal
-	STRING // string literal
+	IDENT      // identifier
+	INT_LIT    // integer literal
+	FLOAT_LIT  // float literal
+	STRING_LIT // string literal
 
 	// Operators
 	ASSIGN // =
@@ -68,6 +68,17 @@ const (
 	RBDOWN
 	RBDBLCLK
 	USER
+
+	// Type keywords
+	INT
+	STRING
+	FLOAT_TYPE
+
+	// Special keywords
+	END_STEP
+	DEL_ME
+	DEL_US
+	DEL_ALL
 )
 
 var keywords = map[string]TokenType{
@@ -92,6 +103,13 @@ var keywords = map[string]TokenType{
 	"rbdown":    RBDOWN,
 	"rbdblclk":  RBDBLCLK,
 	"user":      USER,
+	"int":       INT,
+	"string":    STRING,
+	"float":     FLOAT_TYPE,
+	"end_step":  END_STEP,
+	"del_me":    DEL_ME,
+	"del_us":    DEL_US,
+	"del_all":   DEL_ALL,
 }
 
 // Token represents a lexical token.
@@ -131,11 +149,11 @@ func (t TokenType) String() string {
 		return "COMMENT"
 	case IDENT:
 		return "IDENT"
-	case INT:
+	case INT_LIT:
 		return "INT"
-	case FLOAT:
+	case FLOAT_LIT:
 		return "FLOAT"
-	case STRING:
+	case STRING_LIT:
 		return "STRING"
 	case ASSIGN:
 		return "="
@@ -225,6 +243,20 @@ func (t TokenType) String() string {
 		return "RBDBLCLK"
 	case USER:
 		return "USER"
+	case INT:
+		return "INT_TYPE"
+	case STRING:
+		return "STRING_TYPE"
+	case FLOAT_TYPE:
+		return "FLOAT_TYPE"
+	case END_STEP:
+		return "END_STEP"
+	case DEL_ME:
+		return "DEL_ME"
+	case DEL_US:
+		return "DEL_US"
+	case DEL_ALL:
+		return "DEL_ALL"
 	default:
 		return "UNKNOWN"
 	}

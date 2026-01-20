@@ -69,9 +69,9 @@ func New(l *lexer.Lexer) *Parser {
 	// Register prefix parse functions
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
-	p.registerPrefix(token.INT, p.parseIntegerLiteral)
-	p.registerPrefix(token.FLOAT, p.parseFloatLiteral)
-	p.registerPrefix(token.STRING, p.parseStringLiteral)
+	p.registerPrefix(token.INT_LIT, p.parseIntegerLiteral)
+	p.registerPrefix(token.FLOAT_LIT, p.parseFloatLiteral)
+	p.registerPrefix(token.STRING_LIT, p.parseStringLiteral)
 	p.registerPrefix(token.NOT, p.parsePrefixExpression)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
@@ -131,6 +131,9 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
+	case token.INT, token.STRING, token.FLOAT_TYPE:
+		// Variable declaration
+		return p.parseVarDeclaration()
 	case token.IF:
 		return p.parseIfStatement()
 	case token.FOR:
@@ -145,13 +148,37 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseContinueStatement()
 	case token.RETURN:
 		return p.parseReturnStatement()
-	case token.FUNCTION:
-		return p.parseFunctionStatement()
 	case token.MES:
 		return p.parseMesStatement()
 	case token.STEP:
 		return p.parseStepStatement()
+	case token.DEL_ME:
+		return &ast.ExpressionStatement{
+			Token:      p.curToken,
+			Expression: &ast.CallExpression{Token: p.curToken, Function: &ast.Identifier{Token: p.curToken, Value: "del_me"}},
+		}
+	case token.DEL_US:
+		return &ast.ExpressionStatement{
+			Token:      p.curToken,
+			Expression: &ast.CallExpression{Token: p.curToken, Function: &ast.Identifier{Token: p.curToken, Value: "del_us"}},
+		}
+	case token.DEL_ALL:
+		return &ast.ExpressionStatement{
+			Token:      p.curToken,
+			Expression: &ast.CallExpression{Token: p.curToken, Function: &ast.Identifier{Token: p.curToken, Value: "del_all"}},
+		}
+	case token.END_STEP:
+		return &ast.ExpressionStatement{
+			Token:      p.curToken,
+			Expression: &ast.CallExpression{Token: p.curToken, Function: &ast.Identifier{Token: p.curToken, Value: "end_step"}},
+		}
 	case token.IDENT:
+		// Check if it's a function declaration: identifier followed by (
+		if p.peekTokenIs(token.LPAREN) {
+			// Could be function declaration or function call
+			// Look ahead further to distinguish
+			return p.parseFunctionOrCall()
+		}
 		// Check if it's an assignment
 		if p.peekTokenIs(token.ASSIGN) {
 			return p.parseAssignStatement()
@@ -506,52 +533,28 @@ func (p *Parser) parseReturnStatement() ast.Statement {
 	return stmt
 }
 
-func (p *Parser) parseFunctionStatement() ast.Statement {
-	stmt := &ast.FunctionStatement{Token: p.curToken}
-
-	if !p.expectPeek(token.IDENT) {
-		return nil
-	}
-
-	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-
-	if !p.expectPeek(token.LPAREN) {
-		return nil
-	}
-
-	stmt.Parameters = p.parseFunctionParameters()
-
-	if !p.expectPeek(token.LBRACE) {
-		return nil
-	}
-
-	stmt.Body = p.parseBlockStatement()
-
-	return stmt
-}
-
 func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 	identifiers := []*ast.Identifier{}
 
+	// Check if empty parameter list
 	if p.peekTokenIs(token.RPAREN) {
-		p.nextToken()
 		return identifiers
 	}
 
 	p.nextToken()
 
-	ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-	identifiers = append(identifiers, ident)
-
-	for p.peekTokenIs(token.COMMA) {
-		p.nextToken()
-		p.nextToken()
+	// Handle first parameter
+	if !p.curTokenIs(token.RPAREN) {
 		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 		identifiers = append(identifiers, ident)
-	}
 
-	if !p.expectPeek(token.RPAREN) {
-		return nil
+		// Handle remaining parameters
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken() // consume comma
+			p.nextToken() // move to next identifier
+			ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+			identifiers = append(identifiers, ident)
+		}
 	}
 
 	return identifiers
@@ -594,7 +597,165 @@ func (p *Parser) parseStepStatement() ast.Statement {
 		return nil
 	}
 
+	// Check if there's a block: step(N) { ... }
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken()
+		stmt.Body = p.parseStepBlock()
+	}
+
 	return stmt
+}
+
+// parseStepBlock parses a step block where each line represents one step
+// and commas represent empty steps
+func (p *Parser) parseStepBlock() *ast.BlockStatement {
+	block := &ast.BlockStatement{Token: p.curToken}
+	block.Statements = []ast.Statement{}
+
+	p.nextToken()
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		// Skip comments
+		if p.curToken.Type == token.COMMENT {
+			p.nextToken()
+			continue
+		}
+
+		// Parse statement
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+		}
+
+		// In step blocks, semicolons and commas are both statement terminators
+		// Commas represent empty steps
+		for p.peekTokenIs(token.SEMICOLON) || p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			// Multiple commas in a row represent multiple empty steps
+			if p.curTokenIs(token.COMMA) {
+				// Add empty statement for each comma
+				block.Statements = append(block.Statements, &ast.ExpressionStatement{
+					Token:      p.curToken,
+					Expression: nil, // Empty step
+				})
+			}
+		}
+
+		p.nextToken()
+	}
+
+	return block
+}
+
+// parseVarDeclaration parses variable declarations like:
+// int x;
+// int x, y, z;
+// int arr[];
+// int arr[10];
+func (p *Parser) parseVarDeclaration() ast.Statement {
+	decl := &ast.VarDeclaration{Token: p.curToken}
+
+	// Get type
+	switch p.curToken.Type {
+	case token.INT:
+		decl.Type = "int"
+	case token.STRING:
+		decl.Type = "string"
+	case token.FLOAT_TYPE:
+		decl.Type = "float"
+	}
+
+	// Parse variable names
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	for {
+		varSpec := &ast.VarSpec{
+			Name: &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal},
+		}
+
+		// Check for array declaration
+		if p.peekTokenIs(token.LBRACKET) {
+			p.nextToken() // consume [
+			varSpec.IsArray = true
+
+			// Check if there's a size
+			if !p.peekTokenIs(token.RBRACKET) {
+				p.nextToken()
+				varSpec.Size = p.parseExpression(LOWEST)
+			}
+
+			if !p.expectPeek(token.RBRACKET) {
+				return nil
+			}
+		}
+
+		decl.Names = append(decl.Names, varSpec)
+
+		// Check for more variables (comma-separated)
+		if !p.peekTokenIs(token.COMMA) {
+			break
+		}
+		p.nextToken() // consume comma
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+	}
+
+	// Expect semicolon at end (optional in some contexts)
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return decl
+}
+
+// parseFunctionOrCall determines if this is a function declaration or call
+func (p *Parser) parseFunctionOrCall() ast.Statement {
+	// Save current position
+	name := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	// Parse parameters/arguments
+	params := p.parseFunctionParameters()
+
+	// Expect closing )
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	// If followed by {, it's a function declaration
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken()
+		body := p.parseBlockStatement()
+
+		return &ast.FunctionStatement{
+			Token:      name.Token,
+			Name:       name,
+			Parameters: params,
+			Body:       body,
+		}
+	}
+
+	// Otherwise, it's a function call
+	// Convert parameters to arguments (they're the same for calls)
+	args := make([]ast.Expression, len(params))
+	for i, param := range params {
+		args[i] = param
+	}
+
+	return &ast.ExpressionStatement{
+		Token: name.Token,
+		Expression: &ast.CallExpression{
+			Token:     name.Token,
+			Function:  name,
+			Arguments: args,
+		},
+	}
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
@@ -613,6 +774,12 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 		if stmt != nil {
 			block.Statements = append(block.Statements, stmt)
 		}
+
+		// Skip optional semicolons
+		for p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+
 		p.nextToken()
 	}
 

@@ -358,10 +358,56 @@ func (ms *MesStatement) String() string {
 type StepStatement struct {
 	Token token.Token
 	Count Expression
+	Body  *BlockStatement // Optional: step(N) { ... } block
 }
 
 func (ss *StepStatement) statementNode()       {}
 func (ss *StepStatement) TokenLiteral() string { return ss.Token.Literal }
 func (ss *StepStatement) String() string {
-	return "step(" + ss.Count.String() + ")"
+	result := "step(" + ss.Count.String() + ")"
+	if ss.Body != nil {
+		result += " " + ss.Body.String()
+	}
+	return result
+}
+
+// VarDeclaration represents a variable declaration.
+// Examples: int x; int x, y, z; int arr[];
+type VarDeclaration struct {
+	Token token.Token // The type token (INT, STRING, FLOAT_TYPE)
+	Type  string      // "int", "string", "float"
+	Names []*VarSpec  // List of variable specifications
+}
+
+func (vd *VarDeclaration) statementNode()       {}
+func (vd *VarDeclaration) TokenLiteral() string { return vd.Token.Literal }
+func (vd *VarDeclaration) String() string {
+	result := vd.Type + " "
+	for i, name := range vd.Names {
+		if i > 0 {
+			result += ", "
+		}
+		result += name.String()
+	}
+	return result
+}
+
+// VarSpec represents a single variable in a declaration.
+// Can be: x, arr[], arr[10]
+type VarSpec struct {
+	Name    *Identifier
+	IsArray bool
+	Size    Expression // nil for empty array []
+}
+
+func (vs *VarSpec) String() string {
+	result := vs.Name.String()
+	if vs.IsArray {
+		result += "["
+		if vs.Size != nil {
+			result += vs.Size.String()
+		}
+		result += "]"
+	}
+	return result
 }
