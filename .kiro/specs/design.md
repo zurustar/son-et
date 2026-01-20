@@ -1210,7 +1210,7 @@ This section describes the design for creating standalone executables with embed
 
 ### Execution Modes
 
-**son-et supports two execution modes**:
+**son-et supports three execution modes**:
 
 1. **Direct Mode** (Development):
    - Loads TFY scripts from filesystem at runtime
@@ -1218,34 +1218,50 @@ This section describes the design for creating standalone executables with embed
    - Loads assets from filesystem
    - Fast iteration cycle for development
 
-2. **Embedded Mode** (Distribution):
-   - TFY scripts pre-compiled to OpCode at build time
+2. **Single-Title Embedded Mode** (Distribution):
+   - Single TFY title pre-compiled to OpCode at build time
    - OpCode embedded in executable binary
    - Assets embedded in executable using Go's embed.FS
    - Single-file distribution, no external dependencies
+   - Launches directly into the title
+
+3. **Multi-Title Embedded Mode** (Distribution):
+   - Multiple TFY titles pre-compiled to OpCode at build time
+   - Each title's directory embedded separately to avoid asset conflicts
+   - Menu system for title selection
+   - Single executable containing multiple titles
+   - Ideal for collections or compilations
 
 ### Build-Time Compilation
 
 **Compilation Strategy**:
 ```
 Build Time:
-  1. Read TFY files from project directory
+  1. Read TFY files from project directory(ies)
   2. Parse TFY to AST
   3. Convert AST to OpCode sequences
   4. Serialize OpCode to Go source code
-  5. Embed assets using //go:embed directive
+  5. Embed assets using //go:embed directive (per-directory for multi-title)
   6. Compile to executable with build tags
 
-Runtime (Embedded Mode):
+Runtime (Single-Title Embedded Mode):
   1. Deserialize embedded OpCode
   2. Initialize engine with embedded AssetLoader
   3. Execute OpCode directly (no parsing)
+
+Runtime (Multi-Title Embedded Mode):
+  1. Display title selection menu
+  2. User selects title
+  3. Load selected title's OpCode and AssetLoader
+  4. Execute title
+  5. Return to menu on completion or ESC
 ```
 
 **Key Design Decisions**:
 - Build-time compilation eliminates parsing overhead
 - OpCode serialization format is Go source code (type-safe)
 - Assets embedded using standard Go embed.FS
+- Each title gets its own embed.FS to avoid asset conflicts
 - No custom binary format needed
 
 ### Asset Loading Abstraction
@@ -1374,6 +1390,150 @@ func (g *OpCodeGenerator) Generate(script *Script) error {
 - Type-safe at compile time
 - Human-readable for debugging
 - No custom serialization format needed
+
+### Multi-Title Architecture
+
+**Directory-Based Embed Strategy**:
+
+Each FILLY title resides in its own directory with all assets:
+```
+samples/
+├── kuma2/              # Title 1
+│   ├── KUMA2.TFY      # Entry point
+│   ├── KUMA-1.BMP     # Assets
+│   ├── KUMA.MID
+│   └── ...
+├── robot/              # Title 2
+│   ├── ROBOT.TFY
+│   ├── ROBOT000.BMP
+│   └── ...
+└── y-saru/             # Title 3
+    ├── Y-SARU.TFY
+    └── ...
+```
+
+**Separate Embed Per Title**:
+To avoid asset filename conflicts between titles, each title's directory is embedded separately:
+
+```go
+// Generated multi-title code
+//go:embed samples/kuma2
+var kuma2FS embed.FS
+
+//go:embed samples/robot
+var robotFS embed.FS
+
+//go:embed samples/y-saru
+var ysaruFS embed.FS
+
+type TitleInfo struct {
+    Name        string
+    Title       string                      // Display name from #info
+    Description string                      // From #info
+    Directory   string                      // Source directory
+    GetOpCodes  func() []interpreter.OpCode // Returns compiled OpCodes
+    GetFS       func() embed.FS             // Returns title's filesystem
+}
+
+func GetTitles() []TitleInfo {
+    return []TitleInfo{
+        {
+            Name:        "kuma2",
+            Title:       "Kuma Game",
+            Description: "A bear adventure",
+            Directory:   "samples/kuma2",
+            GetOpCodes:  GetKuma2OpCodes,
+            GetFS:       GetKuma2FS,
+        },
+        {
+            Name:        "robot",
+            Title:       "Robot Story",
+            Description: "An animated story",
+            Directory:   "samples/robot",
+            GetOpCodes:  GetRobotOpCodes,
+            GetFS:       GetRobotFS,
+        },
+        // ... more titles
+    }
+}
+```
+
+**Menu System**:
+```go
+func DisplayMenu(titles []TitleInfo) int {
+    fmt.Println("=================================")
+    fmt.Println("  FILLY Title Launcher")
+    fmt.Println("=================================")
+    fmt.Println()
+    
+    for i, title := range titles {
+        fmt.Printf("%d. %s\n", i+1, title.Title)
+        if title.Description != "" {
+            fmt.Printf("   %s\n", title.Description)
+        }
+    }
+    
+    fmt.Println()
+    fmt.Println("0. Exit")
+    fmt.Println()
+    fmt.Print("Select title: ")
+    
+    var choice int
+    fmt.Scanf("%d", &choice)
+    return choice
+}
+
+func main() {
+    titles := GetTitles()
+    
+    for {
+        choice := DisplayMenu(titles)
+        
+        if choice == 0 {
+            os.Exit(0)
+        }
+        
+        if choice < 1 || choice > len(titles) {
+            fmt.Println("Invalid choice. Please try again.")
+            continue
+        }
+        
+        selectedTitle := titles[choice-1]
+        fmt.Printf("\nLaunching: %s\n\n", selectedTitle.Title)
+        
+        // Get title's OpCodes and filesystem
+        opcodes := selectedTitle.GetOpCodes()
+        titleFS := selectedTitle.GetFS()
+        
+        // Create AssetLoader for this title
+        assetLoader := NewEmbedFSAssetLoader(titleFS, selectedTitle.Directory)
+        
+        // Execute title
+        engine := NewEngine(assetLoader)
+        engine.Execute(opcodes)
+        
+        fmt.Println("\nTitle completed. Press Enter to return to menu...")
+        fmt.Scanln()
+    }
+}
+```
+
+**Key Design Decisions**:
+- Each title gets its own `embed.FS` variable
+- Prevents asset filename conflicts (e.g., multiple titles with "TITLE.BMP")
+- Each title's AssetLoader scoped to its directory
+- Menu-driven selection for user experience
+- ESC in title returns to menu (multi-title mode)
+- ESC in menu exits program
+- Clean state reset between title executions
+
+**Single-Title vs Multi-Title Generation**:
+
+The serializer provides two functions:
+- `SerializeSingleTitle(title)` - Generates code for one title, launches directly
+- `SerializeMultiTitle(titles)` - Generates code for multiple titles with menu
+
+Build tool decides which to use based on configuration.
 
 ### Mode Detection and Initialization
 

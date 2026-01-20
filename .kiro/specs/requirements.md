@@ -504,26 +504,32 @@ These requirements support development, testing, and debugging workflows.
 
 ### Requirement C6: Embedded Executable Generation
 
-**User Story:** As a developer, I want to create standalone executables with one or more projects embedded, so that I can distribute applications or collections.
+**User Story:** As a developer, I want to create standalone executables with one or more FILLY titles embedded, so that I can distribute applications or collections.
 
 #### Acceptance Criteria
 
-**Single Project Mode:**
-1. WHEN building with a project directory specified, THE System SHALL create an executable with the project embedded
-2. WHEN the embedded executable runs, THE System SHALL execute the embedded project without external TFY files
+**Single-Title Mode:**
+1. WHEN building with a title directory specified, THE System SHALL create an executable with the title embedded
+2. WHEN the embedded executable runs, THE System SHALL execute the embedded title without external TFY files
 3. WHEN the embedded executable runs, THE System SHALL load assets from embedded data
-4. WHEN building with embedded project, THE System SHALL convert TFY to executable form at build time
-5. WHEN the embedded executable runs without arguments, THE System SHALL execute the embedded project
-6. WHEN ESC is pressed during single project execution, THE System SHALL terminate the program
+4. WHEN building with embedded title, THE System SHALL convert TFY to OpCode at build time
+5. WHEN the embedded executable runs without arguments, THE System SHALL execute the embedded title directly
+6. WHEN ESC is pressed during single-title execution, THE System SHALL terminate the program
+7. THE System SHALL embed the title's directory using Go's embed.FS
+8. THE System SHALL generate type-safe Go source code from OpCode sequences
 
-**Multiple Project Mode:**
-7. WHEN building with multiple projects specified, THE System SHALL create an executable with all projects embedded
-8. WHEN the multi-project executable runs, THE System SHALL display a project selection menu
-9. WHEN the user selects a project from the menu, THE System SHALL execute that project
-10. WHEN ESC is pressed during project execution in multi-project mode, THE System SHALL return to the project selection menu
-11. WHEN a project completes normally in multi-project mode, THE System SHALL return to the project selection menu
-12. WHEN ESC is pressed in the project selection menu, THE System SHALL terminate the program
-13. THE System SHALL allow the user to select and run different projects without restarting the executable
+**Multi-Title Mode:**
+9. WHEN building with multiple titles specified, THE System SHALL create an executable with all titles embedded
+10. THE System SHALL embed each title's directory separately to avoid asset filename conflicts
+11. WHEN the multi-title executable runs, THE System SHALL display a title selection menu
+12. THE System SHALL display title names and descriptions from #info metadata in the menu
+13. WHEN the user selects a title from the menu, THE System SHALL execute that title
+14. WHEN ESC is pressed during title execution in multi-title mode, THE System SHALL return to the title selection menu
+15. WHEN a title completes normally in multi-title mode, THE System SHALL return to the title selection menu
+16. WHEN ESC is pressed in the title selection menu, THE System SHALL terminate the program
+17. THE System SHALL allow the user to select and run different titles without restarting the executable
+18. THE System SHALL reset engine state between title executions
+19. THE System SHALL create a separate AssetLoader for each title scoped to its directory
 
 ### Requirement C7: Error Reporting
 
