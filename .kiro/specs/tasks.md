@@ -274,14 +274,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement clean VM that executes OpCode uniformly.
 
 **Subtasks**:
-- [ ] 3.1.1 Implement ExecuteOp dispatcher (switch on OpCmd)
-- [ ] 3.1.2 Implement OpAssign handler
-- [ ] 3.1.3 Implement OpCall handler (stub for now)
-- [ ] 3.1.4 Implement OpIf handler
-- [ ] 3.1.5 Implement OpFor handler
-- [ ] 3.1.6 Implement OpWhile handler
-- [ ] 3.1.7 Implement OpWait handler
-- [ ] 3.1.8 Add unit tests for each OpCode handler
+- [x] 3.1.1 Implement ExecuteOp dispatcher (switch on OpCmd)
+- [x] 3.1.2 Implement OpAssign handler
+- [x] 3.1.3 Implement OpCall handler (stub for now)
+- [x] 3.1.4 Implement OpIf handler
+- [x] 3.1.5 Implement OpFor handler
+- [x] 3.1.6 Implement OpWhile handler
+- [x] 3.1.7 Implement OpWait handler
+- [x] 3.1.8 Add unit tests for each OpCode handler
 
 **Acceptance Criteria**:
 - Single execution path through ExecuteOp
