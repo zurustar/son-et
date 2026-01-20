@@ -334,6 +334,99 @@ The system is organized into distinct layers with clear responsibilities:
 - Case-insensitive file matching for Windows 3.1 compatibility
 - Encoding conversion is transparent to the rest of the compiler
 
+**Lexer Design**:
+```
+Input: Preprocessed UTF-8 source code
+Output: Token stream with position tracking
+
+Token Types:
+- Keywords: if, for, while, mes, step, etc. (case-insensitive)
+- Identifiers: variable names, function names
+- Literals: integers, floats, strings
+- Operators: +, -, *, /, ==, !=, <, >, etc.
+- Delimiters: (, ), {, }, [, ], ,, ;
+- Comments: // single-line
+
+Position Tracking:
+- Each token stores line and column numbers
+- Enables precise error reporting
+- Preserved through parsing for error messages
+```
+
+**Key Lexer Decisions**:
+- Case-insensitive keyword matching (FILLY legacy)
+- Position tracking for all tokens
+- Single-pass tokenization
+- No backtracking needed
+
+**Parser Design**:
+```
+Input: Token stream from lexer
+Output: Abstract Syntax Tree (AST)
+
+Parsing Strategy:
+- Recursive descent parser
+- Precedence climbing for expressions
+- Error recovery at statement boundaries
+
+AST Node Types:
+- Statements: Assignment, FunctionCall, If, For, While, Mes
+- Expressions: BinaryOp, UnaryOp, Literal, Variable, ArrayAccess
+- Declarations: FunctionDef
+
+Expression Precedence (highest to lowest):
+1. Primary: literals, variables, array access, parentheses
+2. Unary: -, !
+3. Multiplicative: *, /, %
+4. Additive: +, -
+5. Relational: <, >, <=, >=
+6. Equality: ==, !=
+7. Logical AND: &&
+8. Logical OR: ||
+```
+
+**Key Parser Decisions**:
+- Precedence climbing for clean expression parsing
+- Error messages include line/column from tokens
+- AST is minimal and clean (no unnecessary nodes)
+- Array syntax `arr[index]` parsed as ArrayAccess node
+
+**OpCode Generation Design**:
+```
+Input: AST from parser
+Output: OpCode sequences
+
+Conversion Strategy:
+- Recursive traversal of AST
+- Each AST node converts to one or more OpCodes
+- Nested expressions become nested OpCodes
+- Control flow uses OpCode with nested blocks
+
+Example Conversions:
+- Assignment: x = 5 + 3
+  → OpCode{Cmd: OpAssign, Args: [Variable("x"), OpCode{Cmd: OpBinaryOp, Args: ["+", 5, 3]}]}
+
+- If statement: if (x > 5) { y = 10 }
+  → OpCode{Cmd: OpIf, Args: [
+      OpCode{Cmd: OpBinaryOp, Args: [">", Variable("x"), 5]},
+      []OpCode{{Cmd: OpAssign, Args: [Variable("y"), 10]}},
+      []OpCode{}  // empty else block
+    ]}
+
+- mes() block: mes(TIME) { step(10); }
+  → OpCode{Cmd: OpRegisterSequence, Args: [
+      "TIME",
+      []OpCode{{Cmd: OpWait, Args: [10]}}
+    ]}
+```
+
+**Key CodeGen Decisions**:
+- All FILLY constructs convert to OpCode uniformly
+- Nested OpCode structure preserves expression trees
+- Control flow blocks are OpCode slices
+- No special cases or optimizations (simplicity over performance)
+- mes() blocks become OpRegisterSequence with nested OpCodes
+
 **Engine Package** (`pkg/engine/`):
 - State: Manages all runtime state (graphics, audio, variables)
 - VM: Executes OpCode sequences
