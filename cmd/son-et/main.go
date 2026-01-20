@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image/color"
 	"log"
 	"os"
 	"path/filepath"
@@ -36,6 +37,9 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	// Fill virtual desktop with background color (teal)
+	screen.Fill(color.RGBA{0x1F, 0x7E, 0x7F, 0xff})
+
 	// TODO: Actual rendering will be implemented in Phase 4
 	g.engine.Render()
 }
