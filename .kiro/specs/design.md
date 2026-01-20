@@ -345,7 +345,7 @@ Token Types:
 - Literals: integers, floats, strings
 - Operators: +, -, *, /, ==, !=, <, >, etc.
 - Delimiters: (, ), {, }, [, ], ,, ;
-- Comments: // single-line
+- Comments: // single-line, /* multi-line */
 
 Position Tracking:
 - Each token stores line and column numbers
@@ -370,9 +370,21 @@ Parsing Strategy:
 - Error recovery at statement boundaries
 
 AST Node Types:
-- Statements: Assignment, FunctionCall, If, For, While, Mes
+- Statements: Assignment, FunctionCall, If, For, While, Mes, VarDecl
 - Expressions: BinaryOp, UnaryOp, Literal, Variable, ArrayAccess
-- Declarations: FunctionDef
+- Declarations: FunctionDef, VarDecl
+
+Variable Declaration Syntax:
+- int x;              // Single integer variable
+- int x, y, z;        // Multiple integer variables (comma-separated)
+- int arr[];          // Integer array declaration
+- str s;              // String variable
+- str s1, s2;         // Multiple string variables
+
+Function Definition Syntax:
+- name() { ... }      // No 'function' keyword required
+- name(int x) { ... } // With typed parameters
+- name(int x=0) { ... } // With default values
 
 Expression Precedence (highest to lowest):
 1. Primary: literals, variables, array access, parentheses
@@ -390,6 +402,8 @@ Expression Precedence (highest to lowest):
 - Error messages include line/column from tokens
 - AST is minimal and clean (no unnecessary nodes)
 - Array syntax `arr[index]` parsed as ArrayAccess node
+- Function definitions without 'function' keyword (FILLY legacy syntax)
+- Comma-separated variable declarations in single statement
 
 **OpCode Generation Design**:
 ```
@@ -625,15 +639,33 @@ This section describes the design of the graphics subsystem.
 ```
 1. Fill virtual desktop with background color (teal: RGB 31, 126, 127 / 0x1F7E7F)
 2. For each window (in creation order):
-   a. Draw window background (picture)
-   b. Draw window decorations (caption, border)
-   c. For each cast in window (in creation order):
+   a. Draw window frame (classic desktop style):
+      - Gray background (RGB 192, 192, 192)
+      - Raised 3D border effect (light highlight on top/left, dark shadow on bottom/right)
+      - Border thickness: 4px
+   b. Draw title bar (if caption exists):
+      - Blue background (RGB 0, 0, 128)
+      - Height: 24px
+      - White caption text
+   c. Draw window content area:
+      - Background color (from window color parameter)
+      - Picture with clipping and transparency
+   d. For each cast in window (in creation order):
       - Apply clipping region
       - Apply transparency
       - Draw cast to window
 3. Scale virtual desktop to screen
 4. Present to display
 ```
+
+**Window Decoration Constants**:
+- `TitleBarHeight = 24` pixels
+- `BorderThickness = 4` pixels
+- Title bar color: RGB(0, 0, 128) - Dark blue
+- Border color: RGB(192, 192, 192) - Gray
+- Highlight color: RGB(255, 255, 255) - White (for raised edge effect)
+- Shadow color: RGB(0, 0, 0) - Black (for recessed edge effect)
+- Caption text color: RGB(255, 255, 255) - White
 
 **Desktop Background Color**:
 - The virtual desktop uses a distinctive teal color (0x1F7E7F) as its background
@@ -734,9 +766,14 @@ Algorithm:
 
 **MIDI Playback Lifecycle**:
 ```
+0. Engine initialization:
+   a. Check project directory for SoundFont files
+   b. Search order: default.sf2, GeneralUser-GS.sf2, *.sf2
+   c. If found, automatically load SoundFont
+   d. If not found, MIDI playback will fail until LoadSoundFont() is called
 1. PlayMIDI(filename) called
 2. Load MIDI file and parse tempo/PPQ using MeltySynth
-3. Load SoundFont (.sf2) file for synthesis
+3. Verify SoundFont is loaded (error if not)
 4. Create MidiStream (implements io.Reader):
    a. Wraps MeltySynth sequencer
    b. Stores tempo map and PPQ
@@ -755,6 +792,16 @@ Algorithm:
    b. Trigger MIDI_END event
    c. Stop tick generation
 ```
+
+**SoundFont Auto-Loading**:
+The engine automatically searches for and loads a SoundFont file during initialization:
+- **Search locations**: Project directory (where TFY file is located)
+- **Search order**: 
+  1. `default.sf2` (preferred name)
+  2. `GeneralUser-GS.sf2` (common GM soundfont)
+  3. Any `.sf2` file (first match)
+- **Fallback**: If no SoundFont found, scripts can call `LoadSoundFont(filename)` explicitly
+- **Error handling**: PlayMIDI() will fail with clear error if no SoundFont is loaded
 
 **Sequential Tick Delivery**:
 To prevent animation frame skipping, MidiStream.Read() delivers ALL ticks from lastDeliveredTick+1 to currentTick sequentially. This ensures that even if processing is delayed, no ticks are skipped.
@@ -777,6 +824,7 @@ NotifyTick(105)
 - MIDI continues playing even if starting sequence terminates
 - Only one MIDI file plays at a time (matches original behavior)
 - MIDI end detection based on tick count comparison
+- SoundFont auto-loading improves user experience (no manual setup required)
 
 ### WAV Architecture
 
@@ -1974,6 +2022,396 @@ var embeddedProjects = []EmbeddedProject{
 - No cross-project state contamination
 - Simple, intuitive navigation
 - Supports up to 9 projects (keyboard 1-9)
+
+---
+
+## Part 13: Function Return Value Mechanism
+
+This section describes the design for capturing and using function return values.
+
+### Problem Statement
+
+FILLY functions can return values that need to be captured by the caller:
+```filly
+pic = LoadPic("image.bmp");    // Capture picture ID
+win = OpenWin(pic);            // Capture window ID
+cast = PutCast(win, pic, ...); // Capture cast ID
+```
+
+Currently, return values are ignored with `_ = picID` in the VM implementation.
+
+### Design Approach: Special Return Variable
+
+**Mechanism**: Use a special variable `__return__` to pass return values from functions to assignment statements.
+
+**Execution Flow**:
+```
+1. Assignment with function call: x = LoadPic("file.bmp")
+2. Parser generates: OpAssign(Variable("x"), OpCall("LoadPic", "file.bmp"))
+3. VM evaluates right-hand side (OpCall):
+   a. Execute LoadPic function
+   b. Function stores result in __return__ variable
+   c. VM reads __return__ and returns it as expression value
+4. VM assigns returned value to variable x
+```
+
+**Implementation Strategy**:
+
+**Step 1: Modify VM Function Call Handling**
+```go
+// In executeBuiltinFunction:
+case "loadpic":
+    filename := fmt.Sprintf("%v", evaluatedArgs[0])
+    picID := vm.engine.LoadPic(filename)
+    // Store in special return variable
+    seq.SetVariable("__return__", picID)
+    return nil
+
+case "openwin":
+    // ... execute OpenWin ...
+    winID := vm.engine.OpenWin(...)
+    seq.SetVariable("__return__", winID)
+    return nil
+```
+
+**Step 2: Modify Expression Evaluation**
+```go
+// In evaluateExpression:
+case interpreter.OpCall:
+    // Execute function call
+    err := vm.executeCall(seq, op)
+    if err != nil {
+        return nil, err
+    }
+    // Read return value from special variable
+    returnValue := seq.GetVariable("__return__")
+    // Clear return variable for next call
+    seq.SetVariable("__return__", 0)
+    return returnValue, nil
+```
+
+**Step 3: Update All Functions That Return Values**
+
+Functions that return values:
+- `LoadPic(filename)` → picture ID
+- `CreatePic(width, height)` → picture ID
+- `OpenWin(...)` → window ID
+- `PutCast(...)` → cast ID
+- `GetPicNo(winID)` → picture ID
+- `PicWidth(picID)` → width
+- `PicHeight(picID)` → height
+- `GetColor(pic, x, y)` → color value
+- `LoadRsc(filename)` → resource ID
+- String functions: `StrLen`, `SubStr`, `StrFind`, `StrPrint`, etc.
+- Array functions: `ArraySize`
+- Math functions: `Random`, `MakeLong`, `GetHiWord`, `GetLowWord`
+- File functions: `OpenF`, `ReadF`, `IsExist`, `GetCwd`
+- System functions: `WinInfo`, `GetSysTime`, `WhatDay`, `WhatTime`, `GetCmdLine`
+
+### Key Design Decisions
+
+- **Special variable name**: `__return__` is unlikely to conflict with user variables
+- **Automatic cleanup**: Clear `__return__` after reading to prevent stale values
+- **Scope-local**: Return value stored in current sequence's scope
+- **No stack needed**: Single return value sufficient (no nested calls in expressions)
+- **Backward compatible**: Functions without return values work unchanged
+
+### Error Handling
+
+**Missing return value**:
+- If function doesn't set `__return__`, default value (0) is used
+- No error thrown (graceful degradation)
+
+**Nested function calls**:
+- Not supported in current parser (expressions are flat)
+- If added later, would need return value stack
+
+### Testing Strategy
+
+**Unit tests**:
+- Test each function's return value storage
+- Test assignment with function call
+- Test return value cleanup
+- Test functions without return values
+
+**Integration tests**:
+- Test sample scripts using return values
+- Verify correct IDs are captured and used
+
+---
+
+## Part 14: Step Block Syntax
+
+This section describes the design for `step(n) { ... }` block syntax.
+
+### Problem Statement
+
+FILLY supports a block-style step syntax used in some sample scripts:
+```filly
+mes(MIDI_TIME) {
+    step(65) {
+        command1;,
+        command2;,,
+        command3;,
+        end_step;
+    }
+}
+```
+
+This differs from the simple `step(n);` statement and requires special parsing and execution.
+
+### Syntax Semantics
+
+**Block structure**:
+```filly
+step(n) {
+    command1;,    // Execute command1, then wait 1 step
+    command2;,,   // Execute command2, then wait 2 steps
+    command3;,    // Execute command3, then wait 1 step
+    end_step;     // Exit step block (optional)
+}
+```
+
+**Comma semantics**:
+- Each comma after a semicolon represents one wait step
+- `;,` → Execute command, then Wait(1)
+- `;,,` → Execute command, then Wait(2)
+- `;,,,` → Execute command, then Wait(3)
+- The actual wait duration is: comma_count × step_duration (where step_duration = n from step(n))
+
+**Execution model**:
+1. SetStep(n) - Set the step duration
+2. Execute `command1`
+3. Wait(1) - Wait 1 step (from the single comma)
+4. Execute `command2`
+5. Wait(2) - Wait 2 steps (from the two commas)
+6. Execute `command3`
+7. Wait(1) - Wait 1 step
+8. Encounter `end_step` → exit block
+
+**Key difference from simple step**:
+- Simple: `step(10);` → Wait(10) - wait 10 steps once
+- Block: `step(10) { cmd1;, cmd2;,, }` → SetStep(10), cmd1, Wait(1), cmd2, Wait(2)
+
+### Design Approach: Flat Sequence Generation
+
+**Strategy**: Transform step block into a flat sequence with SetStep and Wait operations.
+
+**AST Representation**:
+```go
+type StepStatement struct {
+    Token token.Token      // 'step' token
+    Count Expression       // Step count (e.g., 65)
+    Body  *BlockStatement  // Optional: step(n) { ... } block
+}
+```
+
+**OpCode Generation**:
+```
+step(n) {
+    cmd1;,
+    cmd2;,,
+    end_step;
+}
+
+Transforms to:
+
+[
+    OpSetStep(n),      // Set step duration
+    OpCode for cmd1,   // Execute command
+    OpWait(1),         // Wait 1 step (from single comma)
+    OpCode for cmd2,   // Execute command
+    OpWait(2),         // Wait 2 steps (from two commas)
+    // end_step terminates generation
+]
+```
+
+**Parser Changes**:
+
+**Step 1: StepStatement in AST**
+```go
+// In pkg/compiler/ast/ast.go
+type StepStatement struct {
+    Token token.Token
+    Count Expression
+    Body  *BlockStatement  // nil for simple step(n);
+}
+
+func (s *StepStatement) statementNode() {}
+func (s *StepStatement) TokenLiteral() string { return s.Token.Literal }
+```
+
+**Step 2: Parser Recognizes Block Syntax**
+```go
+// In pkg/compiler/parser/parser.go
+func (p *Parser) parseStepStatement() *ast.StepStatement {
+    stmt := &ast.StepStatement{Token: p.curToken}
+    
+    // Expect '('
+    if !p.expectPeek(token.LPAREN) {
+        return nil
+    }
+    
+    // Parse count expression
+    p.nextToken()
+    stmt.Count = p.parseExpression(LOWEST)
+    
+    // Expect ')'
+    if !p.expectPeek(token.RPAREN) {
+        return nil
+    }
+    
+    // Check for block syntax
+    if p.peekTokenIs(token.LBRACE) {
+        p.nextToken()
+        stmt.Body = p.parseStepBlock()
+    }
+    
+    return stmt
+}
+
+// parseStepBlock parses a step block where commas represent wait steps
+func (p *Parser) parseStepBlock() *ast.BlockStatement {
+    block := &ast.BlockStatement{Token: p.curToken}
+    block.Statements = []ast.Statement{}
+    
+    p.nextToken()
+    for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+        stmt := p.parseStatement()
+        if stmt != nil {
+            block.Statements = append(block.Statements, stmt)
+        }
+        
+        // In step blocks, semicolons and commas are both statement terminators
+        // Commas represent empty steps (Wait operations)
+        for p.peekTokenIs(token.SEMICOLON) || p.peekTokenIs(token.COMMA) {
+            if p.peekTokenIs(token.COMMA) {
+                // Add empty statement for each comma (represents Wait(1))
+                block.Statements = append(block.Statements, &ast.ExpressionStatement{
+                    Token:      p.curToken,
+                    Expression: nil,
+                })
+            }
+            p.nextToken()
+        }
+        p.nextToken()
+    }
+    
+    return block
+}
+```
+
+**Step 3: CodeGen Generates Flat Sequence**
+```go
+// In pkg/compiler/codegen/codegen.go
+func (g *Generator) generateStepStatement(stmt *ast.StepStatement) []interpreter.OpCode {
+    count := g.generateExpression(stmt.Count)
+    
+    // Simple form: step(n);
+    if stmt.Body == nil {
+        return []interpreter.OpCode{{
+            Cmd:  interpreter.OpWait,
+            Args: []any{count},
+        }}
+    }
+    
+    // Block form: step(n) { ... }
+    var opcodes []interpreter.OpCode
+    
+    // First, generate SetStep to set the step duration
+    opcodes = append(opcodes, interpreter.OpCode{
+        Cmd:  interpreter.OpSetStep,
+        Args: []any{count},
+    })
+    
+    i := 0
+    for i < len(stmt.Body.Statements) {
+        cmd := stmt.Body.Statements[i]
+        
+        // Check for empty statement (from commas) - count consecutive commas
+        if exprStmt, ok := cmd.(*ast.ExpressionStatement); ok && exprStmt.Expression == nil {
+            waitCount := 0
+            for i < len(stmt.Body.Statements) {
+                if exprStmt, ok := stmt.Body.Statements[i].(*ast.ExpressionStatement); ok && exprStmt.Expression == nil {
+                    waitCount++
+                    i++
+                } else {
+                    break
+                }
+            }
+            
+            // Generate Wait with the count
+            opcodes = append(opcodes, interpreter.OpCode{
+                Cmd:  interpreter.OpWait,
+                Args: []any{int64(waitCount)},
+            })
+            continue
+        }
+        
+        // Check for end_step - terminates code generation
+        if callExpr, ok := cmd.(*ast.ExpressionStatement); ok {
+            if call, ok := callExpr.Expression.(*ast.CallExpression); ok {
+                if ident, ok := call.Function.(*ast.Identifier); ok && ident.Value == "end_step" {
+                    break
+                }
+            }
+        }
+        
+        // Generate command OpCode
+        cmdOps := g.generateStatement(cmd)
+        opcodes = append(opcodes, cmdOps...)
+        
+        i++
+    }
+    
+    return opcodes
+}
+```
+
+### Comma Syntax Handling
+
+**Trailing comma**: Commands ending with `,` indicate "wait after execution"
+```filly
+command1;,   // Execute command1, then wait 1 step
+command2;,,  // Execute command2, then wait 2 steps
+```
+
+**Parser strategy**:
+- Each comma creates an empty statement in the AST
+- CodeGen counts consecutive empty statements
+- Generates Wait(count) for consecutive commas
+
+### Key Design Decisions
+
+- **Flat sequence generation**: No loop transformation, generates linear OpCode sequence
+- **SetStep operation**: Sets step duration at the start of the block
+- **Comma counting**: Consecutive commas become Wait(count)
+- **end_step terminates generation**: No OpCode generated, just stops processing
+- **No automatic wait insertion**: Commas are required for waits
+
+### Error Handling
+
+**Missing commas**:
+- Commands without trailing commas execute without waiting
+- This is valid syntax (immediate execution)
+
+**Invalid step count**:
+- Runtime error if count evaluates to non-integer
+- Graceful degradation: treat as 0 (no wait)
+
+### Testing Strategy
+
+**Unit tests**:
+- Test parser recognizes step block syntax
+- Test comma counting in parser
+- Test OpCode generation for step blocks
+- Test execution with multiple commands and varying comma counts
+- Test end_step termination
+
+**Integration tests**:
+- Test KUMA2 sample (uses step blocks)
+- Verify timing accuracy
+- Verify command execution order
 
 ---
 

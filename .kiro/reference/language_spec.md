@@ -227,12 +227,12 @@ ShowMessage(str text, int x=0, int y=0) {
 
 **シンプル版**:
 ```filly
-OpenWin(pic)
+win_id = OpenWin(pic)
 ```
 
 **詳細版**:
 ```filly
-OpenWin(pic, x, y, width, height, pic_x, pic_y, color)
+win_id = OpenWin(pic, x, y, width, height, pic_x, pic_y, color)
 ```
 
 **引数**:
@@ -244,6 +244,8 @@ OpenWin(pic, x, y, width, height, pic_x, pic_y, color)
 - `pic_x`: ピクチャーの左上 X座標
 - `pic_y`: ピクチャーの左上 Y座標
 - `color`: ピクチャーが無い位置の色(16進数)
+
+**戻り値**: ウィンドウID（0から始まる連番）
 
 ### MoveWin
 仮想ウインドウの設定を変更
@@ -416,7 +418,7 @@ ReversePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y)
 キャストの配置
 
 ```filly
-PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
+cast_id = PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
 ```
 
 **引数**:
@@ -428,6 +430,8 @@ PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
 - `src_y`: ピクチャーの切り出し始点 Y座標
 - `width`: 切り出しサイズ 幅
 - `height`: 切り出しサイズ 高さ
+
+**戻り値**: キャストID（0から始まる連番）
 
 ### MoveCast
 キャストの移動
@@ -1059,19 +1063,55 @@ mes(USER) {
 ### step ブロック
 ステップ単位の実行
 
+**シンプル形式**:
+```filly
+step(n);  // n ステップ待機
+```
+
+**ブロック形式**:
 ```filly
 step(n) {
-    // n ステップごとに実行されるコード
-    command1;,
-    command2;,
-    command3;,
-    end_step;
+    command1;,      // command1を実行し、1ステップ待機
+    command2;,,     // command2を実行し、2ステップ待機
+    command3;,      // command3を実行し、1ステップ待機
+    end_step;       // ブロックを終了（オプション）
+}
+```
+
+**カンマのセマンティクス**:
+- `;,` (セミコロン + 1カンマ) → コマンドを実行し、Wait(1)
+- `;,,` (セミコロン + 2カンマ) → コマンドを実行し、Wait(2)
+- `;,,,` (セミコロン + 3カンマ) → コマンドを実行し、Wait(3)
+- 待機時間 = カンマの数 × ステップ期間（step(n)のn）
+
+**ステップ期間の計算**:
+- `TIME`モード: 1ステップ = n × 50ms（n × 3ティック @ 60 FPS）
+- `MIDI_TIME`モード: 1ステップ = n × 32分音符
+
+**使用例**:
+```filly
+// TIMEモード: step(65) = 65 × 50ms = 3.25秒/ステップ
+mes(TIME) {
+    step(65) {
+        PlayWAVE("sound.wav");,,  // 再生し、2ステップ待機（6.5秒）
+        MoveWin(0, 1);,,          // 移動し、2ステップ待機
+        MoveWin(0, 2);,           // 移動し、1ステップ待機（3.25秒）
+    }
+}
+
+// MIDI_TIMEモード: step(8) = 8 × 32分音符 = 4分音符/ステップ
+mes(MIDI_TIME) {
+    step(8) {
+        MoveCast(0, x, y);,       // 移動し、1ステップ待機
+        x = x + 10;,              // 更新し、1ステップ待機
+    }
 }
 ```
 
 **注意**: 
-- コマンドの後に `,` を付けると次のステップで実行
-- `end_step` でブロックを終了
+- カンマがない場合、コマンドは待機なしで即座に実行される
+- `end_step` でブロックを明示的に終了（オプション）
+- この構文はKUMA2などのレガシーFILLYスクリプトで広く使用されている
 
 ### if-else
 条件分岐

@@ -604,10 +604,22 @@ func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX,
 //
 //	picID: picture to display in the window
 //	x, y: window position on virtual desktop
-//	width, height: window dimensions
+//	width, height: window dimensions (0,0 = use picture size)
 //	picX, picY: offset into the picture to display
-//	caption: window title (empty string for no caption)
-func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY int, caption string) int {
+//	color: background color (0xRRGGBB format, currently unused)
+func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, color int) int {
+	// If width and height are both 0, use picture dimensions
+	if width == 0 && height == 0 {
+		if pic := e.pictures[picID]; pic != nil {
+			width = pic.Width
+			height = pic.Height
+		} else {
+			// Fallback to default size
+			width = 640
+			height = 480
+		}
+	}
+
 	// Create window
 	win := &Window{
 		ID:        e.nextWinID,
@@ -618,7 +630,7 @@ func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY int, cap
 		Height:    height,
 		PicX:      picX,
 		PicY:      picY,
-		Caption:   caption,
+		Caption:   "", // No caption by default (can be set with CapTitle)
 		Visible:   true,
 	}
 

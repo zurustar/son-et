@@ -474,10 +474,10 @@ func (e *Engine) ReversePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int
 }
 
 // OpenWin creates a new window and returns its ID.
-func (e *Engine) OpenWin(picID, x, y, width, height, picX, picY int, caption string) int {
-	winID := e.state.OpenWindow(picID, x, y, width, height, picX, picY, caption)
-	e.logger.LogDebug("Opened window %d: pic=%d pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d) caption=%q",
-		winID, picID, x, y, width, height, picX, picY, caption)
+func (e *Engine) OpenWin(picID, x, y, width, height, picX, picY, color int) int {
+	winID := e.state.OpenWindow(picID, x, y, width, height, picX, picY, color)
+	e.logger.LogDebug("Opened window %d: pic=%d pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d) color=0x%X",
+		winID, picID, x, y, width, height, picX, picY, color)
 	return winID
 }
 

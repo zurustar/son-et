@@ -8,7 +8,7 @@ func TestOpenWindow(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window
-	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, "Test Window")
+	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, 0)
 
 	if winID != 1 {
 		t.Errorf("Expected window ID 1, got %d", winID)
@@ -35,8 +35,8 @@ func TestOpenWindow(t *testing.T) {
 	if win.Height != 480 {
 		t.Errorf("Expected Height 480, got %d", win.Height)
 	}
-	if win.Caption != "Test Window" {
-		t.Errorf("Expected Caption 'Test Window', got %q", win.Caption)
+	if win.Caption != "" {
+		t.Errorf("Expected empty Caption, got %q", win.Caption)
 	}
 	if !win.Visible {
 		t.Error("Expected window to be visible")
@@ -47,7 +47,7 @@ func TestMoveWindow(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window
-	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, "Test")
+	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, 0)
 
 	// Move the window
 	err := state.MoveWindow(winID, 150, 250, 800, 600, 10, 20)
@@ -81,7 +81,7 @@ func TestCloseWindow(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window
-	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, "Test")
+	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, 0)
 
 	// Close the window
 	state.CloseWindow(winID)
@@ -97,9 +97,9 @@ func TestCloseAllWindows(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create multiple windows
-	state.OpenWindow(1, 100, 200, 640, 480, 0, 0, "Window 1")
-	state.OpenWindow(2, 150, 250, 800, 600, 0, 0, "Window 2")
-	state.OpenWindow(3, 200, 300, 1024, 768, 0, 0, "Window 3")
+	state.OpenWindow(1, 100, 200, 640, 480, 0, 0, 0)
+	state.OpenWindow(2, 150, 250, 800, 600, 0, 0, 0)
+	state.OpenWindow(3, 200, 300, 1024, 768, 0, 0, 0)
 
 	// Close all windows
 	state.CloseAllWindows()
@@ -115,7 +115,7 @@ func TestSetWindowCaption(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window
-	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, "Original Caption")
+	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, 0)
 
 	// Set new caption
 	err := state.SetWindowCaption(winID, "New Caption")
@@ -134,7 +134,7 @@ func TestGetWindowPictureID(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window
-	winID := state.OpenWindow(42, 100, 200, 640, 480, 0, 0, "Test")
+	winID := state.OpenWindow(42, 100, 200, 640, 480, 0, 0, 0)
 
 	// Get picture ID
 	picID := state.GetWindowPictureID(winID)
@@ -153,9 +153,9 @@ func TestGetWindowsOrder(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create windows in specific order
-	id1 := state.OpenWindow(1, 100, 100, 100, 100, 0, 0, "Window 1")
-	id2 := state.OpenWindow(2, 200, 200, 100, 100, 0, 0, "Window 2")
-	id3 := state.OpenWindow(3, 300, 300, 100, 100, 0, 0, "Window 3")
+	id1 := state.OpenWindow(1, 100, 100, 100, 100, 0, 0, 0)
+	id2 := state.OpenWindow(2, 200, 200, 100, 100, 0, 0, 0)
+	id3 := state.OpenWindow(3, 300, 300, 100, 100, 0, 0, 0)
 
 	// Get windows
 	windows := state.GetWindows()
@@ -180,7 +180,9 @@ func TestStartWindowDrag(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window with a caption (draggable)
-	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Draggable Window")
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	// Set caption to make it draggable
+	state.SetWindowCaption(winID, "Draggable Window")
 
 	// Click on the title bar
 	draggedID := state.StartWindowDrag(150, 110)
@@ -208,7 +210,7 @@ func TestStartWindowDragNoCaptionIgnored(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window without a caption (not draggable)
-	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "")
+	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
 
 	// Try to click on where the title bar would be
 	draggedID := state.StartWindowDrag(150, 110)
@@ -222,7 +224,8 @@ func TestStartWindowDragOutsideTitleBar(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window with a caption
-	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(winID, "Window")
 
 	// Click below the title bar (in the window content area)
 	draggedID := state.StartWindowDrag(150, 130)
@@ -236,8 +239,10 @@ func TestStartWindowDragTopmost(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create overlapping windows
-	win1 := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window 1")
-	win2 := state.OpenWindow(2, 150, 150, 200, 150, 0, 0, "Window 2")
+	win1 := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(win1, "Window 1")
+	win2 := state.OpenWindow(2, 150, 150, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(win2, "Window 2")
 
 	// Click on overlapping area (should select the topmost window = win2)
 	draggedID := state.StartWindowDrag(180, 160)
@@ -259,7 +264,8 @@ func TestUpdateWindowDrag(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create and start dragging a window
-	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(winID, "Window")
 	state.StartWindowDrag(150, 110) // Click at (150, 110), offset = (50, 10)
 
 	// Move mouse to new position
@@ -285,7 +291,7 @@ func TestUpdateWindowDragNoDrag(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window but don't start dragging
-	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
 
 	// Try to update drag
 	updated := state.UpdateWindowDrag(200, 150)
@@ -299,7 +305,8 @@ func TestUpdateWindowDragConstraints(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a window
-	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(winID, "Window")
 	state.StartWindowDrag(150, 110) // offset = (50, 10)
 
 	tests := []struct {
@@ -368,7 +375,8 @@ func TestStopWindowDrag(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create and start dragging a window
-	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(winID, "Window")
 	state.StartWindowDrag(150, 110)
 
 	// Verify dragging started
@@ -399,7 +407,8 @@ func TestGetDraggedWindowID(t *testing.T) {
 	}
 
 	// Start dragging
-	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
+	state.SetWindowCaption(winID, "Window")
 	state.StartWindowDrag(150, 110)
 
 	// Verify correct window ID is returned

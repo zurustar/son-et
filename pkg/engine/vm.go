@@ -310,9 +310,15 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		return nil
 
 	case "openwin":
-		if len(evaluatedArgs) < 8 {
-			return NewRuntimeError("OpenWin", fmt.Sprintf("%v", evaluatedArgs), "OpenWin requires 8 arguments (picID, x, y, width, height, picX, picY, caption)")
+		// OpenWin can be called with 1, 5, or 8 arguments
+		// OpenWin(pic) - 1 arg: x=0, y=0, w=0, h=0, picX=0, picY=0, col=0
+		// OpenWin(pic, x, y, w, h) - 5 args: picX=0, picY=0, col=0
+		// OpenWin(pic, x, y, w, h, picX, picY, col) - 8 args (full)
+		// Pad missing arguments with 0
+		for len(evaluatedArgs) < 8 {
+			evaluatedArgs = append(evaluatedArgs, int64(0))
 		}
+
 		picID := int(vm.toInt(evaluatedArgs[0]))
 		x := int(vm.toInt(evaluatedArgs[1]))
 		y := int(vm.toInt(evaluatedArgs[2]))
@@ -320,8 +326,8 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		height := int(vm.toInt(evaluatedArgs[4]))
 		picX := int(vm.toInt(evaluatedArgs[5]))
 		picY := int(vm.toInt(evaluatedArgs[6]))
-		caption := fmt.Sprintf("%v", evaluatedArgs[7])
-		winID := vm.engine.OpenWin(picID, x, y, width, height, picX, picY, caption)
+		color := int(vm.toInt(evaluatedArgs[7]))
+		winID := vm.engine.OpenWin(picID, x, y, width, height, picX, picY, color)
 		_ = winID
 		return nil
 

@@ -194,9 +194,13 @@ These requirements define the multimedia capabilities that scripts can use.
 16. THE System SHALL support updating window properties (position, size, picture)
 17. THE System SHALL support window captions
 18. THE System SHALL render windows in creation order within the virtual desktop
-19. WHEN a window has a caption, THE System SHALL allow the user to drag the window by its title bar
-20. WHEN the user drags a window, THE System SHALL update the window position in real-time
-21. THE System SHALL constrain dragged windows to remain within the virtual desktop bounds
+19. THE System SHALL render windows with classic desktop-style decorations including:
+    - Title bar (blue background, 24px height) with white caption text
+    - Window border (gray, 4px thickness) with raised 3D effect (light highlight on top/left edges, dark shadow on bottom/right edges)
+    - Content area displaying the picture
+20. WHEN a window has a caption, THE System SHALL allow the user to drag the window by its title bar
+21. WHEN the user drags a window, THE System SHALL update the window position in real-time
+22. THE System SHALL constrain dragged windows to remain within the virtual desktop bounds
 
 ### Requirement B2: Audio Playback System
 
@@ -211,21 +215,23 @@ These requirements define the multimedia capabilities that scripts can use.
 **MIDI Playback:**
 1. THE System SHALL support loading and playing Standard MIDI Files (SMF)
 2. THE System SHALL use SoundFont (.sf2) files for software synthesis
-3. THE System SHALL generate tick callbacks at 32nd note resolution to drive MIDI_TIME mode execution
-4. THE System SHALL calculate ticks accurately based on elapsed time, tempo, and PPQ (Pulses Per Quarter note)
-5. WHEN MIDI tempo changes occur, THE System SHALL adjust tick timing accordingly
-6. THE System SHALL play MIDI files once (no looping by default)
-7. THE System SHALL trigger MIDI_END event when playback completes
-8. THE System SHALL deliver all ticks sequentially without skipping (even if processing is delayed)
+3. THE System SHALL automatically load a SoundFont file if found in the project directory (default.sf2, GeneralUser-GS.sf2, or *.sf2)
+4. THE System SHALL support explicit SoundFont loading via LoadSoundFont() function
+5. THE System SHALL generate tick callbacks at 32nd note resolution to drive MIDI_TIME mode execution
+6. THE System SHALL calculate ticks accurately based on elapsed time, tempo, and PPQ (Pulses Per Quarter note)
+7. WHEN MIDI tempo changes occur, THE System SHALL adjust tick timing accordingly
+8. THE System SHALL play MIDI files once (no looping by default)
+9. THE System SHALL trigger MIDI_END event when playback completes
+10. THE System SHALL deliver all ticks sequentially without skipping (even if processing is delayed)
 
 **WAV Playback:**
-6. THE System SHALL support decoding and playing WAV files
-7. THE System SHALL support concurrent playback of multiple WAV files
+11. THE System SHALL support decoding and playing WAV files
+12. THE System SHALL support concurrent playback of multiple WAV files
 
 **Resource Management:**
-8. THE System SHALL support preloading WAV files with resource IDs
-9. THE System SHALL support playing preloaded resources
-10. THE System SHALL support releasing preloaded resources
+13. THE System SHALL support preloading WAV files with resource IDs
+14. THE System SHALL support playing preloaded resources
+15. THE System SHALL support releasing preloaded resources
 
 ### Requirement B3: User Input Handling
 
@@ -437,6 +443,112 @@ These requirements define the multimedia capabilities that scripts can use.
 2. THE System SHALL set the working directory for launched processes
 3. THE System SHALL return immediately without waiting for process completion
 4. THE System SHALL handle process launch errors gracefully
+
+---
+
+### Requirement B16: Function Return Values
+
+**User Story:** As a script author, I want to use function return values in expressions and assignments, so that I can capture results from function calls.
+
+**Rationale:** Many FILLY functions return values (picture IDs, window IDs, cast IDs, etc.) that must be captured for later use. The language supports assignment from function calls, enabling patterns like `canvas = CreatePic(400, 300)`.
+
+#### Acceptance Criteria
+
+1. WHEN a built-in function returns a value, THE System SHALL make it available for assignment
+2. WHEN a function call is used in an assignment statement, THE System SHALL assign the return value to the variable
+3. WHEN a function call is used in an expression, THE System SHALL evaluate the return value
+4. THE System SHALL support return values for resource creation functions:
+   - LoadPic(filename) → picture ID
+   - CreatePic(width, height) → picture ID
+   - OpenWin(...) → window ID
+   - PutCast(...) → cast ID
+   - LoadRsc(filename) → resource ID
+5. THE System SHALL support return values for query functions:
+   - PicWidth(pic_id) → width
+   - PicHeight(pic_id) → height
+   - GetPicNo(win_id) → picture ID
+   - GetColor(pic_id, x, y) → color value
+   - StrLen(str) → length
+   - SubStr(str, start, len) → substring
+   - StrFind(str, search) → position
+6. THE System SHALL support user-defined functions returning values
+7. THE System SHALL support function calls in complex expressions (e.g., `x = CreatePic(100, 100) + 1`)
+
+**Examples**:
+```filly
+// Resource creation
+canvas = CreatePic(400, 300);
+pic = LoadPic("image.bmp");
+win = OpenWin(pic, 0, 0, 400, 300, 0, 0, 0);
+
+// Query functions
+width = PicWidth(canvas);
+color = GetColor(canvas, 100, 100);
+
+// In expressions
+total = PicWidth(pic) + PicHeight(pic);
+```
+
+---
+
+### Requirement B17: Step Block Syntax
+
+**User Story:** As a script author, I want to use step(n) { ... } syntax to create timed loops, so that I can repeat operations with delays between iterations.
+
+**Rationale:** FILLY provides a special step block syntax that executes a block of code repeatedly with wait operations between iterations. This is commonly used in legacy scripts for animations and timed sequences. The syntax uses commas to separate commands that execute in different steps.
+
+#### Acceptance Criteria
+
+1. WHEN step(n) { ... } is used, THE System SHALL set the step duration to n (via SetStep)
+2. WHEN a comma appears after a semicolon (;,), THE System SHALL insert a Wait(1) operation
+3. WHEN multiple commas appear after a semicolon (;,,), THE System SHALL insert Wait(comma_count) operation
+4. WHEN a step block completes, THE System SHALL continue to the next statement
+5. THE System SHALL support nested step blocks
+6. THE System SHALL support step blocks in both TIME and MIDI_TIME modes
+7. THE System SHALL interpret step duration according to the current timing mode:
+   - TIME mode: Each step is n × 50ms (n × 3 ticks at 60 FPS)
+   - MIDI_TIME mode: Each step is n × 32nd note duration
+8. THE System SHALL support the `end_step` keyword to explicitly terminate a step block
+9. THE System SHALL NOT automatically insert waits after commands (commas are required)
+
+**Syntax**:
+```filly
+step(n) {
+    command1;,      // Execute command1, then wait 1 step (n × 50ms or n × 32nd note)
+    command2;,,     // Execute command2, then wait 2 steps
+    command3;,      // Execute command3, then wait 1 step
+    end_step;       // Optional explicit termination
+}
+```
+
+**Comma Semantics**:
+- `;,` (semicolon + 1 comma) → Execute command, then Wait(1)
+- `;,,` (semicolon + 2 commas) → Execute command, then Wait(2)
+- `;,,,` (semicolon + 3 commas) → Execute command, then Wait(3)
+- The wait duration is: comma_count × step_duration (where step_duration = n from step(n))
+
+**Examples**:
+```filly
+// TIME mode: step(65) sets step duration to 65 × 50ms = 3.25 seconds per step
+mes(TIME) {
+    step(65) {
+        PlayWAVE("sound.wav");,,  // Play sound, wait 2 steps (6.5 seconds)
+        MoveWin(0, 1);,,          // Move window, wait 2 steps
+        MoveWin(0, 2);,,          // Move window, wait 2 steps
+        MoveWin(0, 3);,           // Move window, wait 1 step (3.25 seconds)
+    }
+}
+
+// MIDI_TIME mode: step(8) sets step duration to 8 × 32nd note
+mes(MIDI_TIME) {
+    step(8) {
+        MoveCast(0, x, y);,       // Move cast, wait 1 step (8 × 32nd note = quarter note)
+        x = x + 10;,              // Update x, wait 1 step
+    }
+}
+```
+
+**Note**: This syntax is used extensively in legacy FILLY scripts (e.g., KUMA2 sample) and must be supported for backward compatibility.
 
 ---
 
