@@ -262,6 +262,21 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		_ = height
 		return nil
 
+	case "movepic":
+		if len(evaluatedArgs) < 8 {
+			return NewRuntimeError("MovePic", fmt.Sprintf("%v", evaluatedArgs), "MovePic requires 8 arguments (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)")
+		}
+		srcID := int(vm.toInt(evaluatedArgs[0]))
+		srcX := int(vm.toInt(evaluatedArgs[1]))
+		srcY := int(vm.toInt(evaluatedArgs[2]))
+		srcW := int(vm.toInt(evaluatedArgs[3]))
+		srcH := int(vm.toInt(evaluatedArgs[4]))
+		dstID := int(vm.toInt(evaluatedArgs[5]))
+		dstX := int(vm.toInt(evaluatedArgs[6]))
+		dstY := int(vm.toInt(evaluatedArgs[7]))
+		vm.engine.MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+		return nil
+
 	default:
 		// Unknown built-in function - just log and ignore
 		vm.logger.LogDebug("Unknown built-in function: %s", funcName)

@@ -439,3 +439,14 @@ func (e *Engine) PicWidth(picID int) int {
 func (e *Engine) PicHeight(picID int) int {
 	return e.state.GetPictureHeight(picID)
 }
+
+// MovePic copies pixels from source picture to destination picture with transparency.
+func (e *Engine) MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) {
+	err := e.state.MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+	if err != nil {
+		e.logger.LogError("MovePic failed: %v", err)
+		return
+	}
+	e.logger.LogDebug("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d)",
+		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+}

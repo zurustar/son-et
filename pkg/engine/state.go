@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/draw"
 	"strings"
 	"sync"
 
@@ -373,4 +374,68 @@ func (e *EngineState) GetPictureHeight(id int) int {
 		return pic.Height
 	}
 	return 0
+}
+
+// MovePicture copies pixels from source picture to destination picture with transparency.
+// Parameters:
+//
+//	srcID: source picture ID
+//	srcX, srcY: source rectangle top-left corner
+//	srcW, srcH: source rectangle dimensions
+//	dstID: destination picture ID
+//	dstX, dstY: destination position
+//
+// Returns an error if source or destination doesn't exist.
+func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) error {
+	// Get source picture
+	srcPic := e.pictures[srcID]
+	if srcPic == nil {
+		return fmt.Errorf("source picture %d not found", srcID)
+	}
+
+	// Get destination picture
+	dstPic := e.pictures[dstID]
+	if dstPic == nil {
+		return fmt.Errorf("destination picture %d not found", dstID)
+	}
+
+	// Cannot copy to itself
+	if srcID == dstID {
+		return fmt.Errorf("cannot copy picture to itself (ID %d)", srcID)
+	}
+
+	// Auto-expand destination if needed
+	requiredW := dstX + srcW
+	requiredH := dstY + srcH
+	if requiredW > dstPic.Width || requiredH > dstPic.Height {
+		newW := dstPic.Width
+		newH := dstPic.Height
+		if requiredW > newW {
+			newW = requiredW
+		}
+		if requiredH > newH {
+			newH = requiredH
+		}
+
+		// Create new larger image
+		newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+
+		// Copy old content
+		draw.Draw(newImg, newImg.Bounds(), dstPic.Image, image.Point{}, draw.Src)
+
+		// Update picture
+		dstPic.Image = newImg
+		dstPic.Width = newW
+		dstPic.Height = newH
+	}
+
+	// Copy pixels with alpha blending (transparency support)
+	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
+	dstPoint := image.Point{dstX, dstY}
+
+	// Use draw.Over for alpha blending (respects transparency)
+	draw.Draw(dstPic.Image.(draw.Image), image.Rectangle{dstPoint, dstPoint.Add(srcRect.Size())},
+		srcPic.Image, srcRect.Min, draw.Over)
+
+	return nil
 }
