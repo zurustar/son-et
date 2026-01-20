@@ -14,8 +14,10 @@ type EngineState struct {
 	casts    map[int]*Cast    // Cast ID -> Cast
 
 	// Execution state
-	sequencers []*Sequencer // Active sequences
-	tickCount  int64        // Global tick counter
+	sequencers  []*Sequencer // Active sequences
+	nextSeqID   int          // Next sequence ID to assign
+	nextGroupID int          // Next group ID to assign
+	tickCount   int64        // Global tick counter
 
 	// Dependencies (injected)
 	renderer     Renderer     // Rendering abstraction
@@ -73,6 +75,8 @@ func NewEngineState(renderer Renderer, assetLoader AssetLoader, imageDecoder Ima
 		windows:      make(map[int]*Window),
 		casts:        make(map[int]*Cast),
 		sequencers:   make([]*Sequencer, 0),
+		nextSeqID:    1,
+		nextGroupID:  1,
 		tickCount:    0,
 		renderer:     renderer,
 		assetLoader:  assetLoader,
@@ -101,4 +105,71 @@ func (e *EngineState) GetTickCount() int64 {
 // IncrementTick increments the global tick counter.
 func (e *EngineState) IncrementTick() {
 	e.tickCount++
+}
+
+// RegisterSequence registers a new sequence with the engine.
+// Returns the sequence ID.
+func (e *EngineState) RegisterSequence(seq *Sequencer, groupID int) int {
+	// Assign sequence ID
+	seq.SetID(e.nextSeqID)
+	e.nextSeqID++
+
+	// Assign group ID (0 means no group)
+	if groupID > 0 {
+		seq.SetGroupID(groupID)
+	}
+
+	// Add to active sequences
+	e.sequencers = append(e.sequencers, seq)
+
+	return seq.GetID()
+}
+
+// AllocateGroupID allocates a new group ID.
+func (e *EngineState) AllocateGroupID() int {
+	id := e.nextGroupID
+	e.nextGroupID++
+	return id
+}
+
+// GetSequencers returns all active sequencers.
+func (e *EngineState) GetSequencers() []*Sequencer {
+	return e.sequencers
+}
+
+// DeactivateSequence deactivates a sequence by ID.
+func (e *EngineState) DeactivateSequence(id int) {
+	for _, seq := range e.sequencers {
+		if seq.GetID() == id {
+			seq.Deactivate()
+			return
+		}
+	}
+}
+
+// DeactivateGroup deactivates all sequences in a group.
+func (e *EngineState) DeactivateGroup(groupID int) {
+	for _, seq := range e.sequencers {
+		if seq.GetGroupID() == groupID {
+			seq.Deactivate()
+		}
+	}
+}
+
+// DeactivateAll deactivates all sequences.
+func (e *EngineState) DeactivateAll() {
+	for _, seq := range e.sequencers {
+		seq.Deactivate()
+	}
+}
+
+// CleanupInactiveSequences removes inactive sequences from the list.
+func (e *EngineState) CleanupInactiveSequences() {
+	active := make([]*Sequencer, 0, len(e.sequencers))
+	for _, seq := range e.sequencers {
+		if seq.IsActive() {
+			active = append(active, seq)
+		}
+	}
+	e.sequencers = active
 }

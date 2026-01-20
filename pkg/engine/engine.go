@@ -140,3 +140,41 @@ func (e *Engine) GetState() *EngineState {
 func (e *Engine) GetLogger() *Logger {
 	return e.logger
 }
+
+// RegisterSequence registers a new sequence with the engine.
+// If groupID is 0, a new group ID is allocated.
+// Returns the sequence ID.
+func (e *Engine) RegisterSequence(seq *Sequencer, groupID int) int {
+	if groupID == 0 {
+		groupID = e.state.AllocateGroupID()
+	}
+
+	seqID := e.state.RegisterSequence(seq, groupID)
+	e.logger.LogDebug("Registered sequence %d (group %d, mode %d)", seqID, groupID, seq.GetMode())
+
+	return seqID
+}
+
+// DeleteMe deactivates the current sequence (del_me).
+// This is called from within a sequence to terminate itself.
+func (e *Engine) DeleteMe(seqID int) {
+	e.state.DeactivateSequence(seqID)
+	e.logger.LogDebug("Deactivated sequence %d (del_me)", seqID)
+}
+
+// DeleteUs deactivates all sequences in a group (del_us).
+func (e *Engine) DeleteUs(groupID int) {
+	e.state.DeactivateGroup(groupID)
+	e.logger.LogDebug("Deactivated group %d (del_us)", groupID)
+}
+
+// DeleteAll deactivates all sequences (del_all).
+func (e *Engine) DeleteAll() {
+	e.state.DeactivateAll()
+	e.logger.LogDebug("Deactivated all sequences (del_all)")
+}
+
+// CleanupSequences removes inactive sequences from the list.
+func (e *Engine) CleanupSequences() {
+	e.state.CleanupInactiveSequences()
+}

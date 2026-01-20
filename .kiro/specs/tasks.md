@@ -294,12 +294,12 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement sequence lifecycle and concurrent execution.
 
 **Subtasks**:
-- [ ] 3.2.1 Implement RegisterSequence (create sequencer, link parent scope)
-- [ ] 3.2.2 Implement sequence activation/deactivation
-- [ ] 3.2.3 Implement del_me (deactivate current sequence)
-- [ ] 3.2.4 Implement del_us (deactivate group)
-- [ ] 3.2.5 Implement del_all (cleanup all sequences)
-- [ ] 3.2.6 Add tests for sequence lifecycle
+- [x] 3.2.1 Implement RegisterSequence (create sequencer, link parent scope)
+- [x] 3.2.2 Implement sequence activation/deactivation
+- [x] 3.2.3 Implement del_me (deactivate current sequence)
+- [x] 3.2.4 Implement del_us (deactivate group)
+- [x] 3.2.5 Implement del_all (cleanup all sequences)
+- [x] 3.2.6 Add tests for sequence lifecycle
 
 **Acceptance Criteria**:
 - Sequences register without blocking (except TIME mode)
