@@ -6,10 +6,19 @@ import (
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
-func TestExecuteOpAssign(t *testing.T) {
+// Helper function to create a test VM with engine
+func newTestVM() (*VM, *Engine, *EngineState, *Logger) {
 	state := NewEngineState(nil, nil, nil)
 	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	engine := NewEngine(nil, nil, nil)
+	engine.state = state
+	engine.logger = logger
+	vm := NewVM(state, engine, logger)
+	return vm, engine, state, logger
+}
+
+func TestExecuteOpAssign(t *testing.T) {
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 
@@ -35,9 +44,7 @@ func TestExecuteOpAssign(t *testing.T) {
 }
 
 func TestExecuteOpAssignExpression(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 
@@ -70,9 +77,7 @@ func TestExecuteOpAssignExpression(t *testing.T) {
 }
 
 func TestExecuteOpIf(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 	seq.SetVariable("x", int64(10))
@@ -123,9 +128,7 @@ func TestExecuteOpIf(t *testing.T) {
 }
 
 func TestExecuteOpIfElse(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 	seq.SetVariable("x", int64(3))
@@ -176,9 +179,7 @@ func TestExecuteOpIfElse(t *testing.T) {
 }
 
 func TestExecuteOpFor(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 
@@ -251,9 +252,7 @@ func TestExecuteOpFor(t *testing.T) {
 }
 
 func TestExecuteOpWhile(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 	seq.SetVariable("i", int64(0))
@@ -304,9 +303,7 @@ func TestExecuteOpWhile(t *testing.T) {
 }
 
 func TestExecuteOpWait(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
 
@@ -328,9 +325,7 @@ func TestExecuteOpWait(t *testing.T) {
 }
 
 func TestEvaluateBinaryOp(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	tests := []struct {
 		name     string
@@ -369,9 +364,7 @@ func TestEvaluateBinaryOp(t *testing.T) {
 }
 
 func TestToBool(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	tests := []struct {
 		name     string
@@ -401,9 +394,7 @@ func TestToBool(t *testing.T) {
 }
 
 func TestToInt(t *testing.T) {
-	state := NewEngineState(nil, nil, nil)
-	logger := NewLogger(DebugLevelError)
-	vm := NewVM(state, logger)
+	vm, _, _, _ := newTestVM()
 
 	tests := []struct {
 		name     string

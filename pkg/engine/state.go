@@ -517,3 +517,74 @@ func (e *EngineState) MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, d
 
 	return nil
 }
+
+// ReversePicture copies and horizontally flips pixels from source picture to destination picture.
+// Parameters:
+//
+//	srcID: source picture ID
+//	srcX, srcY: source rectangle top-left corner
+//	srcW, srcH: source rectangle dimensions
+//	dstID: destination picture ID
+//	dstX, dstY: destination position
+//
+// Returns an error if source or destination doesn't exist.
+func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) error {
+	// Get source picture
+	srcPic := e.pictures[srcID]
+	if srcPic == nil {
+		return fmt.Errorf("source picture %d not found", srcID)
+	}
+
+	// Get destination picture
+	dstPic := e.pictures[dstID]
+	if dstPic == nil {
+		return fmt.Errorf("destination picture %d not found", dstID)
+	}
+
+	// Cannot copy to itself
+	if srcID == dstID {
+		return fmt.Errorf("cannot copy picture to itself (ID %d)", srcID)
+	}
+
+	// Auto-expand destination if needed
+	requiredW := dstX + srcW
+	requiredH := dstY + srcH
+	if requiredW > dstPic.Width || requiredH > dstPic.Height {
+		newW := dstPic.Width
+		newH := dstPic.Height
+		if requiredW > newW {
+			newW = requiredW
+		}
+		if requiredH > newH {
+			newH = requiredH
+		}
+
+		// Create new larger image
+		newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+
+		// Copy old content
+		draw.Draw(newImg, newImg.Bounds(), dstPic.Image, image.Point{}, draw.Src)
+
+		// Update picture
+		dstPic.Image = newImg
+		dstPic.Width = newW
+		dstPic.Height = newH
+	}
+
+	// Horizontal flip: copy pixels from right to left
+	dstImg := dstPic.Image.(*image.RGBA)
+
+	for sy := 0; sy < srcH; sy++ {
+		for sx := 0; sx < srcW; sx++ {
+			// Get source pixel
+			srcColor := srcPic.Image.At(srcX+sx, srcY+sy)
+
+			// Set destination pixel (flipped horizontally)
+			// When sx=0, we want to write to dstX+srcW-1
+			// When sx=srcW-1, we want to write to dstX
+			dstImg.Set(dstX+srcW-1-sx, dstY+sy, srcColor)
+		}
+	}
+
+	return nil
+}

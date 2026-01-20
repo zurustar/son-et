@@ -461,3 +461,14 @@ func (e *Engine) MoveSPic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW
 	e.logger.LogDebug("MoveSPic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d,%d,%d)",
 		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH)
 }
+
+// ReversePic copies and horizontally flips pixels from source picture to destination picture.
+func (e *Engine) ReversePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) {
+	err := e.state.ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+	if err != nil {
+		e.logger.LogError("ReversePic failed: %v", err)
+		return
+	}
+	e.logger.LogDebug("ReversePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d) [flipped]",
+		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+}

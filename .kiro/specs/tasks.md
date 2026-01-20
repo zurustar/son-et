@@ -389,14 +389,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement picture loading, creation, and management.
 
 **Subtasks**:
-- [ ] 4.2.1 Define Picture struct (ID, Image, Width, Height)
-- [ ] 4.2.2 Implement LoadPic using AssetLoader (supports both filesystem and embedded)
-- [ ] 4.2.3 Implement CreatePic (create empty buffer)
-- [ ] 4.2.4 Implement MovePic (copy pixels with transparency)
-- [ ] 4.2.5 Implement DelPic (release resources)
-- [ ] 4.2.6 Implement PicWidth, PicHeight queries
-- [ ] 4.2.7 Implement MoveSPic (scale and copy)
-- [ ] 4.2.8 Implement ReversePic (horizontal flip)
+- [x] 4.2.1 Define Picture struct (ID, Image, Width, Height)
+- [x] 4.2.2 Implement LoadPic using AssetLoader (supports both filesystem and embedded)
+- [x] 4.2.3 Implement CreatePic (create empty buffer)
+- [x] 4.2.4 Implement MovePic (copy pixels with transparency)
+- [x] 4.2.5 Implement DelPic (release resources)
+- [x] 4.2.6 Implement PicWidth, PicHeight queries
+- [x] 4.2.7 Implement MoveSPic (scale and copy)
+- [x] 4.2.8 Implement ReversePic (horizontal flip)
 - [ ] 4.2.9 Add tests for picture operations with both AssetLoader implementations
 
 **Acceptance Criteria**:
