@@ -439,3 +439,81 @@ func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, ds
 
 	return nil
 }
+
+// MoveSPicture copies and scales pixels from source picture to destination picture with transparency.
+// Uses nearest-neighbor scaling for simplicity.
+// Parameters:
+//
+//	srcID: source picture ID
+//	srcX, srcY: source rectangle top-left corner
+//	srcW, srcH: source rectangle dimensions
+//	dstID: destination picture ID
+//	dstX, dstY: destination position
+//	dstW, dstH: destination dimensions (scaled size)
+//
+// Returns an error if source or destination doesn't exist.
+func (e *EngineState) MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH int) error {
+	// Get source picture
+	srcPic := e.pictures[srcID]
+	if srcPic == nil {
+		return fmt.Errorf("source picture %d not found", srcID)
+	}
+
+	// Get destination picture
+	dstPic := e.pictures[dstID]
+	if dstPic == nil {
+		return fmt.Errorf("destination picture %d not found", dstID)
+	}
+
+	// Cannot copy to itself
+	if srcID == dstID {
+		return fmt.Errorf("cannot copy picture to itself (ID %d)", srcID)
+	}
+
+	// Auto-expand destination if needed
+	requiredW := dstX + dstW
+	requiredH := dstY + dstH
+	if requiredW > dstPic.Width || requiredH > dstPic.Height {
+		newW := dstPic.Width
+		newH := dstPic.Height
+		if requiredW > newW {
+			newW = requiredW
+		}
+		if requiredH > newH {
+			newH = requiredH
+		}
+
+		// Create new larger image
+		newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+
+		// Copy old content
+		draw.Draw(newImg, newImg.Bounds(), dstPic.Image, image.Point{}, draw.Src)
+
+		// Update picture
+		dstPic.Image = newImg
+		dstPic.Width = newW
+		dstPic.Height = newH
+	}
+
+	// Nearest-neighbor scaling
+	scaleX := float64(srcW) / float64(dstW)
+	scaleY := float64(srcH) / float64(dstH)
+
+	dstImg := dstPic.Image.(*image.RGBA)
+
+	for dy := 0; dy < dstH; dy++ {
+		for dx := 0; dx < dstW; dx++ {
+			// Map destination pixel to source pixel
+			sx := int(float64(dx) * scaleX)
+			sy := int(float64(dy) * scaleY)
+
+			// Get source pixel
+			srcColor := srcPic.Image.At(srcX+sx, srcY+sy)
+
+			// Set destination pixel (with alpha blending)
+			dstImg.Set(dstX+dx, dstY+dy, srcColor)
+		}
+	}
+
+	return nil
+}

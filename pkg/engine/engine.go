@@ -450,3 +450,14 @@ func (e *Engine) MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) {
 	e.logger.LogDebug("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d)",
 		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
 }
+
+// MoveSPic copies and scales pixels from source picture to destination picture with transparency.
+func (e *Engine) MoveSPic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH int) {
+	err := e.state.MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH)
+	if err != nil {
+		e.logger.LogError("MoveSPic failed: %v", err)
+		return
+	}
+	e.logger.LogDebug("MoveSPic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d,%d,%d)",
+		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH)
+}
