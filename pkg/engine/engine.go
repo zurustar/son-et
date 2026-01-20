@@ -250,8 +250,10 @@ func (e *Engine) RegisterMesBlock(eventType EventType, opcodes []interpreter.OpC
 		seqID := e.RegisterSequence(seq, 0)
 		e.logger.LogDebug("TIME mode: executing sequence %d (blocking)", seqID)
 
-		// TODO: Block until sequence completes (will be implemented in Task 3.4)
-		// For now, just register it
+		// TODO: Block until sequence completes (requires main loop integration)
+		// This will be verified in Task 7.3.8
+		// For now, just register it - blocking behavior depends on how
+		// the main loop calls UpdateVM() while waiting
 	}
 
 	return handlerID

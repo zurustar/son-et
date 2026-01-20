@@ -229,23 +229,30 @@ func (vm *VM) executeWhile(seq *Sequencer, op interpreter.OpCode) error {
 }
 
 // executeWait handles wait operations: wait(n)
+// The wait duration depends on the sequence's timing mode:
+// - TIME mode: n steps × 3 ticks/step = 3n ticks (50ms per step at 60 FPS)
+// - MIDI_TIME mode: n steps × 1 tick/step = n ticks (32nd note per step)
 func (vm *VM) executeWait(seq *Sequencer, op interpreter.OpCode) error {
 	if len(op.Args) != 1 {
 		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpWait requires 1 argument, got %d", len(op.Args))
 	}
 
-	// Evaluate wait count
+	// Evaluate wait count (number of steps)
 	waitValue, err := vm.evaluateValue(seq, op.Args[0])
 	if err != nil {
 		return err
 	}
 
-	// Convert to int
-	waitCount := vm.toInt(waitValue)
-	vm.logger.LogDebug("Wait: %d steps", waitCount)
+	// Convert to int (number of steps)
+	steps := vm.toInt(waitValue)
+
+	// Calculate actual tick count based on stepSize
+	ticks := int(steps) * seq.GetStepSize()
+
+	vm.logger.LogDebug("Wait: %d steps × %d ticks/step = %d ticks", steps, seq.GetStepSize(), ticks)
 
 	// Set wait counter
-	seq.SetWait(int(waitCount))
+	seq.SetWait(ticks)
 
 	return nil
 }

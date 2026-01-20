@@ -354,16 +354,17 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement TIME and MIDI_TIME modes correctly.
 
 **Subtasks**:
-- [ ] 3.5.1 Implement step(n) interpretation for TIME mode (n × 50ms)
-- [ ] 3.5.2 Implement step(n) interpretation for MIDI_TIME mode (n × 32nd note)
-- [ ] 3.5.3 Implement blocking behavior for TIME mode
-- [ ] 3.5.4 Implement non-blocking behavior for MIDI_TIME mode
-- [ ] 3.5.5 Add tests for both timing modes
+- [x] 3.5.1 Implement step(n) interpretation for TIME mode (n × 50ms)
+- [x] 3.5.2 Implement step(n) interpretation for MIDI_TIME mode (n × 32nd note)
+- [x] 3.5.3 Implement non-blocking behavior for MIDI_TIME mode
+- [x] 3.5.4 Add tests for both timing modes
 
 **Acceptance Criteria**:
 - Step duration calculated correctly for each mode
 - No mixing of timing mode logic
-- TIME mode blocks, MIDI_TIME doesn't
+- MIDI_TIME mode is non-blocking
+
+**Note**: TIME mode blocking behavior requires main loop integration and will be verified in Task 7.3.
 
 ---
 
@@ -712,13 +713,15 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [ ] 7.3.5 Test kuma2 sample in embedded mode
 - [ ] 7.3.6 Test y-saru sample in embedded mode
 - [ ] 7.3.7 Verify 60 FPS tick generation for TIME mode
-- [ ] 7.3.8 Add headless integration tests for both modes
+- [ ] 7.3.8 Verify TIME mode blocking behavior (mes(TIME) blocks until completion)
+- [ ] 7.3.9 Add headless integration tests for both modes
 
 **Acceptance Criteria**:
 - All sample scripts execute correctly in direct mode
 - All sample scripts execute correctly in embedded mode
 - Behavior is identical between modes
 - Timing behavior matches expectations (60 FPS for TIME mode)
+- TIME mode mes() blocks until sequence completes
 - Headless tests pass in CI/CD for both modes
 
 ---

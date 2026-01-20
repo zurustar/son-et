@@ -41,13 +41,21 @@ type Sequencer struct {
 // NewSequencer creates a new sequencer with the given commands and mode.
 // parent can be nil for root-level sequences.
 func NewSequencer(commands []interpreter.OpCode, mode TimingMode, parent *Sequencer) *Sequencer {
+	// Set stepSize based on timing mode
+	// TIME mode: 3 ticks per step (50ms at 60 FPS = 16.67ms/tick)
+	// MIDI_TIME mode: 1 tick per step (32nd note)
+	stepSize := 1
+	if mode == TIME {
+		stepSize = 3
+	}
+
 	return &Sequencer{
 		commands:  commands,
 		pc:        0,
 		active:    true,
 		mode:      mode,
 		waitCount: 0,
-		stepSize:  1,
+		stepSize:  stepSize,
 		vars:      make(map[string]any),
 		parent:    parent,
 		id:        0, // Will be assigned by engine
@@ -257,4 +265,9 @@ func (s *Sequencer) GetGroupID() int {
 // SetGroupID sets the group ID
 func (s *Sequencer) SetGroupID(groupID int) {
 	s.groupID = groupID
+}
+
+// GetStepSize returns the step size (ticks per step)
+func (s *Sequencer) GetStepSize() int {
+	return s.stepSize
 }

@@ -121,7 +121,7 @@ func TestUpdateVM_WaitCounter(t *testing.T) {
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(1)}},
-		{Cmd: interpreter.OpWait, Args: []any{int64(3)}}, // Wait 3 ticks
+		{Cmd: interpreter.OpWait, Args: []any{int64(1)}}, // Wait 1 step = 3 ticks (TIME mode)
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("y"), int64(2)}},
 	}
 
@@ -142,7 +142,7 @@ func TestUpdateVM_WaitCounter(t *testing.T) {
 		t.Errorf("Expected x=1, got %v", seq.GetVariable("x"))
 	}
 
-	// Tick 2: Execute wait command, set waitCount=3
+	// Tick 2: Execute wait command, set waitCount=3 (1 step × 3 ticks/step)
 	err = engine.UpdateVM()
 	if err != nil {
 		t.Fatalf("UpdateVM failed: %v", err)
@@ -248,21 +248,21 @@ func TestUpdateVM_SequenceCompletion(t *testing.T) {
 func TestUpdateVM_IndependentExecution(t *testing.T) {
 	engine := NewEngine(nil, nil, nil)
 
-	// Sequence 1: No wait
+	// Sequence 1: No wait (TIME mode)
 	opcodes1 := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("a"), int64(1)}},
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("b"), int64(2)}},
 	}
 
-	// Sequence 2: With wait
+	// Sequence 2: With wait (MIDI_TIME mode for simpler timing)
 	opcodes2 := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("c"), int64(3)}},
-		{Cmd: interpreter.OpWait, Args: []any{int64(2)}},
+		{Cmd: interpreter.OpWait, Args: []any{int64(2)}}, // 2 steps = 2 ticks (MIDI_TIME)
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("d"), int64(4)}},
 	}
 
 	seq1 := NewSequencer(opcodes1, TIME, nil)
-	seq2 := NewSequencer(opcodes2, TIME, nil)
+	seq2 := NewSequencer(opcodes2, MIDI_TIME, nil)
 
 	engine.RegisterSequence(seq1, 0)
 	engine.RegisterSequence(seq2, 0)
