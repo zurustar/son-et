@@ -249,12 +249,12 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Generate Go source code from OpCode for build-time compilation.
 
 **Subtasks**:
-- [ ] 2.5.1 Implement OpCodeGenerator (serialize OpCode to Go source)
-- [ ] 2.5.2 Implement function OpCode serialization
-- [ ] 2.5.3 Implement variable declaration serialization
-- [ ] 2.5.4 Implement asset reference tracking
-- [ ] 2.5.5 Implement #info metadata serialization
-- [ ] 2.5.6 Add tests for OpCode serialization
+- [x] 2.5.1 Implement OpCodeGenerator (serialize OpCode to Go source)
+- [x] 2.5.2 Implement function OpCode serialization
+- [x] 2.5.3 Implement variable declaration serialization
+- [x] 2.5.4 Implement asset reference tracking
+- [x] 2.5.5 Implement #info metadata serialization
+- [x] 2.5.6 Add tests for OpCode serialization
 
 **Acceptance Criteria**:
 - OpCode serializes to valid Go source code
