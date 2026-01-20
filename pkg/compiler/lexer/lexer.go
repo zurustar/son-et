@@ -176,11 +176,26 @@ func (l *Lexer) readIdentifier() string {
 	return l.input[position:l.position]
 }
 
-// readNumber reads a number (integer or float).
+// readNumber reads a number (integer, float, or hexadecimal).
 func (l *Lexer) readNumber(line, column int) token.Token {
 	position := l.position
 	isFloat := false
 
+	// Check for hexadecimal (0x or 0X)
+	if l.ch == '0' && (l.peekChar() == 'x' || l.peekChar() == 'X') {
+		l.readChar() // consume '0'
+		l.readChar() // consume 'x' or 'X'
+
+		// Read hex digits
+		for isHexDigit(l.ch) {
+			l.readChar()
+		}
+
+		literal := l.input[position:l.position]
+		return token.Token{Type: token.INT_LIT, Literal: literal, Line: line, Column: column}
+	}
+
+	// Read decimal digits
 	for isDigit(l.ch) {
 		l.readChar()
 	}
@@ -263,4 +278,14 @@ func isLetter(ch byte) bool {
 // isDigit checks if a character is a digit.
 func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
+}
+
+// isHexDigit checks if a character is a hexadecimal digit.
+func isHexDigit(ch byte) bool {
+	return ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F')
+}
+
+// GetSource returns the source code as a string
+func (l *Lexer) GetSource() string {
+	return l.input
 }

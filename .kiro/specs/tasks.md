@@ -268,6 +268,34 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
+### Task 2.6: step(n) { ... } Block Syntax Support
+**Goal**: Implement block-style step syntax for timed loops.
+
+**Subtasks**:
+- [x] 2.6.1 Add StepBlockStatement to AST
+- [x] 2.6.2 Implement parser support for step(n) { ... } syntax
+- [x] 2.6.3 Implement CodeGen for StepBlockStatement (convert to flat sequence with waits)
+- [x] 2.6.4 Add tests for step block parsing
+- [x] 2.6.5 Add tests for step block code generation
+
+**Acceptance Criteria**:
+- step(n) { ... } syntax parses correctly
+- Block body executes as flat sequence with waits between commands
+- Empty steps (from commas) generate additional waits
+- end_step stops code generation
+- Compatible with both TIME and MIDI_TIME modes
+- KUMA2 sample script works correctly
+
+**Note**: This syntax is used in legacy FILLY scripts like KUMA2. The block generates a flat sequence: cmd1, wait(n), cmd2, wait(n), ... instead of a loop.
+
+**Implementation Notes**:
+- Changed from loop-based to flat sequence approach
+- Modified executeWait() to not decrement PC (allows natural advancement)
+- Modified IsComplete() to check IsWaiting() first
+- All tests passing
+
+---
+
 ## Phase 3: Execution Layer
 
 ### Task 3.1: VM Core
@@ -368,6 +396,35 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
+### Task 3.6: Function Return Values
+**Goal**: Implement function return value handling for variable assignment.
+
+**Subtasks**:
+- [x] 3.6.1 Modify built-in functions to return values via special variable
+- [x] 3.6.2 Implement return value capture in OpCall handler
+- [x] 3.6.3 Implement return value assignment in OpAssign handler (already working via evaluateValue)
+- [x] 3.6.4 Support function calls in expressions (e.g., x = CreatePic(w, h) + 1)
+- [x] 3.6.5 Add tests for return value assignment
+- [x] 3.6.6 Add tests for return values in expressions
+
+**Acceptance Criteria**:
+- Built-in functions return values correctly (LoadPic, CreatePic, OpenWin, etc.) ✅
+- Return values can be assigned to variables ✅
+- Return values can be used in expressions ✅
+- User-defined functions can return values (not yet implemented, but mechanism is ready)
+- test_drawing sample works correctly with canvas = CreatePic(400, 300) (blocked by preprocessor issue)
+
+**Implementation Notes**:
+- Used special variable `__return__` to pass return values
+- Modified `evaluateExpression` to capture return values from `OpCall`
+- Return value is cleared after reading to prevent stale values
+- All tests passing in `pkg/engine/return_value_test.go`
+- Functions modified: LoadPic, CreatePic, PicWidth, PicHeight, OpenWin, GetPicNo, PutCast, LoadRsc, GetColor
+
+**Note**: This enables `canvas = CreatePic(400, 300)` and similar patterns used in sample scripts.
+
+---
+
 ## Phase 4: Graphics Foundation
 
 ### Task 4.1: Virtual Desktop
@@ -440,12 +497,12 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement sprite creation and management.
 
 **Subtasks**:
-- [ ] 4.4.1 Define Cast struct (ID, PictureID, Position, Clipping, Transparency)
-- [ ] 4.4.2 Implement PutCast (create sprite with clipping)
-- [ ] 4.4.3 Implement MoveCast (update position)
-- [ ] 4.4.4 Implement DelCast (remove sprite)
-- [ ] 4.4.5 Implement z-ordering (creation order)
-- [ ] 4.4.6 Add tests for cast operations
+- [x] 4.4.1 Define Cast struct (ID, PictureID, Position, Clipping, Transparency)
+- [x] 4.4.2 Implement PutCast (create sprite with clipping)
+- [x] 4.4.3 Implement MoveCast (update position)
+- [x] 4.4.4 Implement DelCast (remove sprite)
+- [x] 4.4.5 Implement z-ordering (creation order)
+- [x] 4.4.6 Add tests for cast operations
 
 **Acceptance Criteria**:
 - Sprites created with transparency and clipping
@@ -459,18 +516,21 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement clean renderer with mock support.
 
 **Subtasks**:
-- [ ] 4.5.1 Implement EbitenRenderer (production)
-- [ ] 4.5.2 Enhance MockRenderer (testing)
-- [ ] 4.5.3 Implement rendering pipeline (desktop → windows → casts)
-- [ ] 4.5.4 Implement double buffering
-- [ ] 4.5.5 Implement render mutex for thread safety
-- [ ] 4.5.6 Add tests for rendering
+- [x] 4.5.1 Implement EbitenRenderer (production)
+- [x] 4.5.1 Implement EbitenRenderer (production)
+- [x] 4.5.2 Enhance MockRenderer (testing)
+- [x] 4.5.3 Implement rendering pipeline (desktop → windows → casts)
+- [x] 4.5.4 Implement double buffering
+- [x] 4.5.5 Implement render mutex for thread safety
+- [x] 4.5.6 Implement classic desktop-style window decorations (title bar, 3D borders)
+- [x] 4.5.7 Add tests for rendering
 
 **Acceptance Criteria**:
 - Renderer reads state but doesn't modify it
 - MockRenderer enables headless testing
 - Rendering is stateless
 - Thread-safe rendering
+- Windows display with classic desktop-style decorations (blue title bar, gray 3D borders)
 
 ---
 
@@ -480,22 +540,24 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement MIDI playback with tick generation using MeltySynth.
 
 **Subtasks**:
-- [ ] 5.1.1 Integrate MeltySynth library (github.com/sinshu/go-meltysynth/meltysynth)
-- [ ] 5.1.2 Implement SoundFont (.sf2) loading
-- [ ] 5.1.3 Implement PlayMIDI using AssetLoader (supports both filesystem and embedded)
-- [ ] 5.1.4 Implement MIDI file parsing (tempo map, PPQ extraction)
-- [ ] 5.1.5 Implement MidiStream (io.Reader) with MeltySynth sequencer
-- [ ] 5.1.6 Implement wall-clock time based tick calculation
-- [ ] 5.1.7 Implement sequential tick delivery (no skipping)
-- [ ] 5.1.8 Implement MIDI end detection (currentTick >= totalTicks)
-- [ ] 5.1.9 Implement MIDI_END event triggering
-- [ ] 5.1.10 Add tests for MIDI playback with both AssetLoader implementations
-- [ ] 5.1.11 Add tests for tempo changes and tick accuracy
+- [x] 5.1.1 Integrate MeltySynth library (github.com/sinshu/go-meltysynth/meltysynth)
+- [x] 5.1.2 Implement SoundFont (.sf2) loading
+- [x] 5.1.2.1 Implement automatic SoundFont discovery and loading on engine initialization
+- [x] 5.1.3 Implement PlayMIDI using AssetLoader (supports both filesystem and embedded)
+- [x] 5.1.4 Implement MIDI file parsing (tempo map, PPQ extraction)
+- [x] 5.1.5 Implement MidiStream (io.Reader) with MeltySynth sequencer
+- [x] 5.1.6 Implement wall-clock time based tick calculation
+- [x] 5.1.7 Implement sequential tick delivery (no skipping)
+- [x] 5.1.8 Implement MIDI end detection (currentTick >= totalTicks)
+- [x] 5.1.9 Implement MIDI_END event triggering
+- [x] 5.1.10 Add tests for MIDI playback with both AssetLoader implementations
+- [x] 5.1.11 Add tests for tempo changes and tick accuracy
 
 **Acceptance Criteria**:
 - MIDI playback runs in background goroutine (audio thread)
 - MIDI loading works via AssetLoader (both modes)
 - SoundFont (.sf2) files load correctly
+- SoundFont auto-loads from project directory (default.sf2, GeneralUser-GS.sf2, or *.sf2)
 - Tick calculation uses wall-clock time (not sample counting)
 - Ticks delivered sequentially without skipping
 - Tempo changes handled correctly via tempo map
@@ -509,10 +571,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement WAV playback.
 
 **Subtasks**:
-- [ ] 5.2.1 Implement PlayWAVE using AssetLoader (supports both filesystem and embedded)
-- [ ] 5.2.2 Implement concurrent playback support
-- [ ] 5.2.3 Implement resource preloading (LoadRsc, PlayRsc, DelRsc)
-- [ ] 5.2.4 Add tests for WAV playback with both AssetLoader implementations
+- [x] 5.2.1 Implement PlayWAVE using AssetLoader (supports both filesystem and embedded)
+- [x] 5.2.2 Implement concurrent playback support
+- [x] 5.2.3 Implement resource preloading (LoadRsc, PlayRsc, DelRsc)
+- [x] 5.2.4 Add tests for WAV playback with both AssetLoader implementations
 
 **Acceptance Criteria**:
 - WAV playback runs asynchronously
@@ -528,11 +590,11 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement text drawing on pictures.
 
 **Subtasks**:
-- [ ] 6.1.1 Implement SetFont (load font)
-- [ ] 6.1.2 Implement TextWrite (draw text)
-- [ ] 6.1.3 Implement TextColor, BgColor (set colors)
-- [ ] 6.1.4 Implement BackMode (transparent background)
-- [ ] 6.1.5 Add tests for text rendering
+- [x] 6.1.1 Implement SetFont (load font)
+- [x] 6.1.2 Implement TextWrite (draw text)
+- [x] 6.1.3 Implement TextColor, BgColor (set colors)
+- [x] 6.1.4 Implement BackMode (transparent background)
+- [x] 6.1.5 Add tests for text rendering
 
 **Acceptance Criteria**:
 - Text draws correctly on pictures
@@ -545,18 +607,21 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement vector drawing primitives.
 
 **Subtasks**:
-- [ ] 6.2.1 Implement DrawLine
-- [ ] 6.2.2 Implement DrawCircle
-- [ ] 6.2.3 Implement DrawRect
-- [ ] 6.2.4 Implement SetLineSize, SetPaintColor
-- [ ] 6.2.5 Implement raster operations (ROP)
-- [ ] 6.2.6 Implement GetColor (pixel query)
-- [ ] 6.2.7 Add tests for drawing functions
+- [x] 6.2.1 Implement DrawLine
+- [x] 6.2.2 Implement DrawCircle
+- [x] 6.2.3 Implement DrawRect
+- [x] 6.2.4 Implement SetLineSize, SetPaintColor
+- [x] 6.2.5 Implement raster operations (ROP)
+- [x] 6.2.6 Implement GetColor (pixel query)
+- [x] 6.2.7 Add tests for drawing functions
 
 **Acceptance Criteria**:
 - Drawing primitives work correctly
-- Fill modes supported
-- Raster operations work
+- Fill modes supported (outline, hatch, solid)
+- Raster operations work (COPYPEN, XORPEN, MERGEPEN, NOTCOPYPEN, MASKPEN)
+- All 13 drawing tests pass
+
+**Note**: Function return values (Task 3.6) required for full test_drawing sample compatibility.
 
 ---
 
@@ -802,8 +867,8 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Implementation Order Rationale**:
 1. **Foundation first**: Core data structures, AssetLoader, and array support enable everything else
 2. **Infrastructure early**: Logging and testing infrastructure needed throughout
-3. **Compilation before execution**: Preprocessor → Lexer → Parser → OpCode; OpCode serialization enables embedded mode
-4. **Execution core early**: mes() is central to FILLY, implement early
+3. **Compilation before execution**: Preprocessor → Lexer → Parser → OpCode; OpCode serialization enables embedded mode; step(n) { ... } syntax support
+4. **Execution core early**: mes() is central to FILLY, implement early; function return values enable variable assignment
 5. **Graphics layer by layer**: Desktop → Picture → Window → Cast (dependency order); LoadPic uses AssetLoader
 6. **Audio after graphics**: Audio is independent but benefits from working graphics; uses AssetLoader
 7. **Runtime features last**: These depend on working execution and graphics; includes array operations
@@ -821,3 +886,8 @@ This task list implements the requirements defined in [requirements.md](requirem
 - Don't copy implementation details blindly
 - Focus on simplicity and correctness
 - Follow design.md principles
+
+**Recent Additions**:
+- **Task 2.6**: step(n) { ... } block syntax support (required for KUMA2 sample)
+- **Task 3.6**: Function return value handling (required for test_drawing sample)
+- **Task 6.2**: Completed drawing functions implementation

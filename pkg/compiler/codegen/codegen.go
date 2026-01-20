@@ -40,6 +40,8 @@ func (g *Generator) Generate(program *ast.Program) []interpreter.OpCode {
 // generateStatement converts a statement to OpCodes.
 func (g *Generator) generateStatement(stmt ast.Statement) []interpreter.OpCode {
 	switch s := stmt.(type) {
+	case *ast.VarDeclaration:
+		return g.generateVarDeclaration(s)
 	case *ast.AssignStatement:
 		return g.generateAssignStatement(s)
 	case *ast.ExpressionStatement:
@@ -100,6 +102,16 @@ func (g *Generator) generateAssignStatement(stmt *ast.AssignStatement) []interpr
 		Cmd:  interpreter.OpAssign,
 		Args: []any{interpreter.Variable(ident.Value), value},
 	}}
+}
+
+// generateVarDeclaration converts a variable declaration to OpCode.
+// For now, variable declarations are handled implicitly by the VM
+// (variables are created on first assignment), so we just return empty opcodes.
+func (g *Generator) generateVarDeclaration(stmt *ast.VarDeclaration) []interpreter.OpCode {
+	// Variable declarations don't generate opcodes in the current VM design
+	// Variables are created dynamically on first assignment
+	// Arrays with explicit sizes could be initialized here in the future
+	return []interpreter.OpCode{}
 }
 
 // generateExpressionStatement converts an expression statement to OpCode.
@@ -276,6 +288,9 @@ func (g *Generator) generateFunctionStatement(stmt *ast.FunctionStatement) []int
 // generateMesStatement converts a mes() block to OpCode.
 func (g *Generator) generateMesStatement(stmt *ast.MesStatement) []interpreter.OpCode {
 	eventType := g.eventTypeToString(stmt.EventType)
+
+	// Use regular block generation for mes() blocks
+	// Commas in mes() blocks are handled only within step() blocks
 	body := g.generateBlockStatement(stmt.Body)
 
 	return []interpreter.OpCode{{
@@ -285,13 +300,95 @@ func (g *Generator) generateMesStatement(stmt *ast.MesStatement) []interpreter.O
 }
 
 // generateStepStatement converts a step() call to OpCode.
+// Simple form: step(n); → OpWait(n)
+// Block form: step(n) { cmd1;, cmd2;,, cmd3; } → Flat sequence with waits
+//
+// Timing: step(n) = n × 50ms = n × 0.05 seconds
+// The VM will convert this to ticks based on the current frame rate
 func (g *Generator) generateStepStatement(stmt *ast.StepStatement) []interpreter.OpCode {
 	count := g.generateExpression(stmt.Count)
 
-	return []interpreter.OpCode{{
-		Cmd:  interpreter.OpWait,
+	// Simple form: step(n);
+	if stmt.Body == nil {
+		// Pass step count directly to VM - it will convert to ticks
+		// step(n) = n × 50ms
+		return []interpreter.OpCode{{
+			Cmd:  interpreter.OpWait,
+			Args: []any{count},
+		}}
+	}
+
+	// Block form: step(n) { ... }
+	// Generate flat sequence with SetStep first, then commands with Wait(comma_count)
+	// The comma syntax (;,) means "execute and wait 1 step"
+	// Multiple commas (;,,) mean "wait multiple steps" (Wait(2))
+	var opcodes []interpreter.OpCode
+
+	// First, generate SetStep to set the step duration
+	setStepOp := interpreter.OpCode{
+		Cmd:  interpreter.OpSetStep,
 		Args: []any{count},
-	}}
+	}
+	opcodes = append(opcodes, setStepOp)
+
+	i := 0
+	for i < len(stmt.Body.Statements) {
+		cmd := stmt.Body.Statements[i]
+
+		// Check for empty statement (from commas) - count consecutive commas
+		if exprStmt, ok := cmd.(*ast.ExpressionStatement); ok && exprStmt.Expression == nil {
+			// Count consecutive empty statements (commas)
+			waitCount := 0
+			for i < len(stmt.Body.Statements) {
+				if exprStmt, ok := stmt.Body.Statements[i].(*ast.ExpressionStatement); ok && exprStmt.Expression == nil {
+					waitCount++
+					i++
+				} else {
+					break
+				}
+			}
+
+			// Generate Wait with the count
+			opcodes = append(opcodes, interpreter.OpCode{
+				Cmd:  interpreter.OpWait,
+				Args: []any{int64(waitCount)},
+			})
+			continue
+		}
+
+		// Check for end_step - it's just a marker, no opcode needed
+		if callExpr, ok := cmd.(*ast.ExpressionStatement); ok {
+			if call, ok := callExpr.Expression.(*ast.CallExpression); ok {
+				if ident, ok := call.Function.(*ast.Identifier); ok && ident.Value == "end_step" {
+					// end_step just marks the end, no opcode needed
+					break
+				}
+			}
+		}
+
+		// Generate command OpCode
+		cmdOps := g.generateStatement(cmd)
+		opcodes = append(opcodes, cmdOps...)
+
+		i++
+	}
+
+	return opcodes
+}
+
+// multiplyExpression multiplies an expression by a constant.
+// If the expression is a literal int, returns the product as a literal.
+// Otherwise, returns a binary operation OpCode.
+func (g *Generator) multiplyExpression(expr any, multiplier int) any {
+	// If expr is already a literal int, multiply it directly
+	if val, ok := expr.(int64); ok {
+		return val * int64(multiplier)
+	}
+
+	// Otherwise, return the expression as-is and let runtime handle it
+	// For now, we assume step() always has a literal argument
+	// TODO: Support dynamic expressions in step()
+	return expr
 }
 
 // generateBlockStatement converts a block statement to OpCodes.
@@ -299,6 +396,11 @@ func (g *Generator) generateBlockStatement(stmt *ast.BlockStatement) []interpret
 	var opcodes []interpreter.OpCode
 
 	for _, s := range stmt.Statements {
+		// Skip empty statements (from commas outside of step() blocks)
+		if exprStmt, ok := s.(*ast.ExpressionStatement); ok && exprStmt.Expression == nil {
+			continue
+		}
+
 		codes := g.generateStatement(s)
 		opcodes = append(opcodes, codes...)
 	}

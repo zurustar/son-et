@@ -10,18 +10,55 @@ import (
 
 // MockRenderer is a test implementation of Renderer
 type MockRenderer struct {
-	RenderCount int
-	ClearCount  int
-	LastColor   uint32
+	RenderCount     int
+	ClearCount      int
+	LastColor       uint32
+	RenderedWindows []int
+	RenderedCasts   []int
 }
 
 func (m *MockRenderer) RenderFrame(screen image.Image, state *EngineState) {
 	m.RenderCount++
+
+	if state == nil {
+		return
+	}
+
+	// Lock state for reading
+	state.renderMutex.Lock()
+	defer state.renderMutex.Unlock()
+
+	// Record which windows were rendered
+	m.RenderedWindows = make([]int, 0)
+	windows := state.GetWindows()
+	for _, win := range windows {
+		if win.Visible {
+			m.RenderedWindows = append(m.RenderedWindows, win.ID)
+		}
+	}
+
+	// Record which casts were rendered
+	m.RenderedCasts = make([]int, 0)
+	casts := state.GetCasts()
+	for _, cast := range casts {
+		if cast.Visible {
+			m.RenderedCasts = append(m.RenderedCasts, cast.ID)
+		}
+	}
 }
 
 func (m *MockRenderer) Clear(c uint32) {
 	m.ClearCount++
 	m.LastColor = c
+}
+
+// Reset resets the mock renderer state.
+func (m *MockRenderer) Reset() {
+	m.RenderCount = 0
+	m.ClearCount = 0
+	m.LastColor = 0
+	m.RenderedWindows = make([]int, 0)
+	m.RenderedCasts = make([]int, 0)
 }
 
 // MockAssetLoader is a test implementation of AssetLoader

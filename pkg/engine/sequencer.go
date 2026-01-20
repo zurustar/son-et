@@ -25,9 +25,9 @@ type Sequencer struct {
 	active   bool                 // Is sequence active?
 
 	// Timing state
-	mode      TimingMode // TIME or MIDI_TIME
-	waitCount int        // Steps remaining in current wait
-	stepSize  int        // Duration of one step (in ticks)
+	mode         TimingMode // TIME or MIDI_TIME
+	waitCount    int        // Ticks remaining in current wait
+	ticksPerStep int        // Ticks per step (set by SetStep, used by Wait)
 
 	// Scope state
 	vars   map[string]any // Variables in this scope (case-insensitive keys)
@@ -41,25 +41,17 @@ type Sequencer struct {
 // NewSequencer creates a new sequencer with the given commands and mode.
 // parent can be nil for root-level sequences.
 func NewSequencer(commands []interpreter.OpCode, mode TimingMode, parent *Sequencer) *Sequencer {
-	// Set stepSize based on timing mode
-	// TIME mode: 3 ticks per step (50ms at 60 FPS = 16.67ms/tick)
-	// MIDI_TIME mode: 1 tick per step (32nd note)
-	stepSize := 1
-	if mode == TIME {
-		stepSize = 3
-	}
-
 	return &Sequencer{
-		commands:  commands,
-		pc:        0,
-		active:    true,
-		mode:      mode,
-		waitCount: 0,
-		stepSize:  stepSize,
-		vars:      make(map[string]any),
-		parent:    parent,
-		id:        0, // Will be assigned by engine
-		groupID:   0, // Will be assigned by engine
+		commands:     commands,
+		pc:           0,
+		active:       true,
+		mode:         mode,
+		waitCount:    0,
+		ticksPerStep: 3, // Default: 1 step = 50ms = 3 ticks at 60 FPS
+		vars:         make(map[string]any),
+		parent:       parent,
+		id:           0, // Will be assigned by engine
+		groupID:      0, // Will be assigned by engine
 	}
 }
 
@@ -229,8 +221,19 @@ func (s *Sequencer) IncrementPC() {
 	s.pc++
 }
 
+// DecrementPC decrements the program counter
+func (s *Sequencer) DecrementPC() {
+	if s.pc > 0 {
+		s.pc--
+	}
+}
+
 // IsComplete returns whether the sequence has completed execution
 func (s *Sequencer) IsComplete() bool {
+	// If we're waiting, we're not complete yet
+	if s.IsWaiting() {
+		return false
+	}
 	return s.pc >= len(s.commands)
 }
 
@@ -267,7 +270,12 @@ func (s *Sequencer) SetGroupID(groupID int) {
 	s.groupID = groupID
 }
 
-// GetStepSize returns the step size (ticks per step)
-func (s *Sequencer) GetStepSize() int {
-	return s.stepSize
+// GetTicksPerStep returns the ticks per step
+func (s *Sequencer) GetTicksPerStep() int {
+	return s.ticksPerStep
+}
+
+// SetTicksPerStep sets the ticks per step
+func (s *Sequencer) SetTicksPerStep(ticks int) {
+	s.ticksPerStep = ticks
 }

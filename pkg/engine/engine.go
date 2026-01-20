@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"image/color"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,10 @@ var ErrTerminated = errors.New("engine terminated")
 type Engine struct {
 	state             *EngineState
 	logger            *Logger
+	midiPlayer        *MIDIPlayer
+	wavPlayer         *WAVPlayer
+	textRenderer      *TextRenderer
+	drawingContext    *DrawingContext
 	headless          bool
 	programTerminated atomic.Bool
 	timeout           time.Duration
@@ -26,12 +31,26 @@ func NewEngine(renderer Renderer, assetLoader AssetLoader, imageDecoder ImageDec
 	state := NewEngineState(renderer, assetLoader, imageDecoder)
 	logger := NewLogger(DebugLevelError)
 
-	return &Engine{
+	engine := &Engine{
 		state:    state,
 		logger:   logger,
 		headless: false,
 		timeout:  0,
 	}
+
+	// Create MIDI player
+	engine.midiPlayer = NewMIDIPlayer(engine)
+
+	// Create WAV player
+	engine.wavPlayer = NewWAVPlayer(engine)
+
+	// Create text renderer
+	engine.textRenderer = NewTextRenderer(engine)
+
+	// Create drawing context
+	engine.drawingContext = NewDrawingContext()
+
+	return engine
 }
 
 // SetHeadless enables or disables headless mode.
@@ -181,7 +200,8 @@ func (e *Engine) Render() {
 		return
 	}
 
-	// TODO: Actual rendering (Phase 4)
+	// Renderer is set externally (in main.go)
+	// For now, just log
 	e.logger.LogDebug("Render frame %d", e.state.GetTickCount())
 }
 
@@ -391,16 +411,27 @@ func (e *Engine) AllSequencesComplete() bool {
 
 	// If no sequences exist, consider it complete
 	if len(sequencers) == 0 {
+		e.logger.LogDebug("AllSequencesComplete: no sequences exist")
 		return true
 	}
 
 	// Check if all sequences are either inactive or complete
+	activeCount := 0
+	completeCount := 0
 	for _, seq := range sequencers {
-		if seq.IsActive() && !seq.IsComplete() {
-			return false
+		if seq.IsActive() {
+			activeCount++
+			if !seq.IsComplete() {
+				e.logger.LogDebug("AllSequencesComplete: sequence %d is active and not complete (pc=%d/%d, waiting=%v)",
+					seq.GetID(), seq.GetPC(), len(seq.commands), seq.IsWaiting())
+				return false
+			} else {
+				completeCount++
+			}
 		}
 	}
 
+	e.logger.LogDebug("AllSequencesComplete: %d active sequences, %d complete", activeCount, completeCount)
 	return true
 }
 
@@ -441,14 +472,14 @@ func (e *Engine) PicHeight(picID int) int {
 }
 
 // MovePic copies pixels from source picture to destination picture with transparency.
-func (e *Engine) MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) {
-	err := e.state.MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+func (e *Engine) MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode int) {
+	err := e.state.MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
 	if err != nil {
 		e.logger.LogError("MovePic failed: %v", err)
 		return
 	}
-	e.logger.LogDebug("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d)",
-		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+	e.logger.LogDebug("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d) mode=%d",
+		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
 }
 
 // MoveSPic copies and scales pixels from source picture to destination picture with transparency.
@@ -476,20 +507,24 @@ func (e *Engine) ReversePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int
 // OpenWin creates a new window and returns its ID.
 func (e *Engine) OpenWin(picID, x, y, width, height, picX, picY, color int) int {
 	winID := e.state.OpenWindow(picID, x, y, width, height, picX, picY, color)
-	e.logger.LogDebug("Opened window %d: pic=%d pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d) color=0x%X",
-		winID, picID, x, y, width, height, picX, picY, color)
+	// Get the actual window to log its real dimensions
+	win := e.state.GetWindow(winID)
+	if win != nil {
+		e.logger.LogDebug("Opened window %d: pic=%d pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d) color=0x%X",
+			winID, win.PictureID, win.X, win.Y, win.Width, win.Height, win.PicX, win.PicY, color)
+	}
 	return winID
 }
 
 // MoveWin updates window properties.
-func (e *Engine) MoveWin(id, x, y, width, height, picX, picY int) {
-	err := e.state.MoveWindow(id, x, y, width, height, picX, picY)
+func (e *Engine) MoveWin(id, picID, x, y, width, height, picX, picY int) {
+	err := e.state.MoveWindow(id, picID, x, y, width, height, picX, picY)
 	if err != nil {
 		e.logger.LogError("MoveWin failed: %v", err)
 		return
 	}
-	e.logger.LogDebug("Moved window %d: pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d)",
-		id, x, y, width, height, picX, picY)
+	e.logger.LogDebug("Moved window %d: pic=%d pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d)",
+		id, picID, x, y, width, height, picX, picY)
 }
 
 // CloseWin closes a window.
@@ -552,4 +587,195 @@ func (e *Engine) StopWindowDrag() {
 // GetDraggedWindowID returns the ID of the window currently being dragged.
 func (e *Engine) GetDraggedWindowID() int {
 	return e.state.GetDraggedWindowID()
+}
+
+// PutCast creates a new cast (sprite) and returns its ID.
+func (e *Engine) PutCast(windowID, picID, x, y, srcX, srcY, width, height int) int {
+	castID := e.state.PutCast(windowID, picID, x, y, srcX, srcY, width, height)
+	e.logger.LogDebug("Created cast %d: win=%d pic=%d pos=(%d,%d) clip=(%d,%d,%d,%d)",
+		castID, windowID, picID, x, y, srcX, srcY, width, height)
+	return castID
+}
+
+// MoveCast updates cast position and optionally clipping.
+func (e *Engine) MoveCast(id, x, y, srcX, srcY, width, height int) {
+	err := e.state.MoveCast(id, x, y, srcX, srcY, width, height)
+	if err != nil {
+		e.logger.LogError("MoveCast failed: %v", err)
+		return
+	}
+	e.logger.LogDebug("Moved cast %d: pos=(%d,%d) clip=(%d,%d,%d,%d)",
+		id, x, y, srcX, srcY, width, height)
+}
+
+// DelCast removes a cast.
+func (e *Engine) DelCast(id int) {
+	e.state.DeleteCast(id)
+	e.logger.LogDebug("Deleted cast %d", id)
+}
+
+// LoadSoundFont loads a SoundFont (.sf2) file for MIDI synthesis.
+func (e *Engine) LoadSoundFont(filename string) error {
+	return e.midiPlayer.LoadSoundFont(filename)
+}
+
+// PlayMIDI starts MIDI playback.
+// Returns immediately (non-blocking).
+func (e *Engine) PlayMIDI(filename string) error {
+	return e.midiPlayer.PlayMIDI(filename)
+}
+
+// StopMIDI stops MIDI playback.
+func (e *Engine) StopMIDI() {
+	e.midiPlayer.Stop()
+}
+
+// IsMIDIPlaying returns whether MIDI is currently playing.
+func (e *Engine) IsMIDIPlaying() bool {
+	return e.midiPlayer.IsPlaying()
+}
+
+// PlayWAVE plays a WAV file asynchronously.
+func (e *Engine) PlayWAVE(filename string) error {
+	return e.wavPlayer.PlayWAVE(filename)
+}
+
+// LoadRsc preloads a WAV file into memory.
+// Returns a resource ID for use with PlayRsc.
+func (e *Engine) LoadRsc(filename string) (int, error) {
+	return e.wavPlayer.LoadRsc(filename)
+}
+
+// PlayRsc plays a preloaded WAV resource.
+func (e *Engine) PlayRsc(resourceID int) error {
+	return e.wavPlayer.PlayRsc(resourceID)
+}
+
+// DelRsc deletes a preloaded WAV resource.
+func (e *Engine) DelRsc(resourceID int) {
+	e.wavPlayer.DelRsc(resourceID)
+}
+
+// StopAllWAV stops all active WAV players.
+func (e *Engine) StopAllWAV() {
+	e.wavPlayer.StopAll()
+}
+
+// CleanupWAV removes finished WAV players.
+func (e *Engine) CleanupWAV() {
+	e.wavPlayer.Cleanup()
+}
+
+// SetFont sets the current font for text rendering.
+func (e *Engine) SetFont(size int, name string, charset int) {
+	e.textRenderer.SetFont(size, name, charset)
+}
+
+// TextColor sets the text color.
+func (e *Engine) TextColor(r, g, b int) {
+	e.textRenderer.SetTextColor(r, g, b)
+}
+
+// BgColor sets the background color for text.
+func (e *Engine) BgColor(r, g, b int) {
+	e.textRenderer.SetBgColor(r, g, b)
+}
+
+// BackMode sets the background mode (0=transparent, 1=opaque).
+func (e *Engine) BackMode(mode int) {
+	e.textRenderer.SetBackMode(mode)
+}
+
+// TextWrite draws text on a picture.
+func (e *Engine) TextWrite(text string, picID, x, y int) error {
+	return e.textRenderer.TextWrite(text, picID, x, y)
+}
+
+// MeasureText returns the width and height of text in pixels.
+func (e *Engine) MeasureText(text string) (int, int) {
+	return e.textRenderer.MeasureText(text)
+}
+
+// SetLineSize sets the line width for drawing operations.
+func (e *Engine) SetLineSize(size int) {
+	e.drawingContext.SetLineSize(size)
+}
+
+// SetPaintColor sets the drawing color.
+func (e *Engine) SetPaintColor(colorValue int) {
+	// Convert integer color (0xRRGGBB) to color.Color
+	r := uint8((colorValue >> 16) & 0xFF)
+	g := uint8((colorValue >> 8) & 0xFF)
+	b := uint8(colorValue & 0xFF)
+	e.drawingContext.SetPaintColor(color.RGBA{R: r, G: g, B: b, A: 255})
+}
+
+// SetROP sets the raster operation mode.
+func (e *Engine) SetROP(mode int) {
+	e.drawingContext.SetROP(ROPMode(mode))
+}
+
+// DrawLine draws a line on a picture.
+func (e *Engine) DrawLine(picID, x1, y1, x2, y2 int) error {
+	pic := e.state.GetPicture(picID)
+	if pic == nil {
+		return NewRuntimeError("DrawLine", "", "Picture %d not found", picID)
+	}
+
+	// Ensure picture is RGBA
+	rgba := e.state.EnsureRGBA(pic.Image)
+	e.drawingContext.DrawLine(rgba, x1, y1, x2, y2)
+
+	e.logger.LogDebug("DrawLine: pic=%d (%d,%d) -> (%d,%d)", picID, x1, y1, x2, y2)
+	return nil
+}
+
+// DrawCircle draws a circle on a picture.
+func (e *Engine) DrawCircle(picID, x, y, radius, fillMode int) error {
+	pic := e.state.GetPicture(picID)
+	if pic == nil {
+		return NewRuntimeError("DrawCircle", "", "Picture %d not found", picID)
+	}
+
+	// Ensure picture is RGBA
+	rgba := e.state.EnsureRGBA(pic.Image)
+	e.drawingContext.DrawCircle(rgba, x, y, radius, fillMode)
+
+	e.logger.LogDebug("DrawCircle: pic=%d center=(%d,%d) radius=%d fill=%d", picID, x, y, radius, fillMode)
+	return nil
+}
+
+// DrawRect draws a rectangle on a picture.
+func (e *Engine) DrawRect(picID, x1, y1, x2, y2, fillMode int) error {
+	pic := e.state.GetPicture(picID)
+	if pic == nil {
+		return NewRuntimeError("DrawRect", "", "Picture %d not found", picID)
+	}
+
+	// Ensure picture is RGBA
+	rgba := e.state.EnsureRGBA(pic.Image)
+	e.drawingContext.DrawRect(rgba, x1, y1, x2, y2, fillMode)
+
+	e.logger.LogDebug("DrawRect: pic=%d (%d,%d) -> (%d,%d) fill=%d", picID, x1, y1, x2, y2, fillMode)
+	return nil
+}
+
+// GetColor returns the color of a pixel at (x, y) on a picture.
+// Returns the color as an integer (0xRRGGBB).
+func (e *Engine) GetColor(picID, x, y int) (int, error) {
+	pic := e.state.GetPicture(picID)
+	if pic == nil {
+		return 0, NewRuntimeError("GetColor", "", "Picture %d not found", picID)
+	}
+
+	// Ensure picture is RGBA
+	rgba := e.state.EnsureRGBA(pic.Image)
+	c := GetColor(rgba, x, y)
+
+	// Convert color to integer (0xRRGGBB)
+	r, g, b, _ := c.RGBA()
+	colorValue := int((r>>8)<<16 | (g>>8)<<8 | (b >> 8))
+
+	e.logger.LogDebug("GetColor: pic=%d (%d,%d) = 0x%06X", picID, x, y, colorValue)
+	return colorValue, nil
 }

@@ -33,7 +33,8 @@ type EngineState struct {
 	casts    map[int]*Cast    // Cast ID -> Cast
 
 	// Window drag state
-	draggedWindowID int // ID of window being dragged (0 = none)
+	draggedWindowID   int    // ID of window being dragged (0 = none)
+	globalWindowTitle string // Default title for next window opened
 
 	// Execution state
 	sequencers    []*Sequencer                   // Active sequences
@@ -44,6 +45,7 @@ type EngineState struct {
 	nextHandlerID int                            // Next event handler ID to assign
 	nextPicID     int                            // Next picture ID to assign
 	nextWinID     int                            // Next window ID to assign
+	nextCastID    int                            // Next cast ID to assign
 	tickCount     int64                          // Global tick counter
 
 	// Dependencies (injected)
@@ -112,8 +114,9 @@ func NewEngineState(renderer Renderer, assetLoader AssetLoader, imageDecoder Ima
 		nextSeqID:     1,
 		nextGroupID:   1,
 		nextHandlerID: 1,
-		nextPicID:     1,
-		nextWinID:     1,
+		nextPicID:     0, // Start from 0 for FILLY compatibility
+		nextWinID:     0, // Start from 0 for FILLY compatibility
+		nextCastID:    1,
 		tickCount:     0,
 		renderer:      renderer,
 		assetLoader:   assetLoader,
@@ -386,6 +389,25 @@ func (e *EngineState) GetPictureHeight(id int) int {
 	return 0
 }
 
+// EnsureRGBA converts an image to *image.RGBA if it isn't already.
+// This is needed for drawing operations that require direct pixel access.
+func (e *EngineState) EnsureRGBA(img image.Image) *image.RGBA {
+	// If already RGBA, return as-is
+	if rgba, ok := img.(*image.RGBA); ok {
+		return rgba
+	}
+
+	// Convert to RGBA
+	bounds := img.Bounds()
+	rgba := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			rgba.Set(x, y, img.At(x, y))
+		}
+	}
+	return rgba
+}
+
 // MovePicture copies pixels from source picture to destination picture with transparency.
 // Parameters:
 //
@@ -394,9 +416,10 @@ func (e *EngineState) GetPictureHeight(id int) int {
 //	srcW, srcH: source rectangle dimensions
 //	dstID: destination picture ID
 //	dstX, dstY: destination position
+//	mode: transfer mode (0=normal, 1=transparent, 2=scene change)
 //
 // Returns an error if source or destination doesn't exist.
-func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) error {
+func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode int) error {
 	// Get source picture
 	srcPic := e.pictures[srcID]
 	if srcPic == nil {
@@ -630,13 +653,16 @@ func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, color i
 		Height:    height,
 		PicX:      picX,
 		PicY:      picY,
-		Caption:   "", // No caption by default (can be set with CapTitle)
+		Caption:   e.globalWindowTitle, // Use global title if set
 		Visible:   true,
 	}
 
 	// Store window
 	e.windows[win.ID] = win
 	e.nextWinID++
+
+	// Clear global title after using it
+	e.globalWindowTitle = ""
 
 	return win.ID
 }
@@ -651,19 +677,32 @@ func (e *EngineState) GetWindow(id int) *Window {
 // Parameters:
 //
 //	id: window ID
+//	picID: new picture ID
 //	x, y: new window position
-//	width, height: new window dimensions
+//	width, height: new window dimensions (0 = keep current)
 //	picX, picY: new picture offset
-func (e *EngineState) MoveWindow(id, x, y, width, height, picX, picY int) error {
+func (e *EngineState) MoveWindow(id, picID, x, y, width, height, picX, picY int) error {
 	win := e.windows[id]
 	if win == nil {
 		return fmt.Errorf("window %d not found", id)
 	}
 
+	// Update picture ID
+	win.PictureID = picID
+
+	// Update position (0,0 is valid, so always update)
 	win.X = x
 	win.Y = y
-	win.Width = width
-	win.Height = height
+
+	// Update size only if non-zero (0 means keep current size)
+	if width != 0 {
+		win.Width = width
+	}
+	if height != 0 {
+		win.Height = height
+	}
+
+	// Update picture offset
 	win.PicX = picX
 	win.PicY = picY
 
@@ -681,10 +720,13 @@ func (e *EngineState) CloseAllWindows() {
 }
 
 // SetWindowCaption sets the caption (title) of a window.
+// If the window doesn't exist yet, sets the global default title for the next window.
 func (e *EngineState) SetWindowCaption(id int, caption string) error {
 	win := e.windows[id]
 	if win == nil {
-		return fmt.Errorf("window %d not found", id)
+		// Window doesn't exist yet - set global title for next window
+		e.globalWindowTitle = caption
+		return nil
 	}
 
 	win.Caption = caption
@@ -745,8 +787,9 @@ func (e *EngineState) StartWindowDrag(mouseX, mouseY int) int {
 
 		// Check if mouse is in title bar area (only if window has a caption)
 		if win.Caption != "" {
-			titleBarX := win.X
-			titleBarY := win.Y
+			// Title bar is at the top of the window, after the border
+			titleBarX := win.X + BorderThickness
+			titleBarY := win.Y + BorderThickness
 			titleBarWidth := win.Width
 			titleBarHeight := TitleBarHeight
 
@@ -828,4 +871,122 @@ func (e *EngineState) StopWindowDrag() {
 // Returns 0 if no window is being dragged.
 func (e *EngineState) GetDraggedWindowID() int {
 	return e.draggedWindowID
+}
+
+// PutCast creates a new cast (sprite) and returns its ID.
+// Parameters:
+//
+//	windowID: parent window ID
+//	picID: picture to display
+//	x, y: position relative to window
+//	srcX, srcY: source clipping position in picture
+//	width, height: clipping dimensions
+func (e *EngineState) PutCast(windowID, picID, x, y, srcX, srcY, width, height int) int {
+	// Create cast
+	cast := &Cast{
+		ID:        e.nextCastID,
+		PictureID: picID,
+		WindowID:  windowID,
+		X:         x,
+		Y:         y,
+		SrcX:      srcX,
+		SrcY:      srcY,
+		Width:     width,
+		Height:    height,
+		Visible:   true,
+	}
+
+	// Store cast
+	e.casts[cast.ID] = cast
+	e.nextCastID++
+
+	return cast.ID
+}
+
+// GetCast retrieves a cast by ID.
+// Returns nil if the cast doesn't exist.
+func (e *EngineState) GetCast(id int) *Cast {
+	return e.casts[id]
+}
+
+// MoveCast updates cast position and optionally clipping.
+// Parameters:
+//
+//	id: cast ID
+//	x, y: new position relative to window
+//	srcX, srcY: new source clipping position (optional, -1 = no change)
+//	width, height: new clipping dimensions (optional, -1 = no change)
+func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
+	cast := e.casts[id]
+	if cast == nil {
+		return fmt.Errorf("cast %d not found", id)
+	}
+
+	// Update position
+	cast.X = x
+	cast.Y = y
+
+	// Update clipping if provided
+	if srcX >= 0 {
+		cast.SrcX = srcX
+	}
+	if srcY >= 0 {
+		cast.SrcY = srcY
+	}
+	if width >= 0 {
+		cast.Width = width
+	}
+	if height >= 0 {
+		cast.Height = height
+	}
+
+	return nil
+}
+
+// DeleteCast removes a cast and releases its resources.
+func (e *EngineState) DeleteCast(id int) {
+	delete(e.casts, id)
+}
+
+// GetCasts returns all casts in creation order (z-order).
+// This is used for rendering casts in the correct order.
+func (e *EngineState) GetCasts() []*Cast {
+	// Collect all casts
+	casts := make([]*Cast, 0, len(e.casts))
+	for _, cast := range e.casts {
+		casts = append(casts, cast)
+	}
+
+	// Sort by ID (creation order)
+	for i := 0; i < len(casts); i++ {
+		for j := i + 1; j < len(casts); j++ {
+			if casts[i].ID > casts[j].ID {
+				casts[i], casts[j] = casts[j], casts[i]
+			}
+		}
+	}
+
+	return casts
+}
+
+// GetCastsByWindow returns all casts for a specific window in creation order.
+func (e *EngineState) GetCastsByWindow(windowID int) []*Cast {
+	// Collect casts for this window
+	casts := make([]*Cast, 0)
+	for _, cast := range e.casts {
+		if cast.WindowID == windowID {
+			casts = append(casts, cast)
+		}
+	}
+
+	// Sort by ID (creation order)
+	for i := 0; i < len(casts); i++ {
+		for j := i + 1; j < len(casts); j++ {
+			if casts[i].ID > casts[j].ID {
+				casts[i], casts[j] = casts[j], casts[i]
+			}
+		}
+	}
+
+	return casts
 }

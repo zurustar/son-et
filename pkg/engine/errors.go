@@ -109,3 +109,17 @@ func (e *Engine) ReportAssetError(filename string, message string, cause error) 
 	err := NewAssetError(filename, message, cause)
 	e.ReportError(err)
 }
+
+// EndStepSignal is a special signal (not an error) used to break out of step blocks.
+// It's returned by end_step to exit the step loop.
+type EndStepSignal struct{}
+
+func (e *EndStepSignal) Error() string {
+	return "end_step"
+}
+
+// IsEndStepSignal checks if an error is an EndStepSignal.
+func IsEndStepSignal(err error) bool {
+	_, ok := err.(*EndStepSignal)
+	return ok
+}

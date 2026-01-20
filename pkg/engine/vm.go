@@ -48,11 +48,11 @@ func (vm *VM) ExecuteOp(seq *Sequencer, op interpreter.OpCode) error {
 	case interpreter.OpWait:
 		return vm.executeWait(seq, op)
 
+	case interpreter.OpSetStep:
+		return vm.executeSetStep(seq, op)
+
 	case interpreter.OpRegisterEventHandler:
-		// mes() blocks are registered as event handlers
-		// This is a stub for now - full implementation in Phase 3.3
-		vm.logger.LogDebug("RegisterEventHandler (not yet implemented)")
-		return nil
+		return vm.executeRegisterEventHandler(seq, op)
 
 	case interpreter.OpBinaryOp:
 		// Binary operations are evaluated as part of expressions
@@ -222,8 +222,8 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		}
 		filename := fmt.Sprintf("%v", evaluatedArgs[0])
 		picID := vm.engine.LoadPic(filename)
-		// Store result in a special return variable (for now, just ignore)
-		_ = picID
+		// Store result in special return variable
+		seq.SetVariable("__return__", int64(picID))
 		return nil
 
 	case "createpic":
@@ -233,7 +233,7 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		width := int(vm.toInt(evaluatedArgs[0]))
 		height := int(vm.toInt(evaluatedArgs[1]))
 		picID := vm.engine.CreatePic(width, height)
-		_ = picID
+		seq.SetVariable("__return__", int64(picID))
 		return nil
 
 	case "delpic":
@@ -250,7 +250,7 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		}
 		picID := int(vm.toInt(evaluatedArgs[0]))
 		width := vm.engine.PicWidth(picID)
-		_ = width
+		seq.SetVariable("__return__", int64(width))
 		return nil
 
 	case "picheight":
@@ -259,12 +259,14 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		}
 		picID := int(vm.toInt(evaluatedArgs[0]))
 		height := vm.engine.PicHeight(picID)
-		_ = height
+		seq.SetVariable("__return__", int64(height))
 		return nil
 
 	case "movepic":
-		if len(evaluatedArgs) < 8 {
-			return NewRuntimeError("MovePic", fmt.Sprintf("%v", evaluatedArgs), "MovePic requires 8 arguments (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)")
+		// MovePic requires 9 arguments (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
+		// Pad missing arguments with 0
+		for len(evaluatedArgs) < 9 {
+			evaluatedArgs = append(evaluatedArgs, int64(0))
 		}
 		srcID := int(vm.toInt(evaluatedArgs[0]))
 		srcX := int(vm.toInt(evaluatedArgs[1]))
@@ -274,12 +276,17 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		dstID := int(vm.toInt(evaluatedArgs[5]))
 		dstX := int(vm.toInt(evaluatedArgs[6]))
 		dstY := int(vm.toInt(evaluatedArgs[7]))
-		vm.engine.MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
+		mode := int(vm.toInt(evaluatedArgs[8]))
+		vm.engine.MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
 		return nil
 
 	case "movespic":
-		if len(evaluatedArgs) < 10 {
-			return NewRuntimeError("MoveSPic", fmt.Sprintf("%v", evaluatedArgs), "MoveSPic requires 10 arguments (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH)")
+		// MoveSPic supports 10 or 12 arguments
+		// 10 args: (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH)
+		// 12 args: (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH, 0, trans_color)
+		// Pad missing arguments with 0
+		for len(evaluatedArgs) < 10 {
+			evaluatedArgs = append(evaluatedArgs, int64(0))
 		}
 		srcID := int(vm.toInt(evaluatedArgs[0]))
 		srcX := int(vm.toInt(evaluatedArgs[1]))
@@ -291,6 +298,7 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		dstY := int(vm.toInt(evaluatedArgs[7]))
 		dstW := int(vm.toInt(evaluatedArgs[8]))
 		dstH := int(vm.toInt(evaluatedArgs[9]))
+		// TODO: Handle transparent color if 12 arguments provided (evaluatedArgs[11])
 		vm.engine.MoveSPic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH)
 		return nil
 
@@ -328,21 +336,31 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		picY := int(vm.toInt(evaluatedArgs[6]))
 		color := int(vm.toInt(evaluatedArgs[7]))
 		winID := vm.engine.OpenWin(picID, x, y, width, height, picX, picY, color)
-		_ = winID
+		seq.SetVariable("__return__", int64(winID))
 		return nil
 
 	case "movewin":
-		if len(evaluatedArgs) < 7 {
-			return NewRuntimeError("MoveWin", fmt.Sprintf("%v", evaluatedArgs), "MoveWin requires 7 arguments (winID, x, y, width, height, picX, picY)")
+		// MoveWin can be called with 2 or 8 arguments
+		// MoveWin(win, pic) - 2 args: short form (picture change only)
+		// MoveWin(win, pic, x, y, width, height, pic_x, pic_y) - 8 args (full)
+		if len(evaluatedArgs) < 2 {
+			return NewRuntimeError("MoveWin", fmt.Sprintf("%v", evaluatedArgs), "MoveWin requires at least 2 arguments (winID, picID)")
 		}
+
+		// Pad missing arguments with 0
+		for len(evaluatedArgs) < 8 {
+			evaluatedArgs = append(evaluatedArgs, int64(0))
+		}
+
 		winID := int(vm.toInt(evaluatedArgs[0]))
-		x := int(vm.toInt(evaluatedArgs[1]))
-		y := int(vm.toInt(evaluatedArgs[2]))
-		width := int(vm.toInt(evaluatedArgs[3]))
-		height := int(vm.toInt(evaluatedArgs[4]))
-		picX := int(vm.toInt(evaluatedArgs[5]))
-		picY := int(vm.toInt(evaluatedArgs[6]))
-		vm.engine.MoveWin(winID, x, y, width, height, picX, picY)
+		picID := int(vm.toInt(evaluatedArgs[1]))
+		x := int(vm.toInt(evaluatedArgs[2]))
+		y := int(vm.toInt(evaluatedArgs[3]))
+		width := int(vm.toInt(evaluatedArgs[4]))
+		height := int(vm.toInt(evaluatedArgs[5]))
+		picX := int(vm.toInt(evaluatedArgs[6]))
+		picY := int(vm.toInt(evaluatedArgs[7]))
+		vm.engine.MoveWin(winID, picID, x, y, width, height, picX, picY)
 		return nil
 
 	case "closewin":
@@ -358,11 +376,22 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		return nil
 
 	case "captitle":
-		if len(evaluatedArgs) < 2 {
-			return NewRuntimeError("CapTitle", fmt.Sprintf("%v", evaluatedArgs), "CapTitle requires 2 arguments (winID, caption)")
+		// CapTitle can take 1 or 2 arguments
+		// 1 arg: CapTitle(caption) - applies to default window (ID=0)
+		// 2 args: CapTitle(winID, caption)
+		var winID int
+		var caption string
+
+		if len(evaluatedArgs) == 1 {
+			winID = 0
+			caption = fmt.Sprintf("%v", evaluatedArgs[0])
+		} else if len(evaluatedArgs) == 2 {
+			winID = int(vm.toInt(evaluatedArgs[0]))
+			caption = fmt.Sprintf("%v", evaluatedArgs[1])
+		} else {
+			return NewRuntimeError("CapTitle", fmt.Sprintf("%v", evaluatedArgs), "CapTitle requires 1 or 2 arguments")
 		}
-		winID := int(vm.toInt(evaluatedArgs[0]))
-		caption := fmt.Sprintf("%v", evaluatedArgs[1])
+
 		vm.engine.CapTitle(winID, caption)
 		return nil
 
@@ -372,8 +401,308 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		}
 		winID := int(vm.toInt(evaluatedArgs[0]))
 		picID := vm.engine.GetPicNo(winID)
-		_ = picID
+		seq.SetVariable("__return__", int64(picID))
 		return nil
+
+	case "putcast":
+		if len(evaluatedArgs) < 8 {
+			return NewRuntimeError("PutCast", fmt.Sprintf("%v", evaluatedArgs), "PutCast requires 8 arguments (winID, picID, x, y, srcX, srcY, width, height)")
+		}
+		winID := int(vm.toInt(evaluatedArgs[0]))
+		picID := int(vm.toInt(evaluatedArgs[1]))
+		x := int(vm.toInt(evaluatedArgs[2]))
+		y := int(vm.toInt(evaluatedArgs[3]))
+		srcX := int(vm.toInt(evaluatedArgs[4]))
+		srcY := int(vm.toInt(evaluatedArgs[5]))
+		width := int(vm.toInt(evaluatedArgs[6]))
+		height := int(vm.toInt(evaluatedArgs[7]))
+		castID := vm.engine.PutCast(winID, picID, x, y, srcX, srcY, width, height)
+		seq.SetVariable("__return__", int64(castID))
+		return nil
+
+	case "movecast":
+		// MoveCast can be called with 3 or 7 arguments
+		// MoveCast(cast_no, x, y) - 3 args: position only
+		// MoveCast(cast_no, x, y, src_x, src_y, width, height) - 7 args: position + clipping
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("MoveCast", fmt.Sprintf("%v", evaluatedArgs), "MoveCast requires at least 3 arguments (castID, x, y)")
+		}
+
+		castID := int(vm.toInt(evaluatedArgs[0]))
+		x := int(vm.toInt(evaluatedArgs[1]))
+		y := int(vm.toInt(evaluatedArgs[2]))
+
+		// Default to -1 (no change) for clipping parameters
+		srcX := -1
+		srcY := -1
+		width := -1
+		height := -1
+
+		// If 7 arguments provided, update clipping
+		if len(evaluatedArgs) >= 7 {
+			srcX = int(vm.toInt(evaluatedArgs[3]))
+			srcY = int(vm.toInt(evaluatedArgs[4]))
+			width = int(vm.toInt(evaluatedArgs[5]))
+			height = int(vm.toInt(evaluatedArgs[6]))
+		}
+
+		vm.engine.MoveCast(castID, x, y, srcX, srcY, width, height)
+		return nil
+
+	case "delcast":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("DelCast", fmt.Sprintf("%v", evaluatedArgs), "DelCast requires 1 argument (castID)")
+		}
+		castID := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.DelCast(castID)
+		return nil
+
+	case "loadsoundfont":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("LoadSoundFont", fmt.Sprintf("%v", evaluatedArgs), "LoadSoundFont requires 1 argument (filename)")
+		}
+		filename := fmt.Sprintf("%v", evaluatedArgs[0])
+		err := vm.engine.LoadSoundFont(filename)
+		if err != nil {
+			vm.logger.LogError("LoadSoundFont failed: %v", err)
+		}
+		return nil
+
+	case "playmidi":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("PlayMIDI", fmt.Sprintf("%v", evaluatedArgs), "PlayMIDI requires 1 argument (filename)")
+		}
+		filename := fmt.Sprintf("%v", evaluatedArgs[0])
+		err := vm.engine.PlayMIDI(filename)
+		if err != nil {
+			vm.logger.LogError("PlayMIDI failed: %v", err)
+		}
+		return nil
+
+	case "stopmidi":
+		vm.engine.StopMIDI()
+		return nil
+
+	case "del_me":
+		// Deactivate current sequence
+		vm.engine.DeleteMe(seq.id)
+		return nil
+
+	case "del_us":
+		// Deactivate all sequences in current group
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("del_us", fmt.Sprintf("%v", evaluatedArgs), "del_us requires 1 argument (groupID)")
+		}
+		groupID := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.DeleteUs(groupID)
+		return nil
+
+	case "del_all":
+		// Deactivate all sequences
+		vm.engine.DeleteAll()
+		return nil
+
+	case "playwave":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("PlayWAVE", fmt.Sprintf("%v", evaluatedArgs), "PlayWAVE requires 1 argument (filename)")
+		}
+		filename := fmt.Sprintf("%v", evaluatedArgs[0])
+		err := vm.engine.PlayWAVE(filename)
+		if err != nil {
+			vm.logger.LogError("PlayWAVE failed: %v", err)
+		}
+		return nil
+
+	case "loadrsc":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("LoadRsc", fmt.Sprintf("%v", evaluatedArgs), "LoadRsc requires 1 argument (filename)")
+		}
+		filename := fmt.Sprintf("%v", evaluatedArgs[0])
+		resourceID, err := vm.engine.LoadRsc(filename)
+		if err != nil {
+			vm.logger.LogError("LoadRsc failed: %v", err)
+			seq.SetVariable("__return__", int64(0))
+			return nil
+		}
+		// Store resource ID in return variable
+		seq.SetVariable("__return__", int64(resourceID))
+		return nil
+
+	case "playrsc":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("PlayRsc", fmt.Sprintf("%v", evaluatedArgs), "PlayRsc requires 1 argument (resourceID)")
+		}
+		resourceID := int(vm.toInt(evaluatedArgs[0]))
+		err := vm.engine.PlayRsc(resourceID)
+		if err != nil {
+			vm.logger.LogError("PlayRsc failed: %v", err)
+		}
+		return nil
+
+	case "delrsc":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("DelRsc", fmt.Sprintf("%v", evaluatedArgs), "DelRsc requires 1 argument (resourceID)")
+		}
+		resourceID := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.DelRsc(resourceID)
+		return nil
+
+	case "setfont":
+		// SetFont(size, name, charset)
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("SetFont", fmt.Sprintf("%v", evaluatedArgs), "SetFont requires 3 arguments (size, name, charset)")
+		}
+		size := int(vm.toInt(evaluatedArgs[0]))
+		name := fmt.Sprintf("%v", evaluatedArgs[1])
+		charset := int(vm.toInt(evaluatedArgs[2]))
+		vm.engine.SetFont(size, name, charset)
+		return nil
+
+	case "textcolor":
+		// TextColor(r, g, b)
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("TextColor", fmt.Sprintf("%v", evaluatedArgs), "TextColor requires 3 arguments (r, g, b)")
+		}
+		r := int(vm.toInt(evaluatedArgs[0]))
+		g := int(vm.toInt(evaluatedArgs[1]))
+		b := int(vm.toInt(evaluatedArgs[2]))
+		vm.engine.TextColor(r, g, b)
+		return nil
+
+	case "bgcolor":
+		// BgColor(r, g, b)
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("BgColor", fmt.Sprintf("%v", evaluatedArgs), "BgColor requires 3 arguments (r, g, b)")
+		}
+		r := int(vm.toInt(evaluatedArgs[0]))
+		g := int(vm.toInt(evaluatedArgs[1]))
+		b := int(vm.toInt(evaluatedArgs[2]))
+		vm.engine.BgColor(r, g, b)
+		return nil
+
+	case "backmode":
+		// BackMode(mode)
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("BackMode", fmt.Sprintf("%v", evaluatedArgs), "BackMode requires 1 argument (mode)")
+		}
+		mode := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.BackMode(mode)
+		return nil
+
+	case "textwrite":
+		// TextWrite(text, pic, x, y)
+		if len(evaluatedArgs) < 4 {
+			return NewRuntimeError("TextWrite", fmt.Sprintf("%v", evaluatedArgs), "TextWrite requires 4 arguments (text, pic, x, y)")
+		}
+		text := fmt.Sprintf("%v", evaluatedArgs[0])
+		picID := int(vm.toInt(evaluatedArgs[1]))
+		x := int(vm.toInt(evaluatedArgs[2]))
+		y := int(vm.toInt(evaluatedArgs[3]))
+		err := vm.engine.TextWrite(text, picID, x, y)
+		if err != nil {
+			vm.logger.LogError("TextWrite failed: %v", err)
+		}
+		return nil
+
+	case "setlinesize":
+		// SetLineSize(size)
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("SetLineSize", fmt.Sprintf("%v", evaluatedArgs), "SetLineSize requires 1 argument (size)")
+		}
+		size := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.SetLineSize(size)
+		return nil
+
+	case "setpaintcolor":
+		// SetPaintColor(color)
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("SetPaintColor", fmt.Sprintf("%v", evaluatedArgs), "SetPaintColor requires 1 argument (color)")
+		}
+		colorValue := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.SetPaintColor(colorValue)
+		return nil
+
+	case "setrop":
+		// SetROP(mode)
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("SetROP", fmt.Sprintf("%v", evaluatedArgs), "SetROP requires 1 argument (mode)")
+		}
+		mode := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.SetROP(mode)
+		return nil
+
+	case "drawline":
+		// DrawLine(pic, x1, y1, x2, y2)
+		if len(evaluatedArgs) < 5 {
+			return NewRuntimeError("DrawLine", fmt.Sprintf("%v", evaluatedArgs), "DrawLine requires 5 arguments (pic, x1, y1, x2, y2)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		x1 := int(vm.toInt(evaluatedArgs[1]))
+		y1 := int(vm.toInt(evaluatedArgs[2]))
+		x2 := int(vm.toInt(evaluatedArgs[3]))
+		y2 := int(vm.toInt(evaluatedArgs[4]))
+		err := vm.engine.DrawLine(picID, x1, y1, x2, y2)
+		if err != nil {
+			vm.logger.LogError("DrawLine failed: %v", err)
+		}
+		return nil
+
+	case "drawcircle":
+		// DrawCircle(pic, x, y, radius, fill_mode)
+		if len(evaluatedArgs) < 5 {
+			return NewRuntimeError("DrawCircle", fmt.Sprintf("%v", evaluatedArgs), "DrawCircle requires 5 arguments (pic, x, y, radius, fill_mode)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		x := int(vm.toInt(evaluatedArgs[1]))
+		y := int(vm.toInt(evaluatedArgs[2]))
+		radius := int(vm.toInt(evaluatedArgs[3]))
+		fillMode := int(vm.toInt(evaluatedArgs[4]))
+		err := vm.engine.DrawCircle(picID, x, y, radius, fillMode)
+		if err != nil {
+			vm.logger.LogError("DrawCircle failed: %v", err)
+		}
+		return nil
+
+	case "drawrect":
+		// DrawRect(pic, x1, y1, x2, y2, fill_mode)
+		if len(evaluatedArgs) < 6 {
+			return NewRuntimeError("DrawRect", fmt.Sprintf("%v", evaluatedArgs), "DrawRect requires 6 arguments (pic, x1, y1, x2, y2, fill_mode)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		x1 := int(vm.toInt(evaluatedArgs[1]))
+		y1 := int(vm.toInt(evaluatedArgs[2]))
+		x2 := int(vm.toInt(evaluatedArgs[3]))
+		y2 := int(vm.toInt(evaluatedArgs[4]))
+		fillMode := int(vm.toInt(evaluatedArgs[5]))
+		err := vm.engine.DrawRect(picID, x1, y1, x2, y2, fillMode)
+		if err != nil {
+			vm.logger.LogError("DrawRect failed: %v", err)
+		}
+		return nil
+
+	case "getcolor":
+		// GetColor(pic, x, y)
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("GetColor", fmt.Sprintf("%v", evaluatedArgs), "GetColor requires 3 arguments (pic, x, y)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		x := int(vm.toInt(evaluatedArgs[1]))
+		y := int(vm.toInt(evaluatedArgs[2]))
+		colorValue, err := vm.engine.GetColor(picID, x, y)
+		if err != nil {
+			vm.logger.LogError("GetColor failed: %v", err)
+			seq.SetVariable("__return__", int64(0))
+			return nil
+		}
+		// Store result in return variable
+		seq.SetVariable("__return__", int64(colorValue))
+		return nil
+
+	case "end_step":
+		// end_step is used to break out of step(n) { ... } blocks
+		// Return a special signal that executeFor will catch
+		vm.logger.LogDebug("end_step: breaking out of step block")
+		return &EndStepSignal{}
 
 	default:
 		// Unknown built-in function - just log and ignore
@@ -461,6 +790,11 @@ func (vm *VM) executeFor(seq *Sequencer, op interpreter.OpCode) error {
 
 		// Execute body
 		if err := vm.executeBlock(seq, body); err != nil {
+			// Check if it's an end_step signal (used to break out of step blocks)
+			if IsEndStepSignal(err) {
+				vm.logger.LogDebug("Caught end_step signal, breaking loop")
+				break
+			}
 			return err
 		}
 
@@ -511,9 +845,19 @@ func (vm *VM) executeWhile(seq *Sequencer, op interpreter.OpCode) error {
 }
 
 // executeWait handles wait operations: wait(n)
-// The wait duration depends on the sequence's timing mode:
-// - TIME mode: n steps × 3 ticks/step = 3n ticks (50ms per step at 60 FPS)
-// - MIDI_TIME mode: n steps × 1 tick/step = n ticks (32nd note per step)
+// The argument n represents the number of steps to wait.
+// The actual tick duration is determined by ticksPerStep (set by SetStep).
+//
+// In step() blocks:
+//
+//	SetStep(65) sets ticksPerStep = 65 * 3 = 195 ticks (at 60 FPS)
+//	Wait(1) waits for 1 * ticksPerStep = 195 ticks
+//	Wait(2) waits for 2 * ticksPerStep = 390 ticks
+//
+// IMPORTANT: We do NOT decrement PC here. UpdateVM will increment PC after
+// this function returns, so PC will point to the next instruction. While
+// waiting, the sequence skips execution, so PC stays at the next instruction.
+// When the wait completes, execution resumes at the next instruction.
 func (vm *VM) executeWait(seq *Sequencer, op interpreter.OpCode) error {
 	if len(op.Args) != 1 {
 		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpWait requires 1 argument, got %d", len(op.Args))
@@ -526,15 +870,80 @@ func (vm *VM) executeWait(seq *Sequencer, op interpreter.OpCode) error {
 	}
 
 	// Convert to int (number of steps)
-	steps := vm.toInt(waitValue)
+	steps := int(vm.toInt(waitValue))
 
-	// Calculate actual tick count based on stepSize
-	ticks := int(steps) * seq.GetStepSize()
+	// Calculate ticks using ticksPerStep
+	ticks := steps * seq.GetTicksPerStep()
 
-	vm.logger.LogDebug("Wait: %d steps × %d ticks/step = %d ticks", steps, seq.GetStepSize(), ticks)
+	vm.logger.LogDebug("Wait: %d steps × %d ticks/step = %d ticks", steps, seq.GetTicksPerStep(), ticks)
 
 	// Set wait counter
 	seq.SetWait(ticks)
+
+	return nil
+}
+
+// executeSetStep handles SetStep operations: SetStep(n)
+// This sets the duration of each step for subsequent Wait operations.
+// In TIME mode: step(n) means each step is n × 50ms = n × 3 ticks (at 60 FPS)
+// In MIDI_TIME mode: step(n) means each step is n × (1/32nd note)
+func (vm *VM) executeSetStep(seq *Sequencer, op interpreter.OpCode) error {
+	if len(op.Args) != 1 {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpSetStep requires 1 argument, got %d", len(op.Args))
+	}
+
+	// Evaluate step count
+	stepValue, err := vm.evaluateValue(seq, op.Args[0])
+	if err != nil {
+		return err
+	}
+
+	// Convert to int
+	stepCount := int(vm.toInt(stepValue))
+
+	// Calculate ticksPerStep based on timing mode
+	var ticksPerStep int
+	if seq.GetMode() == TIME {
+		// TIME mode: step(n) = n × 50ms = n × 3 ticks at 60 FPS
+		ticksPerStep = stepCount * 3
+	} else {
+		// MIDI_TIME mode: step(n) = n × (1/32nd note)
+		// This would need MIDI timing information
+		// For now, use 1:1 mapping
+		ticksPerStep = stepCount
+	}
+
+	vm.logger.LogDebug("SetStep: %d → %d ticks/step (mode: %d)", stepCount, ticksPerStep, seq.GetMode())
+
+	// Set ticksPerStep in sequencer
+	seq.SetTicksPerStep(ticksPerStep)
+
+	return nil
+}
+
+// executeRegisterEventHandler handles mes() event handler registration
+func (vm *VM) executeRegisterEventHandler(seq *Sequencer, op interpreter.OpCode) error {
+	if len(op.Args) != 2 {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpRegisterEventHandler requires 2 arguments, got %d", len(op.Args))
+	}
+
+	// Get event type
+	eventTypeStr, ok := op.Args[0].(string)
+	if !ok {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpRegisterEventHandler first argument must be string, got %T", op.Args[0])
+	}
+
+	// Get event body
+	body, ok := op.Args[1].([]interpreter.OpCode)
+	if !ok {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpRegisterEventHandler second argument must be []OpCode, got %T", op.Args[1])
+	}
+
+	// Parse event type
+	eventType := ParseEventType(eventTypeStr)
+
+	// Register the event handler
+	vm.engine.RegisterMesBlock(eventType, body, seq, 0)
 
 	return nil
 }
@@ -576,8 +985,16 @@ func (vm *VM) evaluateExpression(seq *Sequencer, op interpreter.OpCode) (any, er
 		return vm.evaluateBinaryOp(seq, op)
 
 	case interpreter.OpCall:
-		// Function call expression (stub for now)
-		return 0, nil
+		// Execute function call
+		err := vm.executeCall(seq, op)
+		if err != nil {
+			return nil, err
+		}
+		// Read return value from special variable
+		returnValue := seq.GetVariable("__return__")
+		// Clear return variable for next call
+		seq.SetVariable("__return__", int64(0))
+		return returnValue, nil
 
 	default:
 		return nil, fmt.Errorf("cannot evaluate expression: %s", op.Cmd.String())

@@ -49,14 +49,17 @@ func TestMoveWindow(t *testing.T) {
 	// Create a window
 	winID := state.OpenWindow(1, 100, 200, 640, 480, 0, 0, 0)
 
-	// Move the window
-	err := state.MoveWindow(winID, 150, 250, 800, 600, 10, 20)
+	// Move the window (8 args: winID, picID, x, y, width, height, picX, picY)
+	err := state.MoveWindow(winID, 2, 150, 250, 800, 600, 10, 20)
 	if err != nil {
 		t.Fatalf("MoveWindow failed: %v", err)
 	}
 
 	// Verify window was moved
 	win := state.GetWindow(winID)
+	if win.PictureID != 2 {
+		t.Errorf("Expected PictureID 2, got %d", win.PictureID)
+	}
 	if win.X != 150 {
 		t.Errorf("Expected X 150, got %d", win.X)
 	}

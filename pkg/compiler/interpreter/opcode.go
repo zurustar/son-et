@@ -27,6 +27,7 @@ const (
 	// Sequence management
 	OpRegisterSequence
 	OpWait
+	OpSetStep // Set step duration for subsequent Wait operations
 	OpDelMe
 	OpDelUs
 	OpDelAll
@@ -70,6 +71,8 @@ func (op OpCmd) String() string {
 		return "OpRegisterSequence"
 	case OpWait:
 		return "OpWait"
+	case OpSetStep:
+		return "OpSetStep"
 	case OpDelMe:
 		return "OpDelMe"
 	case OpDelUs:

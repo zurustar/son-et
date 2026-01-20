@@ -50,6 +50,30 @@ func (e EventType) String() string {
 	}
 }
 
+// ParseEventType converts a string to an EventType
+func ParseEventType(s string) EventType {
+	switch s {
+	case "TIME":
+		return EventTIME
+	case "MIDI_TIME":
+		return EventMIDI_TIME
+	case "MIDI_END":
+		return EventMIDI_END
+	case "KEY":
+		return EventKEY
+	case "CLICK":
+		return EventCLICK
+	case "RBDOWN":
+		return EventRBDOWN
+	case "RBDBLCLK":
+		return EventRBDBLCLK
+	case "USER":
+		return EventUSER
+	default:
+		return EventTIME // Default to TIME
+	}
+}
+
 // EventHandler represents a registered event handler (mes() block).
 // It stores the OpCode template and creates new Sequencer instances when triggered.
 type EventHandler struct {

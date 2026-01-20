@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"image/color"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,7 +28,8 @@ var (
 
 // Game implements ebiten.Game interface
 type Game struct {
-	engine *engine.Engine
+	engine   *engine.Engine
+	renderer *engine.EbitenRenderer
 }
 
 func (g *Game) Update() error {
@@ -37,11 +37,8 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Fill virtual desktop with background color (teal)
-	screen.Fill(color.RGBA{0x1F, 0x7E, 0x7F, 0xff})
-
-	// TODO: Actual rendering will be implemented in Phase 4
-	g.engine.Render()
+	// Use the renderer to draw the current frame
+	g.renderer.RenderFrame(screen, g.engine.GetState())
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -51,6 +48,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func main() {
 	flag.Parse()
+
+	log.Printf("Parsed flags: headless=%v, timeout=%s, debug=%d", *headlessFlag, *timeoutFlag, *debugFlag)
+	log.Printf("Args: %v", flag.Args())
 
 	// Force OpenGL backend (macOS 15.0 Metal compatibility issue)
 	// This also prevents screen switching in headless mode
@@ -90,8 +90,14 @@ func main() {
 	// Create image decoder
 	imageDecoder := engine.NewBMPImageDecoder()
 
+	// Create renderer (only for GUI mode)
+	var renderer engine.Renderer
+	if !*headlessFlag {
+		renderer = engine.NewEbitenRenderer()
+	}
+
 	// Create engine
-	eng := engine.NewEngine(nil, assetLoader, imageDecoder)
+	eng := engine.NewEngine(renderer, assetLoader, imageDecoder)
 
 	// Set debug level
 	eng.SetDebugLevel(engine.DebugLevel(*debugFlag))
@@ -100,6 +106,8 @@ func main() {
 	if *headlessFlag {
 		eng.SetHeadless(true)
 		log.Println("Running in headless mode")
+	} else {
+		log.Println("Running in GUI mode")
 	}
 
 	// Set timeout
@@ -111,19 +119,34 @@ func main() {
 		eng.SetTimeout(timeout)
 	}
 
+	// Auto-load SoundFont if available
+	if err := autoLoadSoundFont(eng, projectDir); err != nil {
+		log.Printf("Warning: %v", err)
+	}
+
 	// Load and parse TFY file
 	if err := loadAndExecute(eng, tfyFile, assetLoader); err != nil {
 		log.Fatalf("Failed to execute script: %v", err)
 	}
 
+	log.Println("Script loaded successfully")
+
 	// Start engine
 	eng.Start()
 
+	log.Println("Engine started")
+
 	// Run game loop
 	if *headlessFlag {
+		log.Println("Entering headless mode")
 		runHeadless(eng)
 	} else {
-		runGUI(eng)
+		// Cast renderer to EbitenRenderer for GUI mode
+		ebitenRenderer, ok := renderer.(*engine.EbitenRenderer)
+		if !ok {
+			log.Fatal("Expected EbitenRenderer for GUI mode")
+		}
+		runGUI(eng, ebitenRenderer)
 	}
 }
 
@@ -154,6 +177,61 @@ func findMainTFY(projectDir string) (string, error) {
 	// For now, just use the first TFY file
 	// TODO: Search for main() function
 	return tfyFiles[0], nil
+}
+
+// autoLoadSoundFont searches for and loads a SoundFont file from the project directory
+func autoLoadSoundFont(eng *engine.Engine, projectDir string) error {
+	// Get absolute path for project directory
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		log.Printf("Warning: failed to get absolute path for %s: %v", projectDir, err)
+		absProjectDir = projectDir
+	}
+
+	// Search locations: project directory, parent directory, and grandparent directory (repository root)
+	// This handles cases like: repo/samples/kuma2 -> repo/samples -> repo
+	parentDir := filepath.Dir(absProjectDir)
+	grandparentDir := filepath.Dir(parentDir)
+	searchLocations := []string{absProjectDir, parentDir, grandparentDir}
+
+	// Search for any .sf2 file in all locations
+	for _, dir := range searchLocations {
+		var sf2Files []string
+
+		// List files in directory
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue // Skip if directory cannot be read
+		}
+
+		// Find .sf2 files
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			ext := filepath.Ext(entry.Name())
+			if ext == ".sf2" || ext == ".SF2" {
+				sf2Files = append(sf2Files, entry.Name())
+			}
+		}
+
+		// If found, use the first .sf2 file
+		if len(sf2Files) > 0 {
+			name := sf2Files[0]
+			fullPath := filepath.Join(dir, name)
+			log.Printf("Auto-loading SoundFont: %s", fullPath)
+
+			// Use absolute path for loading
+			if err := eng.LoadSoundFont(fullPath); err != nil {
+				return fmt.Errorf("failed to load SoundFont %s: %w", fullPath, err)
+			}
+			log.Printf("Successfully loaded SoundFont: %s", fullPath)
+			return nil
+		}
+	}
+
+	// No SoundFont found - this is not an error, just a warning
+	return fmt.Errorf("no SoundFont file (*.sf2) found in project directory or parent directories (MIDI playback will not work)")
 }
 
 func loadAndExecute(eng *engine.Engine, tfyFile string, assetLoader engine.AssetLoader) error {
@@ -215,11 +293,21 @@ func runHeadless(eng *engine.Engine) {
 	ticker := time.NewTicker(time.Second / targetFPS)
 	defer ticker.Stop()
 
+	tickCount := 0
 	for {
 		<-ticker.C
+		tickCount++
+
+		if tickCount%60 == 0 {
+			log.Printf("Headless tick: %d (%.1fs elapsed)", tickCount, float64(tickCount)/60.0)
+		}
 
 		if err := eng.Update(); err != nil {
-			log.Printf("Update error: %v", err)
+			if err == engine.ErrTerminated {
+				log.Println("Engine terminated normally")
+			} else {
+				log.Printf("Update error: %v", err)
+			}
 			break
 		}
 
@@ -232,12 +320,15 @@ func runHeadless(eng *engine.Engine) {
 	eng.Shutdown()
 }
 
-func runGUI(eng *engine.Engine) {
+func runGUI(eng *engine.Engine, renderer *engine.EbitenRenderer) {
 	ebiten.SetWindowSize(engine.VirtualDesktopWidth, engine.VirtualDesktopHeight)
 	ebiten.SetWindowTitle("son-et - FILLY Script Interpreter")
 	ebiten.SetTPS(targetFPS)
 
-	game := &Game{engine: eng}
+	game := &Game{
+		engine:   eng,
+		renderer: renderer,
+	}
 
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)

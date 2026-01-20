@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/zurustar/son-et/pkg/compiler/ast"
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
@@ -46,6 +47,7 @@ var precedences = map[token.TokenType]int{
 type Parser struct {
 	l      *lexer.Lexer
 	errors []string
+	source []string // Source code lines for error reporting
 
 	curToken  token.Token
 	peekToken token.Token
@@ -64,6 +66,7 @@ func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
 		l:      l,
 		errors: []string{},
+		source: strings.Split(l.GetSource(), "\n"),
 	}
 
 	// Register prefix parse functions
@@ -256,7 +259,16 @@ func (p *Parser) parseIdentifier() ast.Expression {
 func (p *Parser) parseIntegerLiteral() ast.Expression {
 	lit := &ast.IntegerLiteral{Token: p.curToken}
 
-	value, err := strconv.ParseInt(p.curToken.Literal, 10, 64)
+	// Detect base: 0x/0X for hex, otherwise decimal
+	base := 10
+	literal := p.curToken.Literal
+	if len(literal) > 2 && literal[0] == '0' && (literal[1] == 'x' || literal[1] == 'X') {
+		base = 16
+		// For hex, strconv.ParseInt expects the string without the 0x prefix
+		literal = literal[2:]
+	}
+
+	value, err := strconv.ParseInt(literal, base, 64)
 	if err != nil {
 		msg := fmt.Sprintf("could not parse %q as integer", p.curToken.Literal)
 		p.errors = append(p.errors, msg)
@@ -621,6 +633,16 @@ func (p *Parser) parseStepBlock() *ast.BlockStatement {
 			continue
 		}
 
+		// Handle leading commas (empty steps at the start)
+		if p.curTokenIs(token.COMMA) {
+			block.Statements = append(block.Statements, &ast.ExpressionStatement{
+				Token:      p.curToken,
+				Expression: nil, // Empty step
+			})
+			p.nextToken()
+			continue
+		}
+
 		// Parse statement
 		stmt := p.parseStatement()
 		if stmt != nil {
@@ -776,6 +798,16 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 			continue
 		}
 
+		// Handle leading commas (empty steps)
+		if p.curTokenIs(token.COMMA) {
+			block.Statements = append(block.Statements, &ast.ExpressionStatement{
+				Token:      p.curToken,
+				Expression: nil, // Empty step
+			})
+			p.nextToken()
+			continue
+		}
+
 		stmt := p.parseStatement()
 		if stmt != nil {
 			block.Statements = append(block.Statements, stmt)
@@ -784,6 +816,16 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 		// Skip optional semicolons
 		for p.peekTokenIs(token.SEMICOLON) {
 			p.nextToken()
+		}
+
+		// Handle trailing commas (empty steps after statements)
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			// Add empty statement for each comma
+			block.Statements = append(block.Statements, &ast.ExpressionStatement{
+				Token:      p.curToken,
+				Expression: nil, // Empty step
+			})
 		}
 
 		p.nextToken()
@@ -813,6 +855,17 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 func (p *Parser) nextToken() {
 	p.curToken = p.peekToken
 	p.peekToken = p.l.NextToken()
+
+	// Skip comments in both curToken and peekToken
+	for p.curToken.Type == token.COMMENT {
+		p.curToken = p.peekToken
+		p.peekToken = p.l.NextToken()
+	}
+
+	// Skip comments
+	for p.peekToken.Type == token.COMMENT {
+		p.peekToken = p.l.NextToken()
+	}
 }
 
 func (p *Parser) peekPrecedence() int {
@@ -832,13 +885,57 @@ func (p *Parser) curPrecedence() int {
 func (p *Parser) peekError(t token.TokenType) {
 	msg := fmt.Sprintf("expected next token to be %s, got %s instead at line %d, column %d",
 		t, p.peekToken.Type, p.peekToken.Line, p.peekToken.Column)
+	msg = p.addContext(msg, p.peekToken.Line, p.peekToken.Column)
 	p.errors = append(p.errors, msg)
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
 	msg := fmt.Sprintf("no prefix parse function for %s found at line %d, column %d",
 		t, p.curToken.Line, p.curToken.Column)
+	msg = p.addContext(msg, p.curToken.Line, p.curToken.Column)
 	p.errors = append(p.errors, msg)
+}
+
+// addContext adds source code context to an error message
+func (p *Parser) addContext(msg string, line, column int) string {
+	if len(p.source) == 0 {
+		return msg
+	}
+
+	// Add newline and context
+	result := msg + "\n"
+
+	// Show 2 lines before and after the error line
+	start := line - 3
+	if start < 1 {
+		start = 1
+	}
+	end := line + 2
+	if end > len(p.source) {
+		end = len(p.source)
+	}
+
+	for i := start; i <= end; i++ {
+		lineNum := i
+		sourceLine := ""
+		if lineNum > 0 && lineNum <= len(p.source) {
+			sourceLine = p.source[lineNum-1]
+		}
+
+		if lineNum == line {
+			// Highlight the error line
+			result += fmt.Sprintf("  > %4d | %s\n", lineNum, sourceLine)
+			// Add pointer to the column
+			if column > 0 {
+				pointer := strings.Repeat(" ", column+8) + "^"
+				result += pointer + "\n"
+			}
+		} else {
+			result += fmt.Sprintf("    %4d | %s\n", lineNum, sourceLine)
+		}
+	}
+
+	return result
 }
 
 func (p *Parser) registerPrefix(tokenType token.TokenType, fn prefixParseFn) {

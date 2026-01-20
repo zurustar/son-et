@@ -3,6 +3,8 @@ package engine
 import (
 	"testing"
 	"time"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 func TestEngine_Creation(t *testing.T) {
@@ -99,6 +101,15 @@ func TestEngine_Update(t *testing.T) {
 	engine := NewEngine(&MockRenderer{}, &MockAssetLoader{Files: make(map[string][]byte)}, &MockImageDecoder{})
 	engine.Start()
 
+	// Create a sequence that never completes (infinite wait)
+	// We'll manually keep it active by not letting it reach the end
+	opcodes := make([]interpreter.OpCode, 1000)
+	for i := range opcodes {
+		opcodes[i] = interpreter.OpCode{Cmd: interpreter.OpWait, Args: []any{int64(1)}}
+	}
+	seq := NewSequencer(opcodes, TIME, nil)
+	engine.RegisterSequence(seq, 0)
+
 	initialTick := engine.state.GetTickCount()
 
 	err := engine.Update()
@@ -114,13 +125,25 @@ func TestEngine_Update(t *testing.T) {
 func TestEngine_UpdateAfterTermination(t *testing.T) {
 	engine := NewEngine(&MockRenderer{}, &MockAssetLoader{Files: make(map[string][]byte)}, &MockImageDecoder{})
 	engine.Start()
+
+	// Create a sequence that never completes (infinite wait)
+	opcodes := make([]interpreter.OpCode, 1000)
+	for i := range opcodes {
+		opcodes[i] = interpreter.OpCode{Cmd: interpreter.OpWait, Args: []any{int64(1)}}
+	}
+	seq := NewSequencer(opcodes, TIME, nil)
+	engine.RegisterSequence(seq, 0)
+
 	engine.Terminate()
 
 	initialTick := engine.state.GetTickCount()
 
 	err := engine.Update()
-	if err != nil {
-		t.Errorf("Update failed: %v", err)
+	if err == nil {
+		t.Error("Expected error after termination")
+	}
+	if err != ErrTerminated {
+		t.Errorf("Expected ErrTerminated, got %v", err)
 	}
 
 	// Tick should not increment after termination
@@ -161,6 +184,14 @@ func TestEngine_Shutdown(t *testing.T) {
 func TestEngine_MultipleUpdates(t *testing.T) {
 	engine := NewEngine(&MockRenderer{}, &MockAssetLoader{Files: make(map[string][]byte)}, &MockImageDecoder{})
 	engine.Start()
+
+	// Create a sequence that never completes (infinite wait)
+	opcodes := make([]interpreter.OpCode, 1000)
+	for i := range opcodes {
+		opcodes[i] = interpreter.OpCode{Cmd: interpreter.OpWait, Args: []any{int64(1)}}
+	}
+	seq := NewSequencer(opcodes, TIME, nil)
+	engine.RegisterSequence(seq, 0)
 
 	for i := 0; i < 100; i++ {
 		err := engine.Update()
