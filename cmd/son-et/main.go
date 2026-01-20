@@ -52,6 +52,10 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func main() {
 	flag.Parse()
 
+	// Force OpenGL backend (macOS 15.0 Metal compatibility issue)
+	// This also prevents screen switching in headless mode
+	os.Setenv("EBITEN_GRAPHICS_LIBRARY", "opengl")
+
 	// Check for HEADLESS environment variable
 	if os.Getenv("HEADLESS") == "1" {
 		*headlessFlag = true
