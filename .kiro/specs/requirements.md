@@ -172,6 +172,8 @@ These requirements define the multimedia capabilities that scripts can use.
 2. WHEN win_info(0) is called, THE System SHALL return 1280 (desktop width)
 3. WHEN win_info(1) is called, THE System SHALL return 720 (desktop height)
 4. THE System SHALL render all virtual windows within this 1280×720 canvas
+5. THE System SHALL fill the virtual desktop with a teal background color (RGB: 31, 126, 127 / 0x1F7E7F)
+6. THE System SHALL render the desktop background before rendering any windows
 
 **Picture Management:**
 5. THE System SHALL support loading BMP images and assigning sequential Picture IDs

@@ -623,7 +623,7 @@ This section describes the design of the graphics subsystem.
 
 **Rendering Stages**:
 ```
-1. Clear virtual desktop
+1. Fill virtual desktop with background color (teal: RGB 31, 126, 127 / 0x1F7E7F)
 2. For each window (in creation order):
    a. Draw window background (picture)
    b. Draw window decorations (caption, border)
@@ -634,6 +634,12 @@ This section describes the design of the graphics subsystem.
 3. Scale virtual desktop to screen
 4. Present to display
 ```
+
+**Desktop Background Color**:
+- The virtual desktop uses a distinctive teal color (0x1F7E7F) as its background
+- This color is visible in areas not covered by windows
+- Provides visual feedback that the engine is running
+- Matches the original FILLY implementation aesthetic
 
 **Renderer Interface**:
 ```go
@@ -647,6 +653,7 @@ type Renderer interface {
 - Rendering is stateless (no frame-to-frame dependencies)
 - Double buffering prevents flicker
 - Renderer is swappable (enables headless mode)
+- Desktop background is rendered first, before any windows
 
 ---
 
