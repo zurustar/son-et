@@ -220,10 +220,10 @@ func TestLexer_Numbers(t *testing.T) {
 		expectedType    token.TokenType
 		expectedLiteral string
 	}{
-		{token.INT, "123"},
-		{token.INT, "456"},
-		{token.FLOAT, "3.14"},
-		{token.FLOAT, "0.5"},
+		{token.INT_LIT, "123"},
+		{token.INT_LIT, "456"},
+		{token.FLOAT_LIT, "3.14"},
+		{token.FLOAT_LIT, "0.5"},
 		{token.EOF, ""},
 	}
 

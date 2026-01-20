@@ -234,17 +234,17 @@ func TestTimingMode_NonBlockingBehavior_MIDI_TIME(t *testing.T) {
 	}
 }
 
-// TestGetStepSize verifies that stepSize is correctly set based on timing mode.
-func TestGetStepSize(t *testing.T) {
+// TestGetTicksPerStep verifies that ticksPerStep is correctly set based on timing mode.
+func TestGetTicksPerStep(t *testing.T) {
 	// TIME mode: 3 ticks per step (50ms at 60 FPS)
 	seqTime := NewSequencer([]interpreter.OpCode{}, TIME, nil)
-	if seqTime.GetStepSize() != 3 {
-		t.Errorf("Expected TIME mode stepSize=3, got %d", seqTime.GetStepSize())
+	if seqTime.GetTicksPerStep() != 3 {
+		t.Errorf("Expected TIME mode ticksPerStep=3, got %d", seqTime.GetTicksPerStep())
 	}
 
-	// MIDI_TIME mode: 1 tick per step (32nd note)
+	// MIDI_TIME mode: default is also 3, but can be changed via SetStep
 	seqMidi := NewSequencer([]interpreter.OpCode{}, MIDI_TIME, nil)
-	if seqMidi.GetStepSize() != 1 {
-		t.Errorf("Expected MIDI_TIME mode stepSize=1, got %d", seqMidi.GetStepSize())
+	if seqMidi.GetTicksPerStep() != 3 {
+		t.Errorf("Expected MIDI_TIME mode default ticksPerStep=3, got %d", seqMidi.GetTicksPerStep())
 	}
 }
