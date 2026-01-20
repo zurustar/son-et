@@ -14,10 +14,12 @@ type EngineState struct {
 	casts    map[int]*Cast    // Cast ID -> Cast
 
 	// Execution state
-	sequencers  []*Sequencer // Active sequences
-	nextSeqID   int          // Next sequence ID to assign
-	nextGroupID int          // Next group ID to assign
-	tickCount   int64        // Global tick counter
+	sequencers    []*Sequencer    // Active sequences
+	eventHandlers []*EventHandler // Registered event handlers
+	nextSeqID     int             // Next sequence ID to assign
+	nextGroupID   int             // Next group ID to assign
+	nextHandlerID int             // Next event handler ID to assign
+	tickCount     int64           // Global tick counter
 
 	// Dependencies (injected)
 	renderer     Renderer     // Rendering abstraction
@@ -71,18 +73,20 @@ type Cast struct {
 // NewEngineState creates a new engine state with the given dependencies.
 func NewEngineState(renderer Renderer, assetLoader AssetLoader, imageDecoder ImageDecoder) *EngineState {
 	return &EngineState{
-		pictures:     make(map[int]*Picture),
-		windows:      make(map[int]*Window),
-		casts:        make(map[int]*Cast),
-		sequencers:   make([]*Sequencer, 0),
-		nextSeqID:    1,
-		nextGroupID:  1,
-		tickCount:    0,
-		renderer:     renderer,
-		assetLoader:  assetLoader,
-		imageDecoder: imageDecoder,
-		headlessMode: false,
-		debugLevel:   0,
+		pictures:      make(map[int]*Picture),
+		windows:       make(map[int]*Window),
+		casts:         make(map[int]*Cast),
+		sequencers:    make([]*Sequencer, 0),
+		eventHandlers: make([]*EventHandler, 0),
+		nextSeqID:     1,
+		nextGroupID:   1,
+		nextHandlerID: 1,
+		tickCount:     0,
+		renderer:      renderer,
+		assetLoader:   assetLoader,
+		imageDecoder:  imageDecoder,
+		headlessMode:  false,
+		debugLevel:    0,
 	}
 }
 
@@ -172,4 +176,64 @@ func (e *EngineState) CleanupInactiveSequences() {
 		}
 	}
 	e.sequencers = active
+}
+
+// RegisterEventHandler registers a new event handler.
+// Returns the handler ID.
+func (e *EngineState) RegisterEventHandler(eventType EventType, seq *Sequencer, userID int) int {
+	handler := &EventHandler{
+		ID:        e.nextHandlerID,
+		EventType: eventType,
+		Sequencer: seq,
+		Active:    true,
+		UserID:    userID,
+	}
+
+	e.nextHandlerID++
+	e.eventHandlers = append(e.eventHandlers, handler)
+
+	return handler.ID
+}
+
+// GetEventHandlers returns all active event handlers for a given event type.
+func (e *EngineState) GetEventHandlers(eventType EventType) []*EventHandler {
+	handlers := make([]*EventHandler, 0)
+	for _, handler := range e.eventHandlers {
+		if handler.Active && handler.EventType == eventType {
+			handlers = append(handlers, handler)
+		}
+	}
+	return handlers
+}
+
+// GetUserEventHandlers returns all active USER event handlers for a specific user ID.
+func (e *EngineState) GetUserEventHandlers(userID int) []*EventHandler {
+	handlers := make([]*EventHandler, 0)
+	for _, handler := range e.eventHandlers {
+		if handler.Active && handler.EventType == EventUSER && handler.UserID == userID {
+			handlers = append(handlers, handler)
+		}
+	}
+	return handlers
+}
+
+// DeactivateEventHandler deactivates an event handler by ID.
+func (e *EngineState) DeactivateEventHandler(id int) {
+	for _, handler := range e.eventHandlers {
+		if handler.ID == id {
+			handler.Active = false
+			return
+		}
+	}
+}
+
+// CleanupInactiveEventHandlers removes inactive event handlers from the list.
+func (e *EngineState) CleanupInactiveEventHandlers() {
+	active := make([]*EventHandler, 0, len(e.eventHandlers))
+	for _, handler := range e.eventHandlers {
+		if handler.Active {
+			active = append(active, handler)
+		}
+	}
+	e.eventHandlers = active
 }

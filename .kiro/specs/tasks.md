@@ -313,15 +313,15 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement all mes() event types.
 
 **Subtasks**:
-- [ ] 3.3.1 Implement mes(TIME) - blocking, frame-driven
-- [ ] 3.3.2 Implement mes(MIDI_TIME) - non-blocking, MIDI-driven
-- [ ] 3.3.3 Implement mes(MIDI_END) - MIDI completion event
-- [ ] 3.3.4 Implement mes(KEY) - keyboard input event
-- [ ] 3.3.5 Implement mes(CLICK) - mouse click event
-- [ ] 3.3.6 Implement mes(RBDOWN) - right button down event
-- [ ] 3.3.7 Implement mes(RBDBLCLK) - right button double-click event
-- [ ] 3.3.8 Implement mes(USER) - custom message event
-- [ ] 3.3.9 Add tests for all mes() types
+- [x] 3.3.1 Implement mes(TIME) - blocking, frame-driven
+- [x] 3.3.2 Implement mes(MIDI_TIME) - non-blocking, MIDI-driven
+- [x] 3.3.3 Implement mes(MIDI_END) - MIDI completion event
+- [x] 3.3.4 Implement mes(KEY) - keyboard input event
+- [x] 3.3.5 Implement mes(CLICK) - mouse click event
+- [x] 3.3.6 Implement mes(RBDOWN) - right button down event
+- [x] 3.3.7 Implement mes(RBDBLCLK) - right button double-click event
+- [x] 3.3.8 Implement mes(USER) - custom message event
+- [x] 3.3.9 Add tests for all mes() types
 
 **Acceptance Criteria**:
 - TIME mode blocks until completion

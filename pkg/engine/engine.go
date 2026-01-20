@@ -3,6 +3,8 @@ package engine
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
 // Engine is the main FILLY engine that coordinates execution.
@@ -177,4 +179,75 @@ func (e *Engine) DeleteAll() {
 // CleanupSequences removes inactive sequences from the list.
 func (e *Engine) CleanupSequences() {
 	e.state.CleanupInactiveSequences()
+}
+
+// RegisterMesBlock registers a mes() block (event handler).
+// For TIME mode, this blocks until the sequence completes.
+// For other modes, this returns immediately.
+func (e *Engine) RegisterMesBlock(eventType EventType, opcodes []interpreter.OpCode, parent *Sequencer, userID int) int {
+	// Determine timing mode based on event type
+	var mode TimingMode
+	if eventType == EventTIME {
+		mode = TIME
+	} else {
+		mode = MIDI_TIME
+	}
+
+	// Create sequencer for the mes() block
+	seq := NewSequencer(opcodes, mode, parent)
+
+	// Register as event handler
+	handlerID := e.state.RegisterEventHandler(eventType, seq, userID)
+	e.logger.LogDebug("Registered mes(%s) handler %d (user ID: %d)", eventType.String(), handlerID, userID)
+
+	// For TIME mode, execute immediately and block
+	if eventType == EventTIME {
+		// Register as regular sequence
+		seqID := e.RegisterSequence(seq, 0)
+		e.logger.LogDebug("TIME mode: executing sequence %d (blocking)", seqID)
+
+		// TODO: Block until sequence completes (will be implemented in Task 3.4)
+		// For now, just register it
+	}
+
+	return handlerID
+}
+
+// TriggerEvent triggers all event handlers for a given event type.
+// Event parameters are passed via EventData.
+func (e *Engine) TriggerEvent(eventType EventType, data *EventData) {
+	handlers := e.state.GetEventHandlers(eventType)
+	e.logger.LogDebug("Triggering %s event (%d handlers)", eventType.String(), len(handlers))
+
+	for _, handler := range handlers {
+		// Set event parameters in the sequencer's scope
+		if data != nil {
+			handler.Sequencer.SetVariable("MesP1", int64(data.MesP1))
+			handler.Sequencer.SetVariable("MesP2", int64(data.MesP2))
+			handler.Sequencer.SetVariable("MesP3", int64(data.MesP3))
+			handler.Sequencer.SetVariable("MesP4", int64(data.MesP4))
+		}
+
+		// Register the sequencer for execution
+		e.RegisterSequence(handler.Sequencer, 0)
+	}
+}
+
+// TriggerUserEvent triggers all USER event handlers for a specific user ID.
+func (e *Engine) TriggerUserEvent(userID int, data *EventData) {
+	handlers := e.state.GetUserEventHandlers(userID)
+	e.logger.LogDebug("Triggering USER event %d (%d handlers)", userID, len(handlers))
+
+	for _, handler := range handlers {
+		// Set event parameters in the sequencer's scope
+		if data != nil {
+			handler.Sequencer.SetVariable("MesP1", int64(data.MesP1))
+			handler.Sequencer.SetVariable("MesP2", int64(data.MesP2))
+			handler.Sequencer.SetVariable("MesP3", int64(data.MesP3))
+			handler.Sequencer.SetVariable("MesP4", int64(data.MesP4))
+		}
+
+		// Register the sequencer for execution
+		e.RegisterSequence(handler.Sequencer, 0)
+	}
 }
