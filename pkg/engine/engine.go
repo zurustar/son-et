@@ -110,8 +110,54 @@ func (e *Engine) Update() error {
 	// Increment tick counter
 	e.state.IncrementTick()
 
-	// TODO: Update VM execution (Phase 3)
+	// Update VM execution
+	if err := e.UpdateVM(); err != nil {
+		return err
+	}
+
 	// TODO: Update audio (Phase 5)
+
+	return nil
+}
+
+// UpdateVM processes one tick for all active sequences.
+// Each active sequence that is not waiting executes one OpCode.
+func (e *Engine) UpdateVM() error {
+	vm := NewVM(e.state, e.logger)
+
+	// Process all active sequences
+	for _, seq := range e.state.GetSequencers() {
+		// Skip inactive sequences
+		if !seq.IsActive() {
+			continue
+		}
+
+		// Skip completed sequences
+		if seq.IsComplete() {
+			continue
+		}
+
+		// Handle waiting sequences
+		if seq.IsWaiting() {
+			seq.DecrementWait()
+			continue
+		}
+
+		// Get current command
+		cmd := seq.GetCurrentCommand()
+		if cmd == nil {
+			continue
+		}
+
+		// Execute command
+		if err := vm.ExecuteOp(seq, *cmd); err != nil {
+			e.logger.LogError("VM execution error at seq %d, pc %d: %v", seq.GetID(), seq.GetPC(), err)
+			return err
+		}
+
+		// Advance program counter
+		seq.IncrementPC()
+	}
 
 	return nil
 }

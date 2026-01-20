@@ -336,12 +336,12 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement step-based execution model.
 
 **Subtasks**:
-- [ ] 3.4.1 Implement UpdateVM (process one tick for all sequences)
-- [ ] 3.4.2 Implement wait counter decrement
-- [ ] 3.4.3 Implement program counter advancement
-- [ ] 3.4.4 Implement sequence completion detection
+- [x] 3.4.1 Implement UpdateVM (process one tick for all sequences)
+- [x] 3.4.2 Implement wait counter decrement
+- [x] 3.4.3 Implement program counter advancement
+- [x] 3.4.4 Implement sequence completion detection
 - [ ] 3.4.5 Implement tick generation for TIME mode (60 FPS)
-- [ ] 3.4.6 Add tests for tick processing
+- [x] 3.4.6 Add tests for tick processing
 
 **Acceptance Criteria**:
 - Each tick advances all active sequences by one step
