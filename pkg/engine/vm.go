@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
@@ -9,13 +10,15 @@ import (
 // VM executes OpCode sequences within the engine.
 type VM struct {
 	state  *EngineState
+	engine *Engine
 	logger *Logger
 }
 
 // NewVM creates a new VM with the given state and logger.
-func NewVM(state *EngineState, logger *Logger) *VM {
+func NewVM(state *EngineState, engine *Engine, logger *Logger) *VM {
 	return &VM{
 		state:  state,
+		engine: engine,
 		logger: logger,
 	}
 }
@@ -44,6 +47,12 @@ func (vm *VM) ExecuteOp(seq *Sequencer, op interpreter.OpCode) error {
 
 	case interpreter.OpWait:
 		return vm.executeWait(seq, op)
+
+	case interpreter.OpRegisterEventHandler:
+		// mes() blocks are registered as event handlers
+		// This is a stub for now - full implementation in Phase 3.3
+		vm.logger.LogDebug("RegisterEventHandler (not yet implemented)")
+		return nil
 
 	case interpreter.OpBinaryOp:
 		// Binary operations are evaluated as part of expressions
@@ -84,20 +93,180 @@ func (vm *VM) executeAssign(seq *Sequencer, op interpreter.OpCode) error {
 	return nil
 }
 
-// executeCall handles function calls (stub for now)
-// seq parameter will be used when full function call implementation is added
+// executeCall handles function calls
 func (vm *VM) executeCall(seq *Sequencer, op interpreter.OpCode) error {
-	_ = seq // Will be used in full implementation
-
 	if len(op.Args) == 0 {
 		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpCall requires at least 1 argument (function name)")
 	}
 
-	// For now, just log the call
-	// Full implementation will come in later phases
-	vm.logger.LogDebug("Call: %v (stub)", op.Args[0])
+	// Get function name
+	var funcName string
+	switch fn := op.Args[0].(type) {
+	case string:
+		funcName = fn
+	case interpreter.Variable:
+		funcName = string(fn)
+	default:
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpCall first argument must be string or Variable, got %T", op.Args[0])
+	}
+
+	// Handle special built-in functions
+	switch funcName {
+	case "define_function":
+		return vm.executeDefineFunction(seq, op)
+	case "return":
+		// TODO: Implement return statement handling
+		vm.logger.LogDebug("Return statement (not yet implemented)")
+		return nil
+	default:
+		// Try to call user-defined function
+		return vm.executeUserFunction(seq, funcName, op.Args[1:])
+	}
+}
+
+// executeDefineFunction handles function definition registration
+func (vm *VM) executeDefineFunction(seq *Sequencer, op interpreter.OpCode) error {
+	if len(op.Args) != 4 {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "define_function requires 4 arguments (name, params, body), got %d", len(op.Args))
+	}
+
+	// Get function name
+	funcName, ok := op.Args[1].(string)
+	if !ok {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "define_function name must be string, got %T", op.Args[1])
+	}
+
+	// Get parameters
+	params, ok := op.Args[2].([]any)
+	if !ok {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "define_function params must be []any, got %T", op.Args[2])
+	}
+
+	// Convert parameters to strings
+	paramNames := make([]string, len(params))
+	for i, p := range params {
+		paramNames[i] = fmt.Sprintf("%v", p)
+	}
+
+	// Get function body
+	body, ok := op.Args[3].([]interpreter.OpCode)
+	if !ok {
+		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "define_function body must be []OpCode, got %T", op.Args[3])
+	}
+
+	// Register function in engine state
+	vm.state.RegisterFunction(funcName, paramNames, body)
+	vm.logger.LogDebug("Defined function: %s with %d parameters", funcName, len(paramNames))
 
 	return nil
+}
+
+// executeUserFunction handles user-defined function calls
+func (vm *VM) executeUserFunction(seq *Sequencer, funcName string, args []any) error {
+	// Look up function definition
+	funcDef, ok := vm.state.GetFunction(funcName)
+	if !ok {
+		// Not a user-defined function - try built-in functions
+		return vm.executeBuiltinFunction(seq, funcName, args)
+	}
+
+	// Evaluate arguments
+	evaluatedArgs := make([]any, len(args))
+	for i, arg := range args {
+		val, err := vm.evaluateValue(seq, arg)
+		if err != nil {
+			return err
+		}
+		evaluatedArgs[i] = val
+	}
+
+	// Create new sequencer for function execution with current sequencer as parent
+	funcSeq := NewSequencer(funcDef.Body, seq.GetMode(), seq)
+
+	// Bind parameters to arguments
+	for i, paramName := range funcDef.Parameters {
+		if i < len(evaluatedArgs) {
+			funcSeq.SetVariable(paramName, evaluatedArgs[i])
+		} else {
+			// Parameter not provided, use default value (0)
+			funcSeq.SetVariable(paramName, 0)
+		}
+	}
+
+	// Execute function body synchronously
+	vm.logger.LogDebug("Calling user function: %s with %d arguments", funcName, len(evaluatedArgs))
+	return vm.executeBlock(funcSeq, funcDef.Body)
+}
+
+// executeBuiltinFunction handles built-in function calls
+func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any) error {
+	// Evaluate arguments
+	evaluatedArgs := make([]any, len(args))
+	for i, arg := range args {
+		vm.logger.LogDebug("  arg[%d] BEFORE eval: %v (type: %T)", i, arg, arg)
+		val, err := vm.evaluateValue(seq, arg)
+		if err != nil {
+			return err
+		}
+		evaluatedArgs[i] = val
+		vm.logger.LogDebug("  arg[%d] AFTER eval: %v (type: %T)", i, val, val)
+	}
+
+	vm.logger.LogDebug("Call: %s (built-in function)", funcName)
+
+	// Handle built-in functions
+	switch strings.ToLower(funcName) {
+	case "loadpic":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("LoadPic", fmt.Sprintf("%v", evaluatedArgs), "LoadPic requires 1 argument (filename)")
+		}
+		filename := fmt.Sprintf("%v", evaluatedArgs[0])
+		picID := vm.engine.LoadPic(filename)
+		// Store result in a special return variable (for now, just ignore)
+		_ = picID
+		return nil
+
+	case "createpic":
+		if len(evaluatedArgs) < 2 {
+			return NewRuntimeError("CreatePic", fmt.Sprintf("%v", evaluatedArgs), "CreatePic requires 2 arguments (width, height)")
+		}
+		width := int(vm.toInt(evaluatedArgs[0]))
+		height := int(vm.toInt(evaluatedArgs[1]))
+		picID := vm.engine.CreatePic(width, height)
+		_ = picID
+		return nil
+
+	case "delpic":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("DelPic", fmt.Sprintf("%v", evaluatedArgs), "DelPic requires 1 argument (picID)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.DelPic(picID)
+		return nil
+
+	case "picwidth":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("PicWidth", fmt.Sprintf("%v", evaluatedArgs), "PicWidth requires 1 argument (picID)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		width := vm.engine.PicWidth(picID)
+		_ = width
+		return nil
+
+	case "picheight":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("PicHeight", fmt.Sprintf("%v", evaluatedArgs), "PicHeight requires 1 argument (picID)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		height := vm.engine.PicHeight(picID)
+		_ = height
+		return nil
+
+	default:
+		// Unknown built-in function - just log and ignore
+		vm.logger.LogDebug("Unknown built-in function: %s", funcName)
+		return nil
+	}
 }
 
 // executeIf handles if statements: if (condition) { thenBlock } else { elseBlock }

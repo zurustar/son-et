@@ -720,16 +720,28 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 		return nil
 	}
 
-	// Parse parameters/arguments
-	params := p.parseFunctionParameters()
+	// Look ahead to determine if this is a function declaration or call
+	// Function declarations have parameter names (identifiers only)
+	// Function calls have arguments (any expression)
 
-	// Expect closing )
-	if !p.expectPeek(token.RPAREN) {
-		return nil
-	}
+	// Parse as expression list (works for both parameters and arguments)
+	args := p.parseExpressionList(token.RPAREN)
 
 	// If followed by {, it's a function declaration
 	if p.peekTokenIs(token.LBRACE) {
+		// This is a function declaration
+		// Convert arguments back to parameter names
+		params := make([]*ast.Identifier, len(args))
+		for i, arg := range args {
+			if ident, ok := arg.(*ast.Identifier); ok {
+				params[i] = ident
+			} else {
+				// Error: function parameters must be identifiers
+				p.errors = append(p.errors, fmt.Sprintf("function parameter must be identifier, got %T", arg))
+				return nil
+			}
+		}
+
 		p.nextToken()
 		body := p.parseBlockStatement()
 
@@ -742,12 +754,6 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 	}
 
 	// Otherwise, it's a function call
-	// Convert parameters to arguments (they're the same for calls)
-	args := make([]ast.Expression, len(params))
-	for i, param := range params {
-		args[i] = param
-	}
-
 	return &ast.ExpressionStatement{
 		Token: name.Token,
 		Expression: &ast.CallExpression{

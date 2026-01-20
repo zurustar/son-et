@@ -104,8 +104,21 @@ func (g *Generator) generateAssignStatement(stmt *ast.AssignStatement) []interpr
 
 // generateExpressionStatement converts an expression statement to OpCode.
 func (g *Generator) generateExpressionStatement(stmt *ast.ExpressionStatement) []interpreter.OpCode {
-	// For expression statements, we just generate the expression
-	// The result will be evaluated but not stored
+	// For expression statements, check if it's already a function call
+	if callExpr, ok := stmt.Expression.(*ast.CallExpression); ok {
+		// It's a function call - generate it directly as OpCall
+		funcName := g.generateExpression(callExpr.Function)
+		args := make([]any, len(callExpr.Arguments))
+		for i, arg := range callExpr.Arguments {
+			args[i] = g.generateExpression(arg)
+		}
+		return []interpreter.OpCode{{
+			Cmd:  interpreter.OpCall,
+			Args: append([]any{funcName}, args...),
+		}}
+	}
+
+	// For other expressions, just evaluate them (shouldn't normally happen)
 	expr := g.generateExpression(stmt.Expression)
 	return []interpreter.OpCode{{
 		Cmd:  interpreter.OpCall,

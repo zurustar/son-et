@@ -1,11 +1,15 @@
 package engine
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
 
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
+
+// ErrTerminated is returned when the engine is terminated.
+var ErrTerminated = errors.New("engine terminated")
 
 // Engine is the main FILLY engine that coordinates execution.
 type Engine struct {
@@ -104,7 +108,8 @@ func (e *Engine) CheckTermination() bool {
 func (e *Engine) Update() error {
 	// Check termination before execution
 	if e.CheckTermination() {
-		return nil
+		// Return a termination error to stop the game loop
+		return ErrTerminated
 	}
 
 	// Increment tick counter
@@ -115,6 +120,13 @@ func (e *Engine) Update() error {
 		return err
 	}
 
+	// Check if all sequences have completed
+	if e.AllSequencesComplete() {
+		e.logger.LogInfo("All sequences completed, terminating")
+		e.Terminate()
+		return ErrTerminated
+	}
+
 	// TODO: Update audio (Phase 5)
 
 	return nil
@@ -123,7 +135,7 @@ func (e *Engine) Update() error {
 // UpdateVM processes one tick for all active sequences.
 // Each active sequence that is not waiting executes one OpCode.
 func (e *Engine) UpdateVM() error {
-	vm := NewVM(e.state, e.logger)
+	vm := NewVM(e.state, e, e.logger)
 
 	// Process all active sequences
 	for _, seq := range e.state.GetSequencers() {
@@ -319,4 +331,111 @@ func (e *Engine) TriggerUserEvent(userID int, data *EventData) {
 		// Register the NEW sequencer for execution
 		e.RegisterSequence(seq, 0)
 	}
+}
+
+// CallMainFunction calls the main() function if it exists.
+// This should be called after the initial script has been loaded and executed
+// (so that function definitions are registered).
+func (e *Engine) CallMainFunction() error {
+	// Look up main function
+	mainFunc, ok := e.state.GetFunction("main")
+	if !ok {
+		e.logger.LogInfo("No main() function found, skipping automatic execution")
+		return nil
+	}
+
+	e.logger.LogInfo("Calling main() function")
+
+	// Create a new sequencer for main() execution (TIME mode, no parent)
+	mainSeq := NewSequencer(mainFunc.Body, TIME, nil)
+
+	// Register the main sequence
+	seqID := e.RegisterSequence(mainSeq, 0)
+
+	e.logger.LogDebug("Registered main() sequence %d", seqID)
+
+	return nil
+}
+
+// ExecuteTopLevel executes top-level opcodes synchronously.
+// This is used to register function definitions before starting the main execution loop.
+func (e *Engine) ExecuteTopLevel(opcodes []interpreter.OpCode) error {
+	e.logger.LogDebug("Executing %d top-level opcodes", len(opcodes))
+
+	// Create a temporary sequencer for top-level execution
+	seq := NewSequencer(opcodes, TIME, nil)
+	vm := NewVM(e.state, e, e.logger)
+
+	// Execute all opcodes synchronously
+	for !seq.IsComplete() {
+		cmd := seq.GetCurrentCommand()
+		if cmd == nil {
+			break
+		}
+
+		if err := vm.ExecuteOp(seq, *cmd); err != nil {
+			return err
+		}
+
+		seq.IncrementPC()
+	}
+
+	e.logger.LogDebug("Top-level execution complete")
+	return nil
+}
+
+// AllSequencesComplete checks if all sequences have completed execution.
+// Returns true if there are no active sequences or all sequences are complete.
+func (e *Engine) AllSequencesComplete() bool {
+	sequencers := e.state.GetSequencers()
+
+	// If no sequences exist, consider it complete
+	if len(sequencers) == 0 {
+		return true
+	}
+
+	// Check if all sequences are either inactive or complete
+	for _, seq := range sequencers {
+		if seq.IsActive() && !seq.IsComplete() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// LoadPic loads an image file and returns its picture ID.
+// Returns 0 on error.
+func (e *Engine) LoadPic(filename string) int {
+	picID, err := e.state.LoadPicture(filename)
+	if err != nil {
+		e.logger.LogError("LoadPic failed: %v", err)
+		return 0
+	}
+	e.logger.LogDebug("Loaded picture %d: %s", picID, filename)
+	return picID
+}
+
+// CreatePic creates an empty image buffer.
+// Returns the picture ID.
+func (e *Engine) CreatePic(width, height int) int {
+	picID := e.state.CreatePicture(width, height)
+	e.logger.LogDebug("Created picture %d: %dx%d", picID, width, height)
+	return picID
+}
+
+// DelPic deletes a picture and releases its resources.
+func (e *Engine) DelPic(picID int) {
+	e.state.DeletePicture(picID)
+	e.logger.LogDebug("Deleted picture %d", picID)
+}
+
+// PicWidth returns the width of a picture.
+func (e *Engine) PicWidth(picID int) int {
+	return e.state.GetPictureWidth(picID)
+}
+
+// PicHeight returns the height of a picture.
+func (e *Engine) PicHeight(picID int) int {
+	return e.state.GetPictureHeight(picID)
 }

@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"bytes"
+	"fmt"
 	"image"
+	"strings"
 	"sync"
 
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
@@ -13,6 +16,13 @@ const (
 	VirtualDesktopHeight = 720
 )
 
+// FunctionDefinition represents a user-defined function.
+type FunctionDefinition struct {
+	Name       string               // Function name (lowercase)
+	Parameters []string             // Parameter names
+	Body       []interpreter.OpCode // Function body as OpCode sequence
+}
+
 // EngineState holds all runtime state for the FILLY engine.
 // It is the central data structure that contains graphics, audio, and execution state.
 type EngineState struct {
@@ -22,12 +32,14 @@ type EngineState struct {
 	casts    map[int]*Cast    // Cast ID -> Cast
 
 	// Execution state
-	sequencers    []*Sequencer    // Active sequences
-	eventHandlers []*EventHandler // Registered event handlers
-	nextSeqID     int             // Next sequence ID to assign
-	nextGroupID   int             // Next group ID to assign
-	nextHandlerID int             // Next event handler ID to assign
-	tickCount     int64           // Global tick counter
+	sequencers    []*Sequencer                   // Active sequences
+	eventHandlers []*EventHandler                // Registered event handlers
+	functions     map[string]*FunctionDefinition // User-defined functions (lowercase names)
+	nextSeqID     int                            // Next sequence ID to assign
+	nextGroupID   int                            // Next group ID to assign
+	nextHandlerID int                            // Next event handler ID to assign
+	nextPicID     int                            // Next picture ID to assign
+	tickCount     int64                          // Global tick counter
 
 	// Dependencies (injected)
 	renderer     Renderer     // Rendering abstraction
@@ -86,9 +98,11 @@ func NewEngineState(renderer Renderer, assetLoader AssetLoader, imageDecoder Ima
 		casts:         make(map[int]*Cast),
 		sequencers:    make([]*Sequencer, 0),
 		eventHandlers: make([]*EventHandler, 0),
+		functions:     make(map[string]*FunctionDefinition),
 		nextSeqID:     1,
 		nextGroupID:   1,
 		nextHandlerID: 1,
+		nextPicID:     1,
 		tickCount:     0,
 		renderer:      renderer,
 		assetLoader:   assetLoader,
@@ -256,4 +270,107 @@ func (e *EngineState) CleanupInactiveEventHandlers() {
 		}
 	}
 	e.eventHandlers = active
+}
+
+// RegisterFunction registers a user-defined function.
+func (e *EngineState) RegisterFunction(name string, parameters []string, body []interpreter.OpCode) {
+	// Convert function name to lowercase for case-insensitive lookup
+	lowerName := strings.ToLower(name)
+
+	e.functions[lowerName] = &FunctionDefinition{
+		Name:       lowerName,
+		Parameters: parameters,
+		Body:       body,
+	}
+}
+
+// GetFunction retrieves a user-defined function by name (case-insensitive).
+func (e *EngineState) GetFunction(name string) (*FunctionDefinition, bool) {
+	lowerName := strings.ToLower(name)
+	fn, ok := e.functions[lowerName]
+	return fn, ok
+}
+
+// LoadPicture loads an image from a file and assigns it a picture ID.
+// Returns the picture ID, or an error if loading fails.
+func (e *EngineState) LoadPicture(filename string) (int, error) {
+	// Load file data via AssetLoader
+	data, err := e.assetLoader.ReadFile(filename)
+	if err != nil {
+		return 0, fmt.Errorf("failed to load picture %s: %w", filename, err)
+	}
+
+	// Create reader from byte slice
+	reader := bytes.NewReader(data)
+
+	// Decode image
+	img, _, err := e.imageDecoder.Decode(reader)
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode picture %s: %w", filename, err)
+	}
+
+	// Create picture
+	bounds := img.Bounds()
+	pic := &Picture{
+		ID:     e.nextPicID,
+		Image:  img,
+		Width:  bounds.Dx(),
+		Height: bounds.Dy(),
+	}
+
+	// Store picture
+	e.pictures[pic.ID] = pic
+	e.nextPicID++
+
+	return pic.ID, nil
+}
+
+// CreatePicture creates an empty image buffer with the specified dimensions.
+// Returns the picture ID.
+func (e *EngineState) CreatePicture(width, height int) int {
+	// Create empty RGBA image
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	// Create picture
+	pic := &Picture{
+		ID:     e.nextPicID,
+		Image:  img,
+		Width:  width,
+		Height: height,
+	}
+
+	// Store picture
+	e.pictures[pic.ID] = pic
+	e.nextPicID++
+
+	return pic.ID
+}
+
+// GetPicture retrieves a picture by ID.
+// Returns nil if the picture doesn't exist.
+func (e *EngineState) GetPicture(id int) *Picture {
+	return e.pictures[id]
+}
+
+// DeletePicture removes a picture and releases its resources.
+func (e *EngineState) DeletePicture(id int) {
+	delete(e.pictures, id)
+}
+
+// GetPictureWidth returns the width of a picture.
+// Returns 0 if the picture doesn't exist.
+func (e *EngineState) GetPictureWidth(id int) int {
+	if pic := e.pictures[id]; pic != nil {
+		return pic.Width
+	}
+	return 0
+}
+
+// GetPictureHeight returns the height of a picture.
+// Returns 0 if the picture doesn't exist.
+func (e *EngineState) GetPictureHeight(id int) int {
+	if pic := e.pictures[id]; pic != nil {
+		return pic.Height
+	}
+	return 0
 }
