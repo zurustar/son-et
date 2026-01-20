@@ -175,3 +175,243 @@ func TestGetWindowsOrder(t *testing.T) {
 		t.Errorf("Expected third window ID %d, got %d", id3, windows[2].ID)
 	}
 }
+
+func TestStartWindowDrag(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create a window with a caption (draggable)
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Draggable Window")
+
+	// Click on the title bar
+	draggedID := state.StartWindowDrag(150, 110)
+
+	if draggedID != winID {
+		t.Errorf("Expected to start dragging window %d, got %d", winID, draggedID)
+	}
+
+	// Verify window is in dragging state
+	win := state.GetWindow(winID)
+	if !win.IsDragging {
+		t.Error("Expected window to be in dragging state")
+	}
+
+	// Verify drag offsets are set correctly
+	if win.DragOffsetX != 50 { // 150 - 100
+		t.Errorf("Expected DragOffsetX 50, got %d", win.DragOffsetX)
+	}
+	if win.DragOffsetY != 10 { // 110 - 100
+		t.Errorf("Expected DragOffsetY 10, got %d", win.DragOffsetY)
+	}
+}
+
+func TestStartWindowDragNoCaptionIgnored(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create a window without a caption (not draggable)
+	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "")
+
+	// Try to click on where the title bar would be
+	draggedID := state.StartWindowDrag(150, 110)
+
+	if draggedID != 0 {
+		t.Errorf("Expected no window to be dragged (no caption), got window %d", draggedID)
+	}
+}
+
+func TestStartWindowDragOutsideTitleBar(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create a window with a caption
+	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+
+	// Click below the title bar (in the window content area)
+	draggedID := state.StartWindowDrag(150, 130)
+
+	if draggedID != 0 {
+		t.Errorf("Expected no window to be dragged (clicked outside title bar), got window %d", draggedID)
+	}
+}
+
+func TestStartWindowDragTopmost(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create overlapping windows
+	win1 := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window 1")
+	win2 := state.OpenWindow(2, 150, 150, 200, 150, 0, 0, "Window 2")
+
+	// Click on overlapping area (should select the topmost window = win2)
+	draggedID := state.StartWindowDrag(180, 160)
+
+	if draggedID != win2 {
+		t.Errorf("Expected to drag topmost window %d, got %d", win2, draggedID)
+	}
+
+	// Verify only win2 is dragging
+	if state.GetWindow(win1).IsDragging {
+		t.Error("Expected window 1 to not be dragging")
+	}
+	if !state.GetWindow(win2).IsDragging {
+		t.Error("Expected window 2 to be dragging")
+	}
+}
+
+func TestUpdateWindowDrag(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create and start dragging a window
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	state.StartWindowDrag(150, 110) // Click at (150, 110), offset = (50, 10)
+
+	// Move mouse to new position
+	updated := state.UpdateWindowDrag(200, 150)
+
+	if !updated {
+		t.Error("Expected window drag to be updated")
+	}
+
+	// Verify window moved to new position (accounting for offset)
+	win := state.GetWindow(winID)
+	expectedX := 200 - 50 // 150
+	expectedY := 150 - 10 // 140
+	if win.X != expectedX {
+		t.Errorf("Expected X %d, got %d", expectedX, win.X)
+	}
+	if win.Y != expectedY {
+		t.Errorf("Expected Y %d, got %d", expectedY, win.Y)
+	}
+}
+
+func TestUpdateWindowDragNoDrag(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create a window but don't start dragging
+	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+
+	// Try to update drag
+	updated := state.UpdateWindowDrag(200, 150)
+
+	if updated {
+		t.Error("Expected no update when no window is being dragged")
+	}
+}
+
+func TestUpdateWindowDragConstraints(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create a window
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	state.StartWindowDrag(150, 110) // offset = (50, 10)
+
+	tests := []struct {
+		name      string
+		mouseX    int
+		mouseY    int
+		expectedX int
+		expectedY int
+	}{
+		{
+			name:      "constrain top",
+			mouseX:    150,
+			mouseY:    5, // Would put window at Y=-5
+			expectedX: 100,
+			expectedY: 0, // Constrained to 0
+		},
+		{
+			name:      "constrain bottom",
+			mouseX:    150,
+			mouseY:    800, // Would put window at Y=790
+			expectedX: 100,
+			expectedY: VirtualDesktopHeight - TitleBarHeight, // Constrained
+		},
+		{
+			name:      "constrain left (partial)",
+			mouseX:    -110, // With offset 50, would put window at X=-160
+			mouseY:    110,
+			expectedX: -(200 - 50), // Constrained to -150
+			expectedY: 100,
+		},
+		{
+			name:      "constrain right (partial)",
+			mouseX:    VirtualDesktopWidth + 100,
+			mouseY:    110,
+			expectedX: VirtualDesktopWidth - 50, // Keep 50px visible
+			expectedY: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset window position
+			win := state.GetWindow(winID)
+			win.X = 100
+			win.Y = 100
+			win.IsDragging = true
+			win.DragOffsetX = 50
+			win.DragOffsetY = 10
+			state.draggedWindowID = winID
+
+			// Update drag
+			state.UpdateWindowDrag(tt.mouseX, tt.mouseY)
+
+			// Check constraints
+			if win.X != tt.expectedX {
+				t.Errorf("Expected X %d, got %d", tt.expectedX, win.X)
+			}
+			if win.Y != tt.expectedY {
+				t.Errorf("Expected Y %d, got %d", tt.expectedY, win.Y)
+			}
+		})
+	}
+}
+
+func TestStopWindowDrag(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Create and start dragging a window
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	state.StartWindowDrag(150, 110)
+
+	// Verify dragging started
+	if state.GetDraggedWindowID() != winID {
+		t.Error("Expected window to be dragging")
+	}
+
+	// Stop dragging
+	state.StopWindowDrag()
+
+	// Verify dragging stopped
+	if state.GetDraggedWindowID() != 0 {
+		t.Error("Expected no window to be dragging")
+	}
+
+	win := state.GetWindow(winID)
+	if win.IsDragging {
+		t.Error("Expected window IsDragging to be false")
+	}
+}
+
+func TestGetDraggedWindowID(t *testing.T) {
+	state := NewEngineState(nil, nil, nil)
+
+	// Initially no window is dragged
+	if state.GetDraggedWindowID() != 0 {
+		t.Error("Expected no window to be dragged initially")
+	}
+
+	// Start dragging
+	winID := state.OpenWindow(1, 100, 100, 200, 150, 0, 0, "Window")
+	state.StartWindowDrag(150, 110)
+
+	// Verify correct window ID is returned
+	if state.GetDraggedWindowID() != winID {
+		t.Errorf("Expected dragged window ID %d, got %d", winID, state.GetDraggedWindowID())
+	}
+
+	// Stop dragging
+	state.StopWindowDrag()
+
+	// Verify no window is dragged
+	if state.GetDraggedWindowID() != 0 {
+		t.Error("Expected no window to be dragged after stop")
+	}
+}

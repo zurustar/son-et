@@ -32,6 +32,9 @@ type EngineState struct {
 	windows  map[int]*Window  // Window ID -> Window
 	casts    map[int]*Cast    // Cast ID -> Cast
 
+	// Window drag state
+	draggedWindowID int // ID of window being dragged (0 = none)
+
 	// Execution state
 	sequencers    []*Sequencer                   // Active sequences
 	eventHandlers []*EventHandler                // Registered event handlers
@@ -76,6 +79,11 @@ type Window struct {
 	PicY      int    // Picture offset Y
 	Caption   string // Window caption (title bar)
 	Visible   bool   // Is window visible
+
+	// Drag state
+	IsDragging  bool // True if window is being dragged
+	DragOffsetX int  // Mouse offset from window X when drag started
+	DragOffsetY int  // Mouse offset from window Y when drag started
 }
 
 // Cast represents a sprite (movable image element).
@@ -700,4 +708,112 @@ func (e *EngineState) GetWindows() []*Window {
 	}
 
 	return windows
+}
+
+// TitleBarHeight returns the height of the title bar in pixels.
+// Windows with captions have a draggable title bar.
+const TitleBarHeight = 20
+
+// StartWindowDrag initiates dragging a window.
+// Parameters:
+//
+//	mouseX, mouseY: current mouse position on virtual desktop
+//
+// Returns the window ID that started dragging, or 0 if no window was clicked.
+func (e *EngineState) StartWindowDrag(mouseX, mouseY int) int {
+	// Find the topmost window under the mouse cursor (reverse order = top to bottom)
+	windows := e.GetWindows()
+	for i := len(windows) - 1; i >= 0; i-- {
+		win := windows[i]
+
+		// Skip invisible windows
+		if !win.Visible {
+			continue
+		}
+
+		// Check if mouse is in title bar area (only if window has a caption)
+		if win.Caption != "" {
+			titleBarX := win.X
+			titleBarY := win.Y
+			titleBarWidth := win.Width
+			titleBarHeight := TitleBarHeight
+
+			if mouseX >= titleBarX && mouseX < titleBarX+titleBarWidth &&
+				mouseY >= titleBarY && mouseY < titleBarY+titleBarHeight {
+				// Start dragging this window
+				win.IsDragging = true
+				win.DragOffsetX = mouseX - win.X
+				win.DragOffsetY = mouseY - win.Y
+				e.draggedWindowID = win.ID
+				return win.ID
+			}
+		}
+	}
+
+	return 0
+}
+
+// UpdateWindowDrag updates the position of the dragged window.
+// Parameters:
+//
+//	mouseX, mouseY: current mouse position on virtual desktop
+//
+// Returns true if a window was updated, false if no window is being dragged.
+func (e *EngineState) UpdateWindowDrag(mouseX, mouseY int) bool {
+	if e.draggedWindowID == 0 {
+		return false
+	}
+
+	win := e.windows[e.draggedWindowID]
+	if win == nil || !win.IsDragging {
+		e.draggedWindowID = 0
+		return false
+	}
+
+	// Calculate new position
+	newX := mouseX - win.DragOffsetX
+	newY := mouseY - win.DragOffsetY
+
+	// Constrain to virtual desktop bounds (Task 4.3.10)
+	// Keep at least part of the title bar visible
+	minX := -(win.Width - 50)                     // Allow dragging mostly off-screen to the left
+	maxX := VirtualDesktopWidth - 50              // Keep at least 50px visible on the right
+	minY := 0                                     // Don't allow dragging above the desktop
+	maxY := VirtualDesktopHeight - TitleBarHeight // Keep title bar visible at bottom
+
+	if newX < minX {
+		newX = minX
+	}
+	if newX > maxX {
+		newX = maxX
+	}
+	if newY < minY {
+		newY = minY
+	}
+	if newY > maxY {
+		newY = maxY
+	}
+
+	// Update window position
+	win.X = newX
+	win.Y = newY
+
+	return true
+}
+
+// StopWindowDrag stops dragging the current window.
+func (e *EngineState) StopWindowDrag() {
+	if e.draggedWindowID != 0 {
+		win := e.windows[e.draggedWindowID]
+		if win != nil {
+			win.IsDragging = false
+		}
+		e.draggedWindowID = 0
+	}
+}
+
+// GetDraggedWindowID returns the ID of the window currently being dragged.
+// Returns 0 if no window is being dragged.
+func (e *EngineState) GetDraggedWindowID() int {
+	return e.draggedWindowID
 }

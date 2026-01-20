@@ -420,10 +420,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 4.3.5 Implement CloseWinAll (close all windows)
 - [x] 4.3.6 Implement CapTitle (set caption)
 - [x] 4.3.7 Implement GetPicNo (query picture ID)
-- [ ] 4.3.8 Implement window drag detection (mouse down on title bar)
-- [ ] 4.3.9 Implement window drag update (mouse move while dragging)
-- [ ] 4.3.10 Implement window drag constraints (keep within virtual desktop)
-- [ ] 4.3.11 Add tests for window operations including drag
+- [x] 4.3.8 Implement window drag detection (mouse down on title bar)
+- [x] 4.3.9 Implement window drag update (mouse move while dragging)
+- [x] 4.3.10 Implement window drag constraints (keep within virtual desktop)
+- [x] 4.3.11 Add tests for window operations including drag
 
 **Acceptance Criteria**:
 - Windows display pictures correctly

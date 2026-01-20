@@ -518,3 +518,38 @@ func (e *Engine) CapTitle(id int, caption string) {
 func (e *Engine) GetPicNo(id int) int {
 	return e.state.GetWindowPictureID(id)
 }
+
+// StartWindowDrag initiates dragging a window at the given mouse position.
+// Returns the window ID that started dragging, or 0 if no window was clicked.
+func (e *Engine) StartWindowDrag(mouseX, mouseY int) int {
+	winID := e.state.StartWindowDrag(mouseX, mouseY)
+	if winID != 0 {
+		e.logger.LogDebug("Started dragging window %d at mouse position (%d,%d)", winID, mouseX, mouseY)
+	}
+	return winID
+}
+
+// UpdateWindowDrag updates the position of the dragged window.
+// Returns true if a window was updated.
+func (e *Engine) UpdateWindowDrag(mouseX, mouseY int) bool {
+	updated := e.state.UpdateWindowDrag(mouseX, mouseY)
+	if updated {
+		winID := e.state.GetDraggedWindowID()
+		e.logger.LogDebug("Updated dragged window %d to mouse position (%d,%d)", winID, mouseX, mouseY)
+	}
+	return updated
+}
+
+// StopWindowDrag stops dragging the current window.
+func (e *Engine) StopWindowDrag() {
+	winID := e.state.GetDraggedWindowID()
+	if winID != 0 {
+		e.logger.LogDebug("Stopped dragging window %d", winID)
+	}
+	e.state.StopWindowDrag()
+}
+
+// GetDraggedWindowID returns the ID of the window currently being dragged.
+func (e *Engine) GetDraggedWindowID() int {
+	return e.state.GetDraggedWindowID()
+}
