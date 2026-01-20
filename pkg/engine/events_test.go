@@ -465,3 +465,79 @@ func TestEventHandlerPreservesTemplate(t *testing.T) {
 		t.Errorf("Expected 5 sequencers after 5 triggers, got %d", len(sequencers))
 	}
 }
+
+// TestEventHandlerInheritsParentScope verifies that triggered sequencers
+// can access variables from their parent scope.
+func TestEventHandlerInheritsParentScope(t *testing.T) {
+	engine := NewEngine(nil, nil, nil)
+
+	// Create a parent sequencer with a variable
+	parentSeq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
+	parentSeq.SetVariable("parentVar", int64(42))
+
+	opcodes := []interpreter.OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
+	}
+
+	// Register handler with parent scope
+	engine.RegisterMesBlock(EventKEY, opcodes, parentSeq, 0)
+
+	// Trigger the event
+	engine.TriggerEvent(EventKEY, nil)
+
+	// Get the triggered sequencer
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 1 {
+		t.Fatalf("Expected 1 sequencer, got %d", len(sequencers))
+	}
+
+	seq := sequencers[0]
+
+	// Verify the triggered sequencer can access parent's variable
+	val := seq.GetVariable("parentVar")
+	if val != int64(42) {
+		t.Errorf("Expected parentVar=42 from parent scope, got %v", val)
+	}
+}
+
+// TestEventHandlerParentScopeIsolation verifies that modifications to
+// triggered sequencer's variables don't affect the parent scope
+// (unless the variable was originally defined in parent).
+func TestEventHandlerParentScopeIsolation(t *testing.T) {
+	engine := NewEngine(nil, nil, nil)
+
+	// Create a parent sequencer
+	parentSeq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
+	parentSeq.SetVariable("sharedVar", int64(100))
+
+	opcodes := []interpreter.OpCode{
+		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
+	}
+
+	// Register handler with parent scope
+	engine.RegisterMesBlock(EventKEY, opcodes, parentSeq, 0)
+
+	// Trigger the event
+	engine.TriggerEvent(EventKEY, nil)
+
+	sequencers := engine.GetState().GetSequencers()
+	seq := sequencers[0]
+
+	// Set a new variable in the child scope
+	seq.SetVariable("childOnly", int64(999))
+
+	// Parent should NOT have childOnly
+	parentVal := parentSeq.GetVariable("childOnly")
+	if parentVal != 0 { // Default value for undefined
+		t.Errorf("Parent should not have childOnly, got %v", parentVal)
+	}
+
+	// Modify sharedVar in child - this should update parent (lexical scoping)
+	seq.SetVariable("sharedVar", int64(200))
+
+	// Parent's sharedVar should be updated
+	parentShared := parentSeq.GetVariable("sharedVar")
+	if parentShared != int64(200) {
+		t.Errorf("Parent's sharedVar should be updated to 200, got %v", parentShared)
+	}
+}
