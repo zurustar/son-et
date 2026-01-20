@@ -309,6 +309,66 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		vm.engine.ReversePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
 		return nil
 
+	case "openwin":
+		if len(evaluatedArgs) < 8 {
+			return NewRuntimeError("OpenWin", fmt.Sprintf("%v", evaluatedArgs), "OpenWin requires 8 arguments (picID, x, y, width, height, picX, picY, caption)")
+		}
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		x := int(vm.toInt(evaluatedArgs[1]))
+		y := int(vm.toInt(evaluatedArgs[2]))
+		width := int(vm.toInt(evaluatedArgs[3]))
+		height := int(vm.toInt(evaluatedArgs[4]))
+		picX := int(vm.toInt(evaluatedArgs[5]))
+		picY := int(vm.toInt(evaluatedArgs[6]))
+		caption := fmt.Sprintf("%v", evaluatedArgs[7])
+		winID := vm.engine.OpenWin(picID, x, y, width, height, picX, picY, caption)
+		_ = winID
+		return nil
+
+	case "movewin":
+		if len(evaluatedArgs) < 7 {
+			return NewRuntimeError("MoveWin", fmt.Sprintf("%v", evaluatedArgs), "MoveWin requires 7 arguments (winID, x, y, width, height, picX, picY)")
+		}
+		winID := int(vm.toInt(evaluatedArgs[0]))
+		x := int(vm.toInt(evaluatedArgs[1]))
+		y := int(vm.toInt(evaluatedArgs[2]))
+		width := int(vm.toInt(evaluatedArgs[3]))
+		height := int(vm.toInt(evaluatedArgs[4]))
+		picX := int(vm.toInt(evaluatedArgs[5]))
+		picY := int(vm.toInt(evaluatedArgs[6]))
+		vm.engine.MoveWin(winID, x, y, width, height, picX, picY)
+		return nil
+
+	case "closewin":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("CloseWin", fmt.Sprintf("%v", evaluatedArgs), "CloseWin requires 1 argument (winID)")
+		}
+		winID := int(vm.toInt(evaluatedArgs[0]))
+		vm.engine.CloseWin(winID)
+		return nil
+
+	case "closewinall":
+		vm.engine.CloseWinAll()
+		return nil
+
+	case "captitle":
+		if len(evaluatedArgs) < 2 {
+			return NewRuntimeError("CapTitle", fmt.Sprintf("%v", evaluatedArgs), "CapTitle requires 2 arguments (winID, caption)")
+		}
+		winID := int(vm.toInt(evaluatedArgs[0]))
+		caption := fmt.Sprintf("%v", evaluatedArgs[1])
+		vm.engine.CapTitle(winID, caption)
+		return nil
+
+	case "getpicno":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("GetPicNo", fmt.Sprintf("%v", evaluatedArgs), "GetPicNo requires 1 argument (winID)")
+		}
+		winID := int(vm.toInt(evaluatedArgs[0]))
+		picID := vm.engine.GetPicNo(winID)
+		_ = picID
+		return nil
+
 	default:
 		// Unknown built-in function - just log and ignore
 		vm.logger.LogDebug("Unknown built-in function: %s", funcName)

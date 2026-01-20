@@ -413,13 +413,13 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement window creation and management with drag support.
 
 **Subtasks**:
-- [ ] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption)
-- [ ] 4.3.2 Implement OpenWin (create window)
-- [ ] 4.3.3 Implement MoveWin (update properties)
-- [ ] 4.3.4 Implement CloseWin (close window)
-- [ ] 4.3.5 Implement CloseWinAll (close all windows)
-- [ ] 4.3.6 Implement CapTitle (set caption)
-- [ ] 4.3.7 Implement GetPicNo (query picture ID)
+- [x] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption)
+- [x] 4.3.2 Implement OpenWin (create window)
+- [x] 4.3.3 Implement MoveWin (update properties)
+- [x] 4.3.4 Implement CloseWin (close window)
+- [x] 4.3.5 Implement CloseWinAll (close all windows)
+- [x] 4.3.6 Implement CapTitle (set caption)
+- [x] 4.3.7 Implement GetPicNo (query picture ID)
 - [ ] 4.3.8 Implement window drag detection (mouse down on title bar)
 - [ ] 4.3.9 Implement window drag update (mouse move while dragging)
 - [ ] 4.3.10 Implement window drag constraints (keep within virtual desktop)

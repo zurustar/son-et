@@ -472,3 +472,49 @@ func (e *Engine) ReversePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int
 	e.logger.LogDebug("ReversePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d) [flipped]",
 		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
 }
+
+// OpenWin creates a new window and returns its ID.
+func (e *Engine) OpenWin(picID, x, y, width, height, picX, picY int, caption string) int {
+	winID := e.state.OpenWindow(picID, x, y, width, height, picX, picY, caption)
+	e.logger.LogDebug("Opened window %d: pic=%d pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d) caption=%q",
+		winID, picID, x, y, width, height, picX, picY, caption)
+	return winID
+}
+
+// MoveWin updates window properties.
+func (e *Engine) MoveWin(id, x, y, width, height, picX, picY int) {
+	err := e.state.MoveWindow(id, x, y, width, height, picX, picY)
+	if err != nil {
+		e.logger.LogError("MoveWin failed: %v", err)
+		return
+	}
+	e.logger.LogDebug("Moved window %d: pos=(%d,%d) size=(%dx%d) picOffset=(%d,%d)",
+		id, x, y, width, height, picX, picY)
+}
+
+// CloseWin closes a window.
+func (e *Engine) CloseWin(id int) {
+	e.state.CloseWindow(id)
+	e.logger.LogDebug("Closed window %d", id)
+}
+
+// CloseWinAll closes all windows.
+func (e *Engine) CloseWinAll() {
+	e.state.CloseAllWindows()
+	e.logger.LogDebug("Closed all windows")
+}
+
+// CapTitle sets the caption (title) of a window.
+func (e *Engine) CapTitle(id int, caption string) {
+	err := e.state.SetWindowCaption(id, caption)
+	if err != nil {
+		e.logger.LogError("CapTitle failed: %v", err)
+		return
+	}
+	e.logger.LogDebug("Set window %d caption: %q", id, caption)
+}
+
+// GetPicNo returns the picture ID associated with a window.
+func (e *Engine) GetPicNo(id int) int {
+	return e.state.GetWindowPictureID(id)
+}

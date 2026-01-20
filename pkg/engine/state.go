@@ -40,6 +40,7 @@ type EngineState struct {
 	nextGroupID   int                            // Next group ID to assign
 	nextHandlerID int                            // Next event handler ID to assign
 	nextPicID     int                            // Next picture ID to assign
+	nextWinID     int                            // Next window ID to assign
 	tickCount     int64                          // Global tick counter
 
 	// Dependencies (injected)
@@ -104,6 +105,7 @@ func NewEngineState(renderer Renderer, assetLoader AssetLoader, imageDecoder Ima
 		nextGroupID:   1,
 		nextHandlerID: 1,
 		nextPicID:     1,
+		nextWinID:     1,
 		tickCount:     0,
 		renderer:      renderer,
 		assetLoader:   assetLoader,
@@ -587,4 +589,115 @@ func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX,
 	}
 
 	return nil
+}
+
+// OpenWindow creates a new window and returns its ID.
+// Parameters:
+//
+//	picID: picture to display in the window
+//	x, y: window position on virtual desktop
+//	width, height: window dimensions
+//	picX, picY: offset into the picture to display
+//	caption: window title (empty string for no caption)
+func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY int, caption string) int {
+	// Create window
+	win := &Window{
+		ID:        e.nextWinID,
+		PictureID: picID,
+		X:         x,
+		Y:         y,
+		Width:     width,
+		Height:    height,
+		PicX:      picX,
+		PicY:      picY,
+		Caption:   caption,
+		Visible:   true,
+	}
+
+	// Store window
+	e.windows[win.ID] = win
+	e.nextWinID++
+
+	return win.ID
+}
+
+// GetWindow retrieves a window by ID.
+// Returns nil if the window doesn't exist.
+func (e *EngineState) GetWindow(id int) *Window {
+	return e.windows[id]
+}
+
+// MoveWindow updates window properties.
+// Parameters:
+//
+//	id: window ID
+//	x, y: new window position
+//	width, height: new window dimensions
+//	picX, picY: new picture offset
+func (e *EngineState) MoveWindow(id, x, y, width, height, picX, picY int) error {
+	win := e.windows[id]
+	if win == nil {
+		return fmt.Errorf("window %d not found", id)
+	}
+
+	win.X = x
+	win.Y = y
+	win.Width = width
+	win.Height = height
+	win.PicX = picX
+	win.PicY = picY
+
+	return nil
+}
+
+// CloseWindow closes a window and removes it.
+func (e *EngineState) CloseWindow(id int) {
+	delete(e.windows, id)
+}
+
+// CloseAllWindows closes all windows.
+func (e *EngineState) CloseAllWindows() {
+	e.windows = make(map[int]*Window)
+}
+
+// SetWindowCaption sets the caption (title) of a window.
+func (e *EngineState) SetWindowCaption(id int, caption string) error {
+	win := e.windows[id]
+	if win == nil {
+		return fmt.Errorf("window %d not found", id)
+	}
+
+	win.Caption = caption
+	return nil
+}
+
+// GetWindowPictureID returns the picture ID associated with a window.
+// Returns 0 if the window doesn't exist.
+func (e *EngineState) GetWindowPictureID(id int) int {
+	if win := e.windows[id]; win != nil {
+		return win.PictureID
+	}
+	return 0
+}
+
+// GetWindows returns all windows in creation order.
+// This is used for rendering windows in the correct z-order.
+func (e *EngineState) GetWindows() []*Window {
+	// Collect all windows
+	windows := make([]*Window, 0, len(e.windows))
+	for _, win := range e.windows {
+		windows = append(windows, win)
+	}
+
+	// Sort by ID (creation order)
+	// Using a simple bubble sort since the number of windows is typically small
+	for i := 0; i < len(windows); i++ {
+		for j := i + 1; j < len(windows); j++ {
+			if windows[i].ID > windows[j].ID {
+				windows[i], windows[j] = windows[j], windows[i]
+			}
+		}
+	}
+
+	return windows
 }
