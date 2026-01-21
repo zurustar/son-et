@@ -134,6 +134,11 @@ func (e *Engine) Update() error {
 	// Increment tick counter
 	e.state.IncrementTick()
 
+	// Update MIDI in headless mode
+	if e.IsHeadless() && e.midiPlayer != nil {
+		e.midiPlayer.UpdateHeadless()
+	}
+
 	// Update VM execution
 	if err := e.UpdateVM(); err != nil {
 		return err
@@ -168,9 +173,13 @@ func (e *Engine) UpdateVM() error {
 			continue
 		}
 
-		// Handle waiting sequences
+		// Handle waiting sequences (only for TIME mode)
 		if seq.IsWaiting() {
-			seq.DecrementWait()
+			// Only decrement wait for TIME mode sequences
+			// MIDI_TIME sequences are decremented by UpdateMIDISequences
+			if seq.GetMode() == TIME {
+				seq.DecrementWait()
+			}
 			continue
 		}
 
@@ -188,6 +197,67 @@ func (e *Engine) UpdateVM() error {
 
 		// Advance program counter
 		seq.IncrementPC()
+	}
+
+	return nil
+}
+
+// UpdateMIDISequences processes MIDI tick updates for MIDI_TIME sequences.
+// This is called when MIDI ticks advance (from MIDI player callback).
+func (e *Engine) UpdateMIDISequences(tickCount int) error {
+	if tickCount <= 0 {
+		return nil
+	}
+
+	e.logger.LogDebug("UpdateMIDISequences: processing %d ticks", tickCount)
+
+	vm := NewVM(e.state, e, e.logger)
+
+	// Process each MIDI tick sequentially
+	for tick := 0; tick < tickCount; tick++ {
+		// Process all MIDI_TIME sequences for this tick
+		for _, seq := range e.state.GetSequencers() {
+			// Skip inactive sequences
+			if !seq.IsActive() {
+				continue
+			}
+
+			// Skip completed sequences
+			if seq.IsComplete() {
+				continue
+			}
+
+			// Only process MIDI_TIME mode sequences
+			if seq.GetMode() != MIDI_TIME {
+				continue
+			}
+
+			// Handle waiting sequences
+			if seq.IsWaiting() {
+				waitBefore := seq.GetWaitCount()
+				seq.DecrementWait()
+				waitAfter := seq.GetWaitCount()
+				if tick == 0 {
+					e.logger.LogDebug("  Seq %d: wait %d -> %d", seq.GetID(), waitBefore, waitAfter)
+				}
+				continue
+			}
+
+			// Execute one command if not waiting
+			cmd := seq.GetCurrentCommand()
+			if cmd == nil {
+				continue
+			}
+
+			// Execute command
+			if err := vm.ExecuteOp(seq, *cmd); err != nil {
+				e.logger.LogError("MIDI VM execution error at seq %d, pc %d: %v", seq.GetID(), seq.GetPC(), err)
+				return err
+			}
+
+			// Advance program counter
+			seq.IncrementPC()
+		}
 	}
 
 	return nil
@@ -276,7 +346,8 @@ func (e *Engine) CleanupSequences() {
 
 // RegisterMesBlock registers a mes() block (event handler).
 // For TIME mode, this blocks until the sequence completes.
-// For other modes, this returns immediately.
+// For MIDI_TIME mode, this starts a MIDI-synchronized sequence immediately.
+// For other modes, this registers an event handler.
 func (e *Engine) RegisterMesBlock(eventType EventType, opcodes []interpreter.OpCode, parent *Sequencer, userID int) int {
 	// Determine timing mode based on event type
 	var mode TimingMode
@@ -286,23 +357,18 @@ func (e *Engine) RegisterMesBlock(eventType EventType, opcodes []interpreter.OpC
 		mode = MIDI_TIME
 	}
 
-	// Register as event handler (stores OpCode template, not Sequencer)
-	handlerID := e.state.RegisterEventHandler(eventType, opcodes, mode, parent, userID)
-	e.logger.LogDebug("Registered mes(%s) handler %d (user ID: %d)", eventType.String(), handlerID, userID)
-
-	// For TIME mode, execute immediately and block
-	if eventType == EventTIME {
+	// For TIME and MIDI_TIME modes, execute immediately as a sequence
+	if eventType == EventTIME || eventType == EventMIDI_TIME {
 		// Create a new sequencer for immediate execution
 		seq := NewSequencer(opcodes, mode, parent)
 		seqID := e.RegisterSequence(seq, 0)
-		e.logger.LogDebug("TIME mode: executing sequence %d (blocking)", seqID)
-
-		// TODO: Block until sequence completes (requires main loop integration)
-		// This will be verified in Task 7.3.8
-		// For now, just register it - blocking behavior depends on how
-		// the main loop calls UpdateVM() while waiting
+		e.logger.LogDebug("%s mode: executing sequence %d", eventType.String(), seqID)
+		return seqID
 	}
 
+	// For other event types, register as event handler
+	handlerID := e.state.RegisterEventHandler(eventType, opcodes, mode, parent, userID)
+	e.logger.LogDebug("Registered mes(%s) handler %d (user ID: %d)", eventType.String(), handlerID, userID)
 	return handlerID
 }
 
@@ -409,8 +475,17 @@ func (e *Engine) ExecuteTopLevel(opcodes []interpreter.OpCode) error {
 func (e *Engine) AllSequencesComplete() bool {
 	sequencers := e.state.GetSequencers()
 
-	// If no sequences exist, consider it complete
+	// If no sequences exist, check if there are any event handlers waiting
 	if len(sequencers) == 0 {
+		// Check if there are any registered event handlers (especially MIDI_TIME)
+		// If MIDI is playing and there are MIDI_TIME handlers, don't terminate
+		if e.midiPlayer != nil && e.midiPlayer.IsPlaying() {
+			handlers := e.state.GetEventHandlers(EventMIDI_TIME)
+			if len(handlers) > 0 {
+				e.logger.LogDebug("AllSequencesComplete: no active sequences, but MIDI is playing with %d MIDI_TIME handlers", len(handlers))
+				return false
+			}
+		}
 		e.logger.LogDebug("AllSequencesComplete: no sequences exist")
 		return true
 	}
@@ -428,6 +503,15 @@ func (e *Engine) AllSequencesComplete() bool {
 			} else {
 				completeCount++
 			}
+		}
+	}
+
+	// If all active sequences are complete, check for event handlers
+	if e.midiPlayer != nil && e.midiPlayer.IsPlaying() {
+		handlers := e.state.GetEventHandlers(EventMIDI_TIME)
+		if len(handlers) > 0 {
+			e.logger.LogDebug("AllSequencesComplete: %d active sequences complete, but MIDI is playing with %d MIDI_TIME handlers", activeCount, len(handlers))
+			return false
 		}
 	}
 

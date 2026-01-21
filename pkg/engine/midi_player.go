@@ -209,6 +209,46 @@ func (mp *MIDIPlayer) IsPlaying() bool {
 	return mp.isPlaying && mp.player != nil && mp.player.IsPlaying()
 }
 
+// UpdateHeadless updates MIDI tick in headless mode.
+// This is called from the main loop when running in headless mode.
+func (mp *MIDIPlayer) UpdateHeadless() {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+
+	if !mp.isPlaying || mp.stream == nil {
+		return
+	}
+
+	// Calculate current tick based on wall-clock time
+	elapsed := time.Since(mp.stream.startTime).Seconds()
+	currentTick := mp.stream.tickGenerator.CalculateTickFromTime(elapsed)
+
+	// Calculate how many ticks have advanced
+	ticksAdvanced := currentTick - mp.stream.lastTick
+	if ticksAdvanced <= 0 {
+		return
+	}
+
+	// Check if MIDI has ended
+	if currentTick >= mp.stream.totalTicks {
+		if !mp.stream.endReported {
+			mp.stream.endReported = true
+			mp.engine.logger.LogInfo("MIDI playback completed at tick %d", currentTick)
+			// Trigger MIDI_END event
+			mp.engine.TriggerEvent(EventMIDI_END, &EventData{})
+			mp.isPlaying = false
+		}
+		return
+	}
+
+	// Update MIDI sequences with the number of ticks advanced
+	mp.engine.UpdateMIDISequences(ticksAdvanced)
+
+	// Update the last delivered tick
+	mp.stream.tickGenerator.SetLastDeliveredTick(currentTick)
+	mp.stream.lastTick = currentTick
+}
+
 // MIDIStream implements io.Reader for MIDI audio streaming.
 type MIDIStream struct {
 	sequencer     *meltysynth.MidiFileSequencer
@@ -249,25 +289,28 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 	elapsed := time.Since(ms.startTime).Seconds()
 	currentTick := ms.tickGenerator.CalculateTickFromTime(elapsed)
 
-	// Deliver all ticks from lastTick+1 to currentTick sequentially
-	for tick := ms.lastTick + 1; tick <= currentTick; tick++ {
-		if tick >= ms.totalTicks {
-			// MIDI has ended
+	// Calculate how many ticks have advanced
+	ticksAdvanced := currentTick - ms.lastTick
+	if ticksAdvanced > 0 {
+		ms.engine.logger.LogDebug("MIDIStream.Read: ticksAdvanced=%d (currentTick=%d, lastTick=%d)", ticksAdvanced, currentTick, ms.lastTick)
+
+		// Check if MIDI has ended
+		if currentTick >= ms.totalTicks {
 			if !ms.endReported {
 				ms.endReported = true
-				ms.engine.logger.LogInfo("MIDI playback completed at tick %d", tick)
+				ms.engine.logger.LogInfo("MIDI playback completed at tick %d", currentTick)
 				// Trigger MIDI_END event
 				ms.engine.TriggerEvent(EventMIDI_END, &EventData{})
 			}
-			break
+		} else {
+			// Update MIDI sequences with the number of ticks advanced
+			ms.engine.UpdateMIDISequences(ticksAdvanced)
 		}
 
-		// Deliver tick (this would trigger MIDI_TIME sequences)
-		// For now, just update the last delivered tick
-		ms.tickGenerator.SetLastDeliveredTick(tick)
+		// Update the last delivered tick
+		ms.tickGenerator.SetLastDeliveredTick(currentTick)
+		ms.lastTick = currentTick
 	}
-
-	ms.lastTick = currentTick
 
 	return len(p), nil
 }

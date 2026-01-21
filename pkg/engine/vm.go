@@ -227,14 +227,33 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		return nil
 
 	case "createpic":
-		if len(evaluatedArgs) < 2 {
-			return NewRuntimeError("CreatePic", fmt.Sprintf("%v", evaluatedArgs), "CreatePic requires 2 arguments (width, height)")
+		// CreatePic can be called with 1 or 2 arguments:
+		// CreatePic(sourcePicID) - 1 arg: copy dimensions from source picture
+		// CreatePic(width, height) - 2 args: create blank picture with specified size
+		if len(evaluatedArgs) == 1 {
+			// CreatePic(sourcePicID) - copy dimensions from source
+			sourcePicID := int(vm.toInt(evaluatedArgs[0]))
+			width := vm.engine.PicWidth(sourcePicID)
+			height := vm.engine.PicHeight(sourcePicID)
+			if width == 0 || height == 0 {
+				// Source picture not found or has invalid dimensions
+				vm.logger.LogError("CreatePic: source picture %d not found or has invalid dimensions", sourcePicID)
+				seq.SetVariable("__return__", int64(0))
+				return nil
+			}
+			picID := vm.engine.CreatePic(width, height)
+			seq.SetVariable("__return__", int64(picID))
+			return nil
+		} else if len(evaluatedArgs) >= 2 {
+			// CreatePic(width, height) - create blank picture
+			width := int(vm.toInt(evaluatedArgs[0]))
+			height := int(vm.toInt(evaluatedArgs[1]))
+			picID := vm.engine.CreatePic(width, height)
+			seq.SetVariable("__return__", int64(picID))
+			return nil
+		} else {
+			return NewRuntimeError("CreatePic", fmt.Sprintf("%v", evaluatedArgs), "CreatePic requires 1 or 2 arguments")
 		}
-		width := int(vm.toInt(evaluatedArgs[0]))
-		height := int(vm.toInt(evaluatedArgs[1]))
-		picID := vm.engine.CreatePic(width, height)
-		seq.SetVariable("__return__", int64(picID))
-		return nil
 
 	case "delpic":
 		if len(evaluatedArgs) < 1 {
@@ -260,6 +279,15 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		picID := int(vm.toInt(evaluatedArgs[0]))
 		height := vm.engine.PicHeight(picID)
 		seq.SetVariable("__return__", int64(height))
+		return nil
+
+	case "wininfo":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("WinInfo", fmt.Sprintf("%v", evaluatedArgs), "WinInfo requires 1 argument (index)")
+		}
+		index := int(vm.toInt(evaluatedArgs[0]))
+		value := vm.engine.WinInfo(index)
+		seq.SetVariable("__return__", int64(value))
 		return nil
 
 	case "movepic":
@@ -405,17 +433,37 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		return nil
 
 	case "putcast":
-		if len(evaluatedArgs) < 8 {
-			return NewRuntimeError("PutCast", fmt.Sprintf("%v", evaluatedArgs), "PutCast requires 8 arguments (winID, picID, x, y, srcX, srcY, width, height)")
+		// PutCast can be called with 4, 5, 8, or 12 arguments:
+		// PutCast(picID, winID, x, y) - 4 args: basic cast
+		// PutCast(picID, winID, x, y, transparentColor) - 5 args: with transparency
+		// PutCast(picID, winID, x, y, srcX, srcY, width, height) - 8 args: with clipping
+		// PutCast(picID, winID, x, y, transparentColor, ..., width, height, srcX, srcY) - 12 args: full
+		if len(evaluatedArgs) < 4 {
+			return NewRuntimeError("PutCast", fmt.Sprintf("%v", evaluatedArgs), "PutCast requires at least 4 arguments (picID, winID, x, y)")
 		}
-		winID := int(vm.toInt(evaluatedArgs[0]))
-		picID := int(vm.toInt(evaluatedArgs[1]))
+
+		// Get basic arguments
+		picID := int(vm.toInt(evaluatedArgs[0]))
+		winID := int(vm.toInt(evaluatedArgs[1]))
 		x := int(vm.toInt(evaluatedArgs[2]))
 		y := int(vm.toInt(evaluatedArgs[3]))
-		srcX := int(vm.toInt(evaluatedArgs[4]))
-		srcY := int(vm.toInt(evaluatedArgs[5]))
-		width := int(vm.toInt(evaluatedArgs[6]))
-		height := int(vm.toInt(evaluatedArgs[7]))
+
+		// Default values for optional arguments
+		srcX := 0
+		srcY := 0
+		width := vm.engine.PicWidth(picID)
+		height := vm.engine.PicHeight(picID)
+
+		// Parse optional arguments based on count
+		if len(evaluatedArgs) >= 8 {
+			// 8+ args: includes clipping parameters
+			srcX = int(vm.toInt(evaluatedArgs[4]))
+			srcY = int(vm.toInt(evaluatedArgs[5]))
+			width = int(vm.toInt(evaluatedArgs[6]))
+			height = int(vm.toInt(evaluatedArgs[7]))
+		}
+		// TODO: Handle transparent color (arg 4 when len==5, or other positions)
+
 		castID := vm.engine.PutCast(winID, picID, x, y, srcX, srcY, width, height)
 		seq.SetVariable("__return__", int64(castID))
 		return nil
@@ -908,9 +956,11 @@ func (vm *VM) executeSetStep(seq *Sequencer, op interpreter.OpCode) error {
 		ticksPerStep = stepCount * 3
 	} else {
 		// MIDI_TIME mode: step(n) = n × (1/32nd note)
-		// This would need MIDI timing information
-		// For now, use 1:1 mapping
-		ticksPerStep = stepCount
+		// 1/32nd note = PPQ / 8 ticks (where PPQ is typically 480)
+		// For PPQ=480: 1/32nd note = 60 ticks
+		// TODO: Get actual PPQ from MIDI file
+		ppq := 480 // Standard PPQ
+		ticksPerStep = stepCount * (ppq / 8)
 	}
 
 	vm.logger.LogDebug("SetStep: %d → %d ticks/step (mode: %d)", stepCount, ticksPerStep, seq.GetMode())

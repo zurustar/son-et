@@ -206,6 +206,11 @@ func (s *Sequencer) DecrementWait() {
 	}
 }
 
+// GetWaitCount returns the current wait counter
+func (s *Sequencer) GetWaitCount() int {
+	return s.waitCount
+}
+
 // SetWait sets the wait counter
 func (s *Sequencer) SetWait(count int) {
 	s.waitCount = count

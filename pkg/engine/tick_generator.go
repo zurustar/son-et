@@ -35,11 +35,10 @@ func (tg *WallClockTickGenerator) CalculateTickFromTime(elapsed float64) int {
 		tempoEvent := tg.tempoMap[i]
 		microsPerBeat := float64(tempoEvent.MicrosPerBeat)
 
-		// Calculate time per 32nd note (FILLY's tick resolution)
+		// Calculate time per MIDI tick
 		// 1 quarter note = PPQ ticks
-		// 1 32nd note = PPQ / 8 ticks
-		// Time per 32nd note = (microsPerBeat / 1000000) / 8
-		timePerTick := (microsPerBeat / 1000000.0) / 8.0
+		// Time per tick = (microsPerBeat / 1000000) / PPQ
+		timePerTick := (microsPerBeat / 1000000.0) / float64(tg.ppq)
 
 		// Determine how long this tempo lasts
 		var tempoDuration float64
