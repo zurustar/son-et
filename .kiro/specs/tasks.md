@@ -215,12 +215,18 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 2.3.5 Implement function definition parsing
 - [x] 2.3.6 Implement mes() block parsing
 - [x] 2.3.7 Implement array syntax parsing (arr[index])
-- [x] 2.3.8 Add comprehensive parser tests
+- [x] 2.3.8 Fix for-loop trailing semicolon handling (legacy compatibility)
+- [x] 2.3.9 Add comprehensive parser tests
 
 **Acceptance Criteria**:
 - Parser handles all FILLY syntax including arrays
 - Clear error messages with line/column numbers
 - AST structure is clean and minimal
+- for-loops accept optional trailing semicolon: `for(k=0; k<3; k=k+1;)` (legacy FILLY syntax)
+
+**Implementation Notes**:
+- Modified `parseForStatement()` to accept optional semicolon before closing paren
+- This fixes parsing errors in legacy scripts like samples/yosemiya
 
 ---
 
@@ -470,26 +476,34 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement window creation and management with drag support.
 
 **Subtasks**:
-- [x] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption)
-- [x] 4.3.2 Implement OpenWin (create window)
-- [x] 4.3.3 Implement MoveWin (update properties)
-- [x] 4.3.4 Implement CloseWin (close window)
-- [x] 4.3.5 Implement CloseWinAll (close all windows)
-- [x] 4.3.6 Implement CapTitle (set caption)
-- [x] 4.3.7 Implement GetPicNo (query picture ID)
-- [x] 4.3.8 Implement window drag detection (mouse down on title bar)
-- [x] 4.3.9 Implement window drag update (mouse move while dragging)
-- [x] 4.3.10 Implement window drag constraints (keep within virtual desktop)
-- [x] 4.3.11 Add tests for window operations including drag
+- [x] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption, SrcX, SrcY)
+- [x] 4.3.2 Implement OpenWin (create window with PicX/PicY offset support)
+- [x] 4.3.3 Fix PicX/PicY offset inversion for legacy compatibility (-picX, -picY)
+- [x] 4.3.4 Implement MoveWin (update properties)
+- [x] 4.3.5 Implement CloseWin (close window)
+- [x] 4.3.6 Implement CloseWinAll (close all windows)
+- [x] 4.3.7 Implement CapTitle (set caption)
+- [x] 4.3.8 Implement GetPicNo (query picture ID)
+- [x] 4.3.9 Implement window drag detection (mouse down on title bar)
+- [x] 4.3.10 Implement window drag update (mouse move while dragging)
+- [x] 4.3.11 Implement window drag constraints (keep within virtual desktop)
+- [x] 4.3.12 Add tests for window operations including drag
 
 **Acceptance Criteria**:
-- Windows display pictures correctly
+- Windows display pictures correctly with proper offset handling
+- PicX/PicY offsets inverted for legacy compatibility (window.SrcX = -picX, window.SrcY = -picY)
+- Images larger than windows display correctly (centered using negative offsets)
 - Window properties update correctly
 - Windows render in creation order
 - All windows within virtual desktop
 - Windows with captions can be dragged by title bar
 - Dragged windows constrain to desktop bounds
 - Smooth drag interaction with real-time updates
+
+**Critical Implementation Note**:
+- In `OpenWindow()`, offsets must be inverted: `window.SrcX = -picX`, `window.SrcY = -picY`
+- This is essential for legacy FILLY script compatibility
+- Allows centering large images in small windows using negative offsets
 
 ---
 
@@ -546,24 +560,38 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 5.1.3 Implement PlayMIDI using AssetLoader (supports both filesystem and embedded)
 - [x] 5.1.4 Implement MIDI file parsing (tempo map, PPQ extraction)
 - [x] 5.1.5 Implement MidiStream (io.Reader) with MeltySynth sequencer
-- [x] 5.1.6 Implement wall-clock time based tick calculation
-- [x] 5.1.7 Implement sequential tick delivery (no skipping)
-- [x] 5.1.8 Implement MIDI end detection (currentTick >= totalTicks)
-- [x] 5.1.9 Implement MIDI_END event triggering
-- [x] 5.1.10 Add tests for MIDI playback with both AssetLoader implementations
-- [x] 5.1.11 Add tests for tempo changes and tick accuracy
+- [x] 5.1.6 Implement wall-clock time based tick calculation (MIDI ticks, not 32nd notes)
+- [x] 5.1.7 Fix CalculateTickFromTime() to calculate MIDI ticks directly
+- [x] 5.1.8 Implement sequential tick delivery (no skipping)
+- [x] 5.1.9 Implement MIDI end detection (currentTick >= totalTicks)
+- [x] 5.1.10 Implement MIDI_END event triggering
+- [x] 5.1.11 Fix mes(MIDI_TIME) to execute immediately (not as event handler)
+- [x] 5.1.12 Implement UpdateMIDISequences() for MIDI tick-based wait updates
+- [x] 5.1.13 Fix step(n) calculation for MIDI_TIME mode (n × PPQ/8 ticks)
+- [x] 5.1.14 Add tests for MIDI playback with both AssetLoader implementations
+- [x] 5.1.15 Add tests for tempo changes and tick accuracy
 
 **Acceptance Criteria**:
 - MIDI playback runs in background goroutine (audio thread)
 - MIDI loading works via AssetLoader (both modes)
 - SoundFont (.sf2) files load correctly
 - SoundFont auto-loads from project directory (default.sf2, GeneralUser-GS.sf2, or *.sf2)
-- Tick calculation uses wall-clock time (not sample counting)
+- Tick calculation uses wall-clock time and calculates MIDI ticks directly (not 32nd notes)
+- step(n) in MIDI_TIME mode correctly calculates n × (PPQ/8) MIDI ticks
+- mes(MIDI_TIME) blocks execute immediately, allowing PlayMIDI() to be called inside
+- MIDI_TIME sequences have wait counters decremented by MIDI ticks (not frame ticks)
 - Ticks delivered sequentially without skipping
 - Tempo changes handled correctly via tempo map
-- Accurate tick timing based on tempo and PPQ (32nd note resolution)
+- Accurate tick timing based on tempo and PPQ
 - MIDI_END event triggers when playback completes
 - MIDI continues after starting sequence terminates
+
+**Critical Implementation Notes**:
+- `CalculateTickFromTime()` must calculate MIDI ticks directly: `elapsed * (tempo/60) * PPQ`
+- `step(n)` in MIDI_TIME mode: `n × (PPQ / 8)` MIDI ticks (not just n)
+- `mes(MIDI_TIME)` executes immediately (calls RegisterSequence directly, not as event handler)
+- Separate `UpdateMIDISequences()` method updates MIDI_TIME sequences with MIDI ticks
+- Never mix TIME and MIDI_TIME tick updates (causes incorrect wait behavior)
 
 ---
 
@@ -587,19 +615,33 @@ This task list implements the requirements defined in [requirements.md](requirem
 ## Phase 6: Runtime Features
 
 ### Task 6.1: Text Rendering
-**Goal**: Implement text drawing on pictures.
+**Goal**: Implement text drawing on pictures with Japanese font support.
 
 **Subtasks**:
-- [x] 6.1.1 Implement SetFont (load font)
-- [x] 6.1.2 Implement TextWrite (draw text)
-- [x] 6.1.3 Implement TextColor, BgColor (set colors)
-- [x] 6.1.4 Implement BackMode (transparent background)
-- [x] 6.1.5 Add tests for text rendering
+- [x] 6.1.1 Implement SetFont (load TrueType fonts from system paths)
+- [x] 6.1.2 Implement font loading for .ttf and .ttc files
+- [x] 6.1.3 Implement font fallback chain (Hiragino → Arial Unicode → basicfont)
+- [x] 6.1.4 Implement TextWrite (draw text with anti-aliasing artifact prevention)
+- [x] 6.1.5 Implement text area clearing before drawing (opaque white fill)
+- [x] 6.1.6 Implement TextColor, BgColor (set colors)
+- [x] 6.1.7 Implement BackMode (transparent/opaque background)
+- [x] 6.1.8 Update to modern API (os.ReadFile instead of ioutil.ReadFile)
+- [x] 6.1.9 Add tests for text rendering
 
 **Acceptance Criteria**:
 - Text draws correctly on pictures
-- Japanese fonts supported
+- Japanese fonts supported (Hiragino on macOS)
+- TrueType font loading works for both .ttf and .ttc files
+- Font fallback chain works correctly
+- Anti-aliasing artifacts prevented (no shadow from previous text)
 - Transparent background works
+- Modern Go APIs used (no deprecated functions)
+
+**Implementation Notes**:
+- System fonts searched in order: Hiragino Mincho → Hiragino Kaku Gothic → Arial Unicode → basicfont
+- Text area cleared with opaque white before drawing to prevent alpha blending artifacts
+- Font collections (.ttc) supported by extracting first font
+- Legacy font size handling (size > 200 treated as parameter order issue)
 
 ---
 

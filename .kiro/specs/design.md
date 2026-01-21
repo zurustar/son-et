@@ -627,6 +627,22 @@ This section describes the design of the graphics subsystem.
 - Windows support captions and resizing
 - Windows clip casts to their boundaries
 
+**Window Positioning with Picture Offsets (PicX/PicY)**:
+- Windows can display a portion of a picture using PicX/PicY offsets
+- **Legacy Compatibility**: Offsets are inverted (`-picX, -picY`) for compatibility with original FILLY
+- This allows centering images larger than the window by using negative offsets
+- Example: To center a 640×480 image in a 320×240 window, use PicX=-160, PicY=-120
+- The renderer implements proper rectangle intersection to handle negative offsets correctly
+
+**Critical Implementation Detail**:
+```go
+// In OpenWindow() - offsets must be inverted for legacy compatibility
+window.SrcX = -picX  // Note the negation
+window.SrcY = -picY  // Note the negation
+```
+
+This inversion is essential for correct image display in legacy FILLY scripts.
+
 **Key Design Decisions**:
 - Sequential ID assignment (simple, predictable)
 - Creation order determines z-order (no explicit z-index)
@@ -738,11 +754,13 @@ This section describes the design of the audio subsystem.
 
 **MIDI Tick Calculation**:
 ```
-Tick Interval = (60 / tempo) / PPQ / 8
+step(n) in MIDI_TIME mode = n × (PPQ / 8) MIDI ticks
   where:
-    tempo = beats per minute (from MIDI tempo events)
+    n = step count from script
     PPQ = pulses per quarter note (from MIDI file header)
     8 = 32nd notes per quarter note (FILLY's tick resolution)
+    
+Example: step(10) with PPQ=480 → 10 × (480/8) = 600 MIDI ticks
 ```
 
 **Wall-Clock Time Based Timing**:
@@ -754,9 +772,26 @@ currentTick = CalculateTickFromTime(elapsed_seconds)
 Algorithm:
   1. Get elapsed time since playback started
   2. Find current tempo from tempo map
-  3. Calculate ticks: elapsed * (tempo / 60) * PPQ
+  3. Calculate MIDI ticks: elapsed * (tempo / 60) * PPQ
   4. Adjust for tempo changes throughout the file
+  
+Note: This calculates MIDI ticks directly, not 32nd notes.
+The conversion to 32nd notes happens in step(n) calculation.
 ```
+
+**Critical Implementation Details**:
+
+**mes(MIDI_TIME) Execution**:
+- `mes(MIDI_TIME)` blocks execute immediately (not registered as event handlers)
+- This allows `PlayMIDI()` to be called inside the mes() block
+- The sequence is registered and returns immediately (non-blocking)
+- MIDI playback starts and drives tick generation
+
+**MIDI Sequence Updates**:
+- MIDI_TIME sequences have their wait counters decremented by MIDI ticks
+- Separate `UpdateMIDISequences()` method handles MIDI tick updates
+- TIME sequences use frame ticks, MIDI_TIME sequences use MIDI ticks
+- Never mix timing modes (causes incorrect wait behavior)
 
 **Rationale for Wall-Clock Time**:
 - **Accuracy**: No cumulative drift from audio buffer processing delays
@@ -986,7 +1021,116 @@ PostMes(messageType, p1, p2, p3, p4)
 
 ---
 
-## Part 7: Testing Strategy
+## Part 7: Text Rendering System Design
+
+This section describes the design of the text rendering subsystem.
+
+### Text Rendering Architecture
+
+**Font Loading Strategy**:
+The engine supports TrueType fonts with automatic fallback to system fonts for Japanese text rendering.
+
+**Font Search Order (macOS)**:
+1. `/System/Library/Fonts/ヒラギノ明朝 ProN.ttc` - Hiragino Mincho (serif)
+2. `/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc` - Hiragino Kaku Gothic (sans-serif, light)
+3. `/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc` - Hiragino Kaku Gothic (sans-serif, regular)
+4. `/Library/Fonts/Arial Unicode.ttf` - Arial Unicode (fallback)
+5. `/System/Library/Fonts/Supplemental/Arial Unicode.ttf` - Arial Unicode (system fallback)
+6. `basicfont.Face7x13` - Built-in bitmap font (final fallback)
+
+**Font Loading Implementation**:
+```go
+func (tr *TextRenderer) loadFont(path string, size float64) font.Face {
+    // Read font file
+    fontData, err := os.ReadFile(path)
+    if err != nil {
+        return nil
+    }
+    
+    // Try single font (.ttf) first
+    tt, err := opentype.Parse(fontData)
+    if err != nil {
+        // Try font collection (.ttc)
+        collection, err := opentype.ParseCollection(fontData)
+        if err != nil {
+            return nil
+        }
+        // Use first font in collection
+        tt, _ = collection.Font(0)
+    }
+    
+    // Create font face with specified size
+    face, err := opentype.NewFace(tt, &opentype.FaceOptions{
+        Size:    size,
+        DPI:     72,
+        Hinting: font.HintingFull,
+    })
+    return face
+}
+```
+
+**Anti-Aliasing Artifact Prevention**:
+Text rendering uses alpha blending for smooth edges (anti-aliasing). When drawing text multiple times on the same area, semi-transparent pixels from the old text can create shadow artifacts.
+
+**Solution**: Clear the text area with opaque white before drawing new text.
+
+```go
+func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
+    // Clear text area first (prevents anti-aliasing artifacts)
+    textWidth := len(text) * tr.currentFontSize
+    textHeight := tr.currentFontSize + 4
+    clearColor := color.RGBA{255, 255, 255, 255} // Opaque white
+    
+    for py := 0; py < textHeight; py++ {
+        for px := 0; px < textWidth; px++ {
+            if x+px >= 0 && x+px < pic.Width && y+py >= 0 && y+py < pic.Height {
+                rgba.Set(x+px, y+py, clearColor)
+            }
+        }
+    }
+    
+    // Now draw text (no artifacts from previous text)
+    drawer := &font.Drawer{
+        Dst:  rgba,
+        Src:  image.NewUniform(tr.textColor),
+        Face: tr.currentFont,
+        Dot:  fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y + tr.currentFontSize)},
+    }
+    drawer.DrawString(text)
+    
+    return nil
+}
+```
+
+**Key Design Decisions**:
+- **System font integration**: Use native fonts for proper Japanese rendering
+- **Font collection support**: Handle both .ttf (single font) and .ttc (font collection) files
+- **Graceful fallback**: If system fonts unavailable, use built-in bitmap font
+- **Anti-aliasing handling**: Clear area before drawing to prevent shadow artifacts
+- **Opaque clearing**: Use opaque white (not transparent) for complete pixel replacement
+- **Modern API usage**: Use `os.ReadFile` instead of deprecated `ioutil.ReadFile`
+
+**Text Rendering State**:
+```go
+type TextRenderer struct {
+    currentFont     font.Face      // Loaded TrueType font or basicfont
+    currentFontSize int            // Font size in pixels
+    currentFontName string         // Font name from script
+    textColor       color.Color    // Text foreground color
+    bgColor         color.Color    // Background color (for opaque mode)
+    backMode        int            // 0=transparent, 1=opaque
+    engine          *Engine        // Reference to engine for logging
+}
+```
+
+**Font Size Handling**:
+- Legacy scripts may pass unreasonable sizes (e.g., 640 instead of 14)
+- If size > 200, treat as legacy parameter order issue and use default size (13)
+- This maintains compatibility with older FILLY scripts
+
+---
+
+## Part 8: Testing Strategy
 
 This section describes the testing approach and testability design.
 
