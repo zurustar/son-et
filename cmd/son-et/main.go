@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"flag"
 	"fmt"
 	"log"
@@ -18,6 +19,15 @@ import (
 
 const (
 	targetFPS = 60
+)
+
+// Embedded project support
+// These variables are set by generated code when building with embedded project
+// See scripts/build-embedded.sh for the build process
+// When building without embedded project, these remain as zero values
+var (
+	embeddedFS      embed.FS
+	embeddedProject string
 )
 
 var (
@@ -56,6 +66,11 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
+	Run()
+}
+
+// Run is the main entry point, separated for testing and embedding.
+func Run() {
 	flag.Parse()
 
 	log.Printf("Parsed flags: headless=%v, timeout=%s, debug=%d", *headlessFlag, *timeoutFlag, *debugFlag)
@@ -70,111 +85,26 @@ func main() {
 		*headlessFlag = true
 	}
 
+	// Check if embeddedProject was set at build time
+	if embeddedProject != "" {
+		log.Printf("Running embedded project: %s", embeddedProject)
+		runEmbeddedModeFromFS()
+		return
+	}
+
+	// Check if running in embedded mode (no command-line arguments but has registered projects)
 	args := flag.Args()
 	if len(args) < 1 {
+		// No embedded projects and no arguments - show usage
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <project_directory_or_tfy_file>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nOptions:\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
+	// Direct mode - load from filesystem
 	projectPath := args[0]
-
-	// Check if projectPath is a file or directory
-	info, err := os.Stat(projectPath)
-	if os.IsNotExist(err) {
-		log.Fatalf("Path does not exist: %s", projectPath)
-	}
-
-	var projectDir string
-	var tfyFile string
-
-	if info.IsDir() {
-		// It's a directory - find TFY file
-		projectDir = projectPath
-		tfyFile, err = findMainTFY(projectDir)
-		if err != nil {
-			log.Fatalf("Failed to find main TFY file: %v", err)
-		}
-	} else {
-		// It's a file - use its directory as project directory
-		tfyFile = projectPath
-		projectDir = filepath.Dir(projectPath)
-	}
-
-	log.Printf("Loading project: %s", tfyFile)
-
-	// Create asset loader (filesystem mode for now)
-	assetLoader := engine.NewFilesystemAssetLoader(projectDir)
-
-	// Create image decoder
-	imageDecoder := engine.NewBMPImageDecoder()
-
-	// Create renderer (only for GUI mode)
-	var renderer engine.Renderer
-	if !*headlessFlag {
-		renderer = engine.NewEbitenRenderer()
-	}
-
-	// Create engine
-	eng := engine.NewEngine(renderer, assetLoader, imageDecoder)
-
-	// Set debug level
-	eng.SetDebugLevel(engine.DebugLevel(*debugFlag))
-
-	// Set logger on renderer if in GUI mode
-	if !*headlessFlag && renderer != nil {
-		if ebitenRenderer, ok := renderer.(*engine.EbitenRenderer); ok {
-			ebitenRenderer.SetLogger(eng.GetLogger())
-		}
-	}
-
-	// Set headless mode
-	if *headlessFlag {
-		eng.SetHeadless(true)
-		log.Println("Running in headless mode")
-	} else {
-		log.Println("Running in GUI mode")
-	}
-
-	// Set timeout
-	if *timeoutFlag != "" {
-		timeout, err := time.ParseDuration(*timeoutFlag)
-		if err != nil {
-			log.Fatalf("Invalid timeout format: %v", err)
-		}
-		eng.SetTimeout(timeout)
-	}
-
-	// Auto-load SoundFont if available
-	if err := autoLoadSoundFont(eng, projectDir); err != nil {
-		log.Printf("Warning: %v", err)
-	}
-
-	// Load and parse TFY file
-	if err := loadAndExecute(eng, tfyFile, assetLoader); err != nil {
-		log.Fatalf("Failed to execute script: %v", err)
-	}
-
-	log.Println("Script loaded successfully")
-
-	// Start engine
-	eng.Start()
-
-	log.Println("Engine started")
-
-	// Run game loop
-	if *headlessFlag {
-		log.Println("Entering headless mode")
-		runHeadless(eng)
-	} else {
-		// Cast renderer to EbitenRenderer for GUI mode
-		ebitenRenderer, ok := renderer.(*engine.EbitenRenderer)
-		if !ok {
-			log.Fatal("Expected EbitenRenderer for GUI mode")
-		}
-		runGUI(eng, ebitenRenderer)
-	}
+	runDirectMode(projectPath)
 }
 
 func findMainTFY(projectDir string) (string, error) {
@@ -204,6 +134,29 @@ func findMainTFY(projectDir string) (string, error) {
 	// For now, just use the first TFY file
 	// TODO: Search for main() function
 	return tfyFiles[0], nil
+}
+
+// findEmbeddedTFY finds the TFY file in the embedded filesystem
+func findEmbeddedTFY() (string, error) {
+	// Files are embedded under embeddedProject directory (e.g., ".embed")
+	// AssetLoader will handle the baseDir, so we just need the filename
+	entries, err := embeddedFS.ReadDir(embeddedProject)
+	if err != nil {
+		return "", fmt.Errorf("failed to read embedded directory %s: %w", embeddedProject, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(entry.Name())
+		if ext == ".tfy" || ext == ".TFY" {
+			// Return just the filename, AssetLoader will add baseDir
+			return entry.Name(), nil
+		}
+	}
+
+	return "", fmt.Errorf("no TFY files found in embedded filesystem")
 }
 
 // autoLoadSoundFont searches for and loads a SoundFont file from the project directory
@@ -362,4 +315,184 @@ func runGUI(eng *engine.Engine, renderer *engine.EbitenRenderer) {
 	}
 
 	eng.Shutdown()
+}
+
+// runEmbeddedModeFromFS runs a project from the embedded filesystem (embeddedFS).
+// This is used when embeddedProject is set at build time.
+func runEmbeddedModeFromFS() {
+	log.Printf("Running embedded project from FS: %s", embeddedProject)
+
+	// Create asset loader (embedded mode using embeddedFS with baseDir)
+	assetLoader := engine.NewEmbedFSAssetLoaderWithBaseDir(embeddedFS, embeddedProject)
+
+	// Create image decoder
+	imageDecoder := engine.NewBMPImageDecoder()
+
+	// Create renderer (only for GUI mode)
+	var renderer engine.Renderer
+	if !*headlessFlag {
+		renderer = engine.NewEbitenRenderer()
+	}
+
+	// Create engine
+	eng := engine.NewEngine(renderer, assetLoader, imageDecoder)
+
+	// Set debug level
+	eng.SetDebugLevel(engine.DebugLevel(*debugFlag))
+
+	// Set logger on renderer if in GUI mode
+	if !*headlessFlag && renderer != nil {
+		if ebitenRenderer, ok := renderer.(*engine.EbitenRenderer); ok {
+			ebitenRenderer.SetLogger(eng.GetLogger())
+		}
+	}
+
+	// Set headless mode
+	if *headlessFlag {
+		eng.SetHeadless(true)
+		log.Println("Running in headless mode")
+	} else {
+		log.Println("Running in GUI mode")
+	}
+
+	// Set timeout
+	if *timeoutFlag != "" {
+		timeout, err := time.ParseDuration(*timeoutFlag)
+		if err != nil {
+			log.Fatalf("Invalid timeout format: %v", err)
+		}
+		eng.SetTimeout(timeout)
+	}
+
+	// Find TFY file in embedded FS
+	tfyFile, err := findEmbeddedTFY()
+	if err != nil {
+		log.Fatalf("Failed to find TFY file in embedded FS: %v", err)
+	}
+
+	log.Printf("Loading embedded TFY file: %s", tfyFile)
+
+	// Load and execute TFY file from embedded FS
+	if err := loadAndExecute(eng, tfyFile, assetLoader); err != nil {
+		log.Fatalf("Failed to execute embedded script: %v", err)
+	}
+
+	log.Println("Embedded script loaded successfully")
+
+	// Start engine
+	eng.Start()
+
+	log.Println("Engine started")
+
+	// Run game loop
+	if *headlessFlag {
+		log.Println("Entering headless mode")
+		runHeadless(eng)
+	} else {
+		// Cast renderer to EbitenRenderer for GUI mode
+		ebitenRenderer, ok := renderer.(*engine.EbitenRenderer)
+		if !ok {
+			log.Fatal("Expected EbitenRenderer for GUI mode")
+		}
+		runGUI(eng, ebitenRenderer)
+	}
+}
+
+// runDirectMode runs a project from the filesystem.
+func runDirectMode(projectPath string) {
+	// Check if projectPath is a file or directory
+	info, err := os.Stat(projectPath)
+	if os.IsNotExist(err) {
+		log.Fatalf("Path does not exist: %s", projectPath)
+	}
+
+	var projectDir string
+	var tfyFile string
+
+	if info.IsDir() {
+		// It's a directory - find TFY file
+		projectDir = projectPath
+		tfyFile, err = findMainTFY(projectDir)
+		if err != nil {
+			log.Fatalf("Failed to find main TFY file: %v", err)
+		}
+	} else {
+		// It's a file - use its directory as project directory
+		tfyFile = projectPath
+		projectDir = filepath.Dir(projectPath)
+	}
+
+	log.Printf("Loading project: %s", tfyFile)
+
+	// Create asset loader (filesystem mode)
+	assetLoader := engine.NewFilesystemAssetLoader(projectDir)
+
+	// Create image decoder
+	imageDecoder := engine.NewBMPImageDecoder()
+
+	// Create renderer (only for GUI mode)
+	var renderer engine.Renderer
+	if !*headlessFlag {
+		renderer = engine.NewEbitenRenderer()
+	}
+
+	// Create engine
+	eng := engine.NewEngine(renderer, assetLoader, imageDecoder)
+
+	// Set debug level
+	eng.SetDebugLevel(engine.DebugLevel(*debugFlag))
+
+	// Set logger on renderer if in GUI mode
+	if !*headlessFlag && renderer != nil {
+		if ebitenRenderer, ok := renderer.(*engine.EbitenRenderer); ok {
+			ebitenRenderer.SetLogger(eng.GetLogger())
+		}
+	}
+
+	// Set headless mode
+	if *headlessFlag {
+		eng.SetHeadless(true)
+		log.Println("Running in headless mode")
+	} else {
+		log.Println("Running in GUI mode")
+	}
+
+	// Set timeout
+	if *timeoutFlag != "" {
+		timeout, err := time.ParseDuration(*timeoutFlag)
+		if err != nil {
+			log.Fatalf("Invalid timeout format: %v", err)
+		}
+		eng.SetTimeout(timeout)
+	}
+
+	// Auto-load SoundFont if available
+	if err := autoLoadSoundFont(eng, projectDir); err != nil {
+		log.Printf("Warning: %v", err)
+	}
+
+	// Load and parse TFY file
+	if err := loadAndExecute(eng, tfyFile, assetLoader); err != nil {
+		log.Fatalf("Failed to execute script: %v", err)
+	}
+
+	log.Println("Script loaded successfully")
+
+	// Start engine
+	eng.Start()
+
+	log.Println("Engine started")
+
+	// Run game loop
+	if *headlessFlag {
+		log.Println("Entering headless mode")
+		runHeadless(eng)
+	} else {
+		// Cast renderer to EbitenRenderer for GUI mode
+		ebitenRenderer, ok := renderer.(*engine.EbitenRenderer)
+		if !ok {
+			log.Fatal("Expected EbitenRenderer for GUI mode")
+		}
+		runGUI(eng, ebitenRenderer)
+	}
 }

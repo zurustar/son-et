@@ -47,3 +47,6 @@ son-et
 son-et-test
 test_timing.tfy
 process_snapshot_*.txt
+
+# Build output directory
+bin/

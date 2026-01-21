@@ -113,24 +113,36 @@ func (f *FilesystemAssetLoader) findCaseInsensitive(path string) (string, error)
 
 // EmbedFSAssetLoader loads assets from an embedded filesystem.
 type EmbedFSAssetLoader struct {
-	fs embed.FS
+	fs      embed.FS
+	baseDir string // Base directory within the embedded FS
 }
 
 // NewEmbedFSAssetLoader creates a new embedded filesystem asset loader.
 func NewEmbedFSAssetLoader(embedFS embed.FS) *EmbedFSAssetLoader {
 	return &EmbedFSAssetLoader{
-		fs: embedFS,
+		fs:      embedFS,
+		baseDir: "",
+	}
+}
+
+// NewEmbedFSAssetLoaderWithBaseDir creates a new embedded filesystem asset loader with a base directory.
+func NewEmbedFSAssetLoaderWithBaseDir(embedFS embed.FS, baseDir string) *EmbedFSAssetLoader {
+	return &EmbedFSAssetLoader{
+		fs:      embedFS,
+		baseDir: baseDir,
 	}
 }
 
 // ReadFile reads a file from the embedded filesystem.
 func (e *EmbedFSAssetLoader) ReadFile(path string) ([]byte, error) {
-	return e.fs.ReadFile(path)
+	fullPath := filepath.Join(e.baseDir, path)
+	return e.fs.ReadFile(fullPath)
 }
 
 // Exists checks if a file exists in the embedded filesystem.
 func (e *EmbedFSAssetLoader) Exists(path string) bool {
-	_, err := e.fs.Open(path)
+	fullPath := filepath.Join(e.baseDir, path)
+	_, err := e.fs.Open(fullPath)
 	return err == nil
 }
 
@@ -138,7 +150,12 @@ func (e *EmbedFSAssetLoader) Exists(path string) bool {
 func (e *EmbedFSAssetLoader) ListFiles(pattern string) ([]string, error) {
 	var matches []string
 
-	err := fs.WalkDir(e.fs, ".", func(path string, d fs.DirEntry, err error) error {
+	startDir := "."
+	if e.baseDir != "" {
+		startDir = e.baseDir
+	}
+
+	err := fs.WalkDir(e.fs, startDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -146,12 +163,18 @@ func (e *EmbedFSAssetLoader) ListFiles(pattern string) ([]string, error) {
 			return nil
 		}
 
-		matched, err := filepath.Match(pattern, filepath.Base(path))
+		// Remove baseDir prefix from path for matching
+		relPath := path
+		if e.baseDir != "" && strings.HasPrefix(path, e.baseDir+"/") {
+			relPath = strings.TrimPrefix(path, e.baseDir+"/")
+		}
+
+		matched, err := filepath.Match(pattern, filepath.Base(relPath))
 		if err != nil {
 			return err
 		}
 		if matched {
-			matches = append(matches, path)
+			matches = append(matches, relPath)
 		}
 
 		return nil

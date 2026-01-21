@@ -61,14 +61,16 @@ func (p *Preprocessor) GetMetadata() *Metadata {
 
 // processFile processes a single file recursively.
 func (p *Preprocessor) processFile(filename string) (string, error) {
+	// Construct full path for circular include tracking
+	fullPath := filepath.Join(p.baseDir, filename)
+
 	// Check for circular includes
-	absPath := filepath.Join(p.baseDir, filename)
-	if p.includedFiles[absPath] {
+	if p.includedFiles[fullPath] {
 		return "", fmt.Errorf("circular include detected: %s", filename)
 	}
-	p.includedFiles[absPath] = true
+	p.includedFiles[fullPath] = true
 
-	// Read file
+	// Read file (AssetLoader handles baseDir internally for FilesystemAssetLoader)
 	data, err := p.assetLoader.ReadFile(filename)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file %s: %w", filename, err)
@@ -217,7 +219,7 @@ func (p *Preprocessor) parseIncludeDirective(line string, currentFile string) (s
 	currentDir := filepath.Dir(currentFile)
 	includePath := filepath.Join(currentDir, filename)
 
-	// Check if file exists (case-insensitive)
+	// Check if file exists (AssetLoader handles baseDir internally)
 	if !p.assetLoader.Exists(includePath) {
 		return "", fmt.Errorf("included file not found: %s", includePath)
 	}

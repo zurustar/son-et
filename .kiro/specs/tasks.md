@@ -754,39 +754,23 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ## Phase 7: Integration and Testing
 
-### Task 7.1: Embedded Executable Generation
-**Goal**: Implement build-time compilation and embedded mode with multi-project support.
+### Task 7.1: Integration Tests (Direct Mode)
+**Goal**: Test complete sample scripts in direct mode to verify core functionality.
 
 **Subtasks**:
-- [ ] 7.1.1 Implement CLI mode detection (direct vs single-project vs multi-project)
-- [ ] 7.1.2 Implement build configuration structure (EmbeddedProject)
-- [ ] 7.1.3 Create build script/tool for generating embedded executables
-- [ ] 7.1.4 Implement embedded project registration (build tags)
-- [ ] 7.1.5 Implement multi-project menu UI
-- [ ] 7.1.6 Implement project selection (keyboard and mouse)
-- [ ] 7.1.7 Implement context-aware ESC handling (menu vs project)
-- [ ] 7.1.8 Implement project lifecycle management (init, run, cleanup, return to menu)
-- [ ] 7.1.9 Implement state reset between projects
-- [ ] 7.1.10 Test single-project embedded executable generation
-- [ ] 7.1.11 Test multi-project embedded executable generation
-- [ ] 7.1.12 Test embedded executable execution (single and multi-project)
-- [ ] 7.1.13 Test headless mode with embedded executables
-- [ ] 7.1.14 Test ESC behavior in all contexts (menu, single-project, multi-project)
+- [ ] 7.1.1 Test kuma2 sample in direct mode (TIME mode)
+- [ ] 7.1.2 Test y-saru sample in direct mode (MIDI_TIME mode)
+- [ ] 7.1.3 Test yosemiya sample in direct mode (multiple sequences)
+- [ ] 7.1.4 Test robot sample in direct mode (MIDI_END event)
+- [ ] 7.1.5 Verify 60 FPS tick generation for TIME mode
+- [ ] 7.1.6 Verify TIME mode blocking behavior (mes(TIME) blocks until completion)
+- [ ] 7.1.7 Add headless integration tests for direct mode
 
 **Acceptance Criteria**:
-- Build command creates standalone executable (single or multi-project)
-- Embedded executable runs without external TFY files
-- Assets load from embedded data
-- Multi-project mode displays menu on startup
-- User can select projects from menu
-- ESC in project returns to menu (multi-project mode)
-- ESC in menu terminates program
-- ESC in single-project mode terminates program
-- Project completion returns to menu (multi-project mode)
-- Clean state reset between project runs
-- Headless mode works with embedded executables
-- Build tags control which projects are embedded
-- Generated executables are cross-platform
+- All sample scripts execute correctly in direct mode
+- Timing behavior matches expectations (60 FPS for TIME mode)
+- TIME mode mes() blocks until sequence completes
+- Headless tests pass in CI/CD for direct mode
 
 ---
 
@@ -809,45 +793,90 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 7.3: Integration Tests
-**Goal**: Test complete sample scripts in both modes.
+### Task 7.3: Backward Compatibility Tests
+**Goal**: Ensure existing scripts work in direct mode.
 
 **Subtasks**:
-- [ ] 7.3.1 Test kuma2 sample in direct mode (TIME mode)
-- [ ] 7.3.2 Test y-saru sample in direct mode (MIDI_TIME mode)
-- [ ] 7.3.3 Test yosemiya sample in direct mode (multiple sequences)
-- [ ] 7.3.4 Test robot sample in direct mode (MIDI_END event)
-- [ ] 7.3.5 Test kuma2 sample in embedded mode
-- [ ] 7.3.6 Test y-saru sample in embedded mode
-- [ ] 7.3.7 Verify 60 FPS tick generation for TIME mode
-- [ ] 7.3.8 Verify TIME mode blocking behavior (mes(TIME) blocks until completion)
-- [ ] 7.3.9 Add headless integration tests for both modes
+- [ ] 7.3.1 Test all sample scripts from _old_implementation in direct mode
+- [ ] 7.3.2 Compare behavior with old implementation
+- [ ] 7.3.3 Document any intentional behavior changes
+- [ ] 7.3.4 Fix compatibility issues
 
 **Acceptance Criteria**:
-- All sample scripts execute correctly in direct mode
-- All sample scripts execute correctly in embedded mode
-- Behavior is identical between modes
-- Timing behavior matches expectations (60 FPS for TIME mode)
-- TIME mode mes() blocks until sequence completes
-- Headless tests pass in CI/CD for both modes
+- All existing scripts work without modification in direct mode
+- Timing behavior is compatible
+- No regressions
 
 ---
 
-### Task 7.4: Backward Compatibility Tests
-**Goal**: Ensure existing scripts work in both modes.
+## Phase 8: Embedded Mode (Build System)
+
+### Task 8.1: Basic Embedded Executable Generation
+**Goal**: Implement single-project embedded executable generation.
 
 **Subtasks**:
-- [ ] 7.4.1 Test all sample scripts from _old_implementation in direct mode
-- [ ] 7.4.2 Test all sample scripts from _old_implementation in embedded mode
-- [ ] 7.4.3 Compare behavior with old implementation
-- [ ] 7.4.4 Document any intentional behavior changes
-- [ ] 7.4.5 Fix compatibility issues
+- [x] 8.1.1 Implement CLI mode detection (direct vs embedded)
+- [x] 8.1.2 Implement build configuration structure (EmbeddedProject)
+- [x] 8.1.3 Create build script/tool for generating embedded executables
+- [x] 8.1.4 Implement embedded project registration (build tags)
+- [x] 8.1.5 Test single-project embedded executable generation
+- [x] 8.1.6 Test embedded executable execution
+- [x] 8.1.7 Test headless mode with embedded executables
 
 **Acceptance Criteria**:
-- All existing scripts work without modification in both modes
-- Timing behavior is compatible
-- No regressions
+- Build command creates standalone executable ✅
+- Embedded executable runs without external TFY files ✅
+- Assets load from embedded data ✅
+- Headless mode works with embedded executables ✅
+- Generated executables are cross-platform ✅
+
+---
+
+### Task 8.2: Multi-Project Support
+**Goal**: Extend embedded mode to support multiple projects in one executable.
+
+**Subtasks**:
+- [ ] 8.2.1 Implement multi-project menu UI
+- [ ] 8.2.2 Implement project selection (keyboard and mouse)
+- [ ] 8.2.3 Implement context-aware ESC handling (menu vs project)
+- [ ] 8.2.4 Implement project lifecycle management (init, run, cleanup, return to menu)
+- [ ] 8.2.5 Implement state reset between projects
+- [ ] 8.2.6 Test multi-project embedded executable generation
+- [ ] 8.2.7 Test multi-project embedded executable execution
+- [ ] 8.2.8 Test ESC behavior in all contexts (menu, single-project, multi-project)
+
+**Acceptance Criteria**:
+- Multi-project mode displays menu on startup
+- User can select projects from menu
+- ESC in project returns to menu (multi-project mode)
+- ESC in menu terminates program
+- ESC in single-project mode terminates program
+- Project completion returns to menu (multi-project mode)
+- Clean state reset between project runs
+
+---
+
+### Task 8.3: Embedded Mode Integration Tests
+**Goal**: Test sample scripts in embedded mode.
+
+**Subtasks**:
+- [ ] 8.3.1 Test kuma2 sample in embedded mode
+- [ ] 8.3.2 Test y-saru sample in embedded mode
+- [ ] 8.3.3 Test yosemiya sample in embedded mode
+- [ ] 8.3.4 Test robot sample in embedded mode
+- [ ] 8.3.5 Verify behavior is identical between direct and embedded modes
+- [ ] 8.3.6 Test all sample scripts from _old_implementation in embedded mode
+
+**Acceptance Criteria**:
+- All sample scripts execute correctly in embedded mode
+- Behavior is identical between direct and embedded modes
 - Embedded mode produces identical behavior to direct mode
+
+---
+
+## Phase 9: Documentation and Cleanup
+
+### Task 9.1: Code Documentation
 
 ---
 
@@ -868,17 +897,34 @@ This task list implements the requirements defined in [requirements.md](requirem
 - Documentation is clear and helpful
 
 ---
+## Phase 9: Documentation and Cleanup
 
-### Task 8.2: Architecture Documentation
+### Task 9.1: Code Documentation
+**Goal**: Document all public APIs.
+
+**Subtasks**:
+- [ ] 9.1.1 Add godoc comments to all public types
+- [ ] 9.1.2 Add godoc comments to all public functions
+- [ ] 9.1.3 Add package-level documentation
+- [ ] 9.1.4 Add examples in documentation
+
+**Acceptance Criteria**:
+- All public APIs documented
+- Examples provided
+- Documentation is clear and helpful
+
+---
+
+### Task 9.2: Architecture Documentation
 **Goal**: Update architecture documentation.
 
 **Subtasks**:
-- [ ] 8.2.1 Update design.md with final architecture
-- [ ] 8.2.2 Document key design decisions
-- [ ] 8.2.3 Document testing strategy
-- [ ] 8.2.4 Document deployment process
-- [ ] 8.2.5 Document embedded executable generation workflow
-- [ ] 8.2.6 Document build configuration examples
+- [ ] 9.2.1 Update design.md with final architecture
+- [ ] 9.2.2 Document key design decisions
+- [ ] 9.2.3 Document testing strategy
+- [ ] 9.2.4 Document deployment process
+- [ ] 9.2.5 Document embedded executable generation workflow
+- [ ] 9.2.6 Document build configuration examples
 
 **Acceptance Criteria**:
 - Design document reflects actual implementation
@@ -888,14 +934,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
-### Task 8.3: Migration Guide
+### Task 9.3: Migration Guide
 **Goal**: Document migration from old implementation.
 
 **Subtasks**:
-- [ ] 8.3.1 Document API changes
-- [ ] 8.3.2 Document behavior changes
-- [ ] 8.3.3 Provide migration examples
-- [ ] 8.3.4 Document breaking changes
+- [ ] 9.3.1 Document API changes
+- [ ] 9.3.2 Document behavior changes
+- [ ] 9.3.3 Provide migration examples
+- [ ] 9.3.4 Document breaking changes
 
 **Acceptance Criteria**:
 - Migration guide is complete
@@ -914,8 +960,9 @@ This task list implements the requirements defined in [requirements.md](requirem
 5. **Graphics layer by layer**: Desktop → Picture → Window → Cast (dependency order); LoadPic uses AssetLoader
 6. **Audio after graphics**: Audio is independent but benefits from working graphics; uses AssetLoader
 7. **Runtime features last**: These depend on working execution and graphics; includes array operations
-8. **Integration testing**: Verify everything works together; test both direct and embedded modes
-9. **Documentation**: Document the final, working system including embedded mode workflow and preprocessor directives
+8. **Integration testing (Phase 7)**: Verify core functionality works in direct mode
+9. **Embedded mode (Phase 8)**: Build system for standalone executables
+10. **Documentation (Phase 9)**: Document the final, working system
 
 **Testing Strategy**:
 - Write tests before or alongside implementation
@@ -933,3 +980,5 @@ This task list implements the requirements defined in [requirements.md](requirem
 - **Task 2.6**: step(n) { ... } block syntax support (required for KUMA2 sample)
 - **Task 3.6**: Function return value handling (required for test_drawing sample)
 - **Task 6.2**: Completed drawing functions implementation
+- **Task 6.7**: Message system implementation
+- **Phase 7-9 Restructuring**: Separated integration tests, embedded mode, and documentation into distinct phases
