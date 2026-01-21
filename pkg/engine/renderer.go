@@ -34,13 +34,21 @@ func init() {
 // EbitenRenderer implements the Renderer interface using Ebiten.
 type EbitenRenderer struct {
 	backgroundColor color.Color
+	logger          *Logger
+	frameCount      int // Frame counter for debug logging
 }
 
 // NewEbitenRenderer creates a new Ebiten-based renderer.
 func NewEbitenRenderer() *EbitenRenderer {
 	return &EbitenRenderer{
 		backgroundColor: color.RGBA{0x1F, 0x7E, 0x7F, 0xff}, // Teal
+		logger:          NewLogger(DebugLevelError),
 	}
+}
+
+// SetLogger sets the logger for the renderer.
+func (r *EbitenRenderer) SetLogger(logger *Logger) {
+	r.logger = logger
 }
 
 // RenderFrame renders the current engine state to the screen.
@@ -49,6 +57,9 @@ func (r *EbitenRenderer) RenderFrame(screen image.Image, state *EngineState) {
 	// Lock state for reading
 	state.renderMutex.Lock()
 	defer state.renderMutex.Unlock()
+
+	r.frameCount++
+	logThisFrame := (r.frameCount%60 == 1) // Log once per second (at 60fps)
 
 	// Convert screen to Ebiten image
 	ebitenScreen, ok := screen.(*ebiten.Image)
@@ -61,17 +72,22 @@ func (r *EbitenRenderer) RenderFrame(screen image.Image, state *EngineState) {
 
 	// Render all windows in z-order (creation order)
 	windows := state.GetWindows()
+
+	if logThisFrame && r.logger != nil {
+		r.logger.LogDebug("RenderFrame: %d windows to render", len(windows))
+	}
+
 	for _, win := range windows {
 		if !win.Visible {
 			continue
 		}
 
-		r.renderWindow(ebitenScreen, state, win)
+		r.renderWindow(ebitenScreen, state, win, logThisFrame)
 	}
 }
 
 // renderWindow renders a single window with decorations and its casts.
-func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, state *EngineState, win *Window) {
+func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, state *EngineState, win *Window, logThisFrame bool) {
 	// win.X and win.Y represent the top-left corner of the entire window (including decorations)
 	// Content area starts at (win.X + BorderThickness, win.Y + TitleBarHeight + BorderThickness)
 
@@ -129,7 +145,7 @@ func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, state *EngineState, 
 	}
 
 	// 5. Draw window content area
-	r.renderWindowContent(screen, state, win)
+	r.renderWindowContent(screen, state, win, logThisFrame)
 
 	// 6. Render casts for this window
 	casts := state.GetCastsByWindow(win.ID)
@@ -143,11 +159,19 @@ func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, state *EngineState, 
 }
 
 // renderWindowContent renders the content area of a window (picture).
-func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *EngineState, win *Window) {
+func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *EngineState, win *Window, logThisFrame bool) {
 	// Get window's picture
 	pic := state.GetPicture(win.PictureID)
 	if pic == nil {
+		if logThisFrame && r.logger != nil {
+			r.logger.LogDebug("renderWindowContent: window %d has no picture (picID=%d)", win.ID, win.PictureID)
+		}
 		return
+	}
+
+	if logThisFrame && r.logger != nil {
+		r.logger.LogDebug("renderWindowContent: win=%d pic=%d picSize=(%dx%d) winPos=(%d,%d) winSize=(%dx%d) picOffset=(%d,%d)",
+			win.ID, win.PictureID, pic.Width, pic.Height, win.X, win.Y, win.Width, win.Height, win.PicX, win.PicY)
 	}
 
 	// Convert picture to Ebiten image
@@ -167,18 +191,55 @@ func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *Engine
 	contentX := win.X + BorderThickness
 	contentY := win.Y + TitleBarHeight + BorderThickness
 
-	// Create draw options for window content
-	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Translate(float64(contentX), float64(contentY))
+	// Window rectangle (content area in screen coordinates)
+	winRect := image.Rect(contentX, contentY, contentX+win.Width, contentY+win.Height)
 
-	// Draw window picture (with clipping if needed)
-	if win.PicX != 0 || win.PicY != 0 || win.Width != pic.Width || win.Height != pic.Height {
-		// Need to clip the picture
-		subImg := ebitenPic.SubImage(image.Rect(win.PicX, win.PicY, win.PicX+win.Width, win.PicY+win.Height)).(*ebiten.Image)
-		screen.DrawImage(subImg, opts)
-	} else {
-		// Draw entire picture
-		screen.DrawImage(ebitenPic, opts)
+	// Image rectangle (where the full image would be drawn if positioned by PicX/PicY offsets)
+	// PicX and PicY act as offsets relative to the content area's top-left
+	// Negative offsets shift the image left/up, showing the center portion
+	imgAbsX := contentX + win.PicX
+	imgAbsY := contentY + win.PicY
+	imgRect := image.Rect(imgAbsX, imgAbsY, imgAbsX+pic.Width, imgAbsY+pic.Height)
+
+	if logThisFrame && r.logger != nil {
+		r.logger.LogDebug("  contentPos=(%d,%d) winRect=%v imgRect=%v", contentX, contentY, winRect, imgRect)
+	}
+
+	// Calculate intersection: the visible part of the image
+	drawRect := winRect.Intersect(imgRect)
+
+	// If intersection is empty, nothing to draw
+	if drawRect.Empty() {
+		if logThisFrame && r.logger != nil {
+			r.logger.LogDebug("  intersection is EMPTY - nothing to draw!")
+		}
+		return
+	}
+
+	// Calculate source rectangle in the picture
+	// The top-left of the image is at (imgAbsX, imgAbsY)
+	// The visible part starts at (drawRect.Min.X, drawRect.Min.Y)
+	// So source coordinates are relative to the image origin
+	srcX := drawRect.Min.X - imgAbsX
+	srcY := drawRect.Min.Y - imgAbsY
+	srcW := drawRect.Dx()
+	srcH := drawRect.Dy()
+
+	if logThisFrame && r.logger != nil {
+		r.logger.LogDebug("  drawRect=%v srcRect=(%d,%d,%d,%d)", drawRect, srcX, srcY, srcW, srcH)
+	}
+
+	// Create subimage from the visible portion
+	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
+	subImg := ebitenPic.SubImage(srcRect).(*ebiten.Image)
+
+	// Draw at the intersection point on screen
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(drawRect.Min.X), float64(drawRect.Min.Y))
+	screen.DrawImage(subImg, opts)
+
+	if logThisFrame && r.logger != nil {
+		r.logger.LogDebug("  drew image at screen pos (%d,%d)", drawRect.Min.X, drawRect.Min.Y)
 	}
 }
 

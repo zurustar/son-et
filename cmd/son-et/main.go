@@ -33,7 +33,16 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
-	return g.engine.Update()
+	err := g.engine.Update()
+	if err != nil {
+		// If engine is terminated, exit the game loop
+		if err == engine.ErrTerminated || g.engine.IsTerminated() {
+			return err // This will cause ebiten.RunGame to exit
+		}
+		// For other errors, log but continue
+		log.Printf("Update error: %v", err)
+	}
+	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -63,23 +72,34 @@ func main() {
 
 	args := flag.Args()
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <project_directory>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <project_directory_or_tfy_file>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nOptions:\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	projectDir := args[0]
+	projectPath := args[0]
 
-	// Verify project directory exists
-	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
-		log.Fatalf("Project directory does not exist: %s", projectDir)
+	// Check if projectPath is a file or directory
+	info, err := os.Stat(projectPath)
+	if os.IsNotExist(err) {
+		log.Fatalf("Path does not exist: %s", projectPath)
 	}
 
-	// Find TFY file with main function
-	tfyFile, err := findMainTFY(projectDir)
-	if err != nil {
-		log.Fatalf("Failed to find main TFY file: %v", err)
+	var projectDir string
+	var tfyFile string
+
+	if info.IsDir() {
+		// It's a directory - find TFY file
+		projectDir = projectPath
+		tfyFile, err = findMainTFY(projectDir)
+		if err != nil {
+			log.Fatalf("Failed to find main TFY file: %v", err)
+		}
+	} else {
+		// It's a file - use its directory as project directory
+		tfyFile = projectPath
+		projectDir = filepath.Dir(projectPath)
 	}
 
 	log.Printf("Loading project: %s", tfyFile)
@@ -101,6 +121,13 @@ func main() {
 
 	// Set debug level
 	eng.SetDebugLevel(engine.DebugLevel(*debugFlag))
+
+	// Set logger on renderer if in GUI mode
+	if !*headlessFlag && renderer != nil {
+		if ebitenRenderer, ok := renderer.(*engine.EbitenRenderer); ok {
+			ebitenRenderer.SetLogger(eng.GetLogger())
+		}
+	}
 
 	// Set headless mode
 	if *headlessFlag {

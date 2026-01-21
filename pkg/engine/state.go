@@ -336,6 +336,11 @@ func (e *EngineState) LoadPicture(filename string) (int, error) {
 	e.pictures[pic.ID] = pic
 	e.nextPicID++
 
+	if e.debugLevel >= 2 {
+		fmt.Printf("[DEBUG] LoadPicture: %s -> ID=%d, size=(%dx%d), bounds=%v\n",
+			filename, pic.ID, pic.Width, pic.Height, bounds)
+	}
+
 	return pic.ID, nil
 }
 
@@ -651,8 +656,8 @@ func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, color i
 		Y:         y,
 		Width:     width,
 		Height:    height,
-		PicX:      picX,
-		PicY:      picY,
+		PicX:      -picX,               // Inverted for legacy compatibility
+		PicY:      -picY,               // Inverted for legacy compatibility
 		Caption:   e.globalWindowTitle, // Use global title if set
 		Visible:   true,
 	}
