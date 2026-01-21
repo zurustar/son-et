@@ -194,6 +194,41 @@ func TestParseForStatement(t *testing.T) {
 	}
 }
 
+func TestParseForStatementWithTrailingSemicolon(t *testing.T) {
+	// Test for loop with trailing semicolon: for(i=0; i<10; i=i+1;)
+	// This syntax is used in some TFY files like YOSEMIYA.TFY
+	input := `for (k = 0; k < 3; k = k + 1;) { x }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("program.Statements does not contain 1 statement. got=%d",
+			len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.ForStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not ast.ForStatement. got=%T",
+			program.Statements[0])
+	}
+
+	if stmt.Init == nil {
+		t.Error("stmt.Init is nil")
+	}
+	if stmt.Condition == nil {
+		t.Error("stmt.Condition is nil")
+	}
+	if stmt.Post == nil {
+		t.Error("stmt.Post is nil")
+	}
+	if stmt.Body == nil {
+		t.Error("stmt.Body is nil")
+	}
+}
+
 func TestParseWhileStatement(t *testing.T) {
 	input := `while (x < 10) { x = x + 1 }`
 

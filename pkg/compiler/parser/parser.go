@@ -442,6 +442,12 @@ func (p *Parser) parseForStatement() ast.Statement {
 	p.nextToken()
 	stmt.Post = p.parseStatement()
 
+	// Allow optional trailing semicolon before closing paren
+	// This supports both for(i=0; i<10; i=i+1) and for(i=0; i<10; i=i+1;)
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
 	if !p.expectPeek(token.RPAREN) {
 		return nil
 	}
