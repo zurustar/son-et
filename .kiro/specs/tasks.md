@@ -460,7 +460,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 4.2.6 Implement PicWidth, PicHeight queries
 - [x] 4.2.7 Implement MoveSPic (scale and copy)
 - [x] 4.2.8 Implement ReversePic (horizontal flip)
-- [ ] 4.2.9 Add tests for picture operations with both AssetLoader implementations
+- [x] 4.2.9 Add tests for picture operations with both AssetLoader implementations
 
 **Acceptance Criteria**:
 - BMP loading works via AssetLoader (both modes)
@@ -687,12 +687,12 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement string manipulation functions.
 
 **Subtasks**:
-- [ ] 6.4.1 Implement StrLen, SubStr, StrFind
-- [ ] 6.4.2 Implement StrPrint (printf-style)
-- [ ] 6.4.3 Implement StrUp, StrLow (case conversion)
-- [ ] 6.4.4 Implement CharCode, StrCode
+- [x] 6.4.1 Implement StrLen, SubStr, StrFind
+- [x] 6.4.2 Implement StrPrint (printf-style)
+- [x] 6.4.3 Implement StrUp, StrLow (case conversion)
+- [x] 6.4.4 Implement CharCode, StrCode
 - [ ] 6.4.5 Implement StrInput (user input)
-- [ ] 6.4.6 Add tests for string operations
+- [x] 6.4.6 Add tests for string operations
 
 **Acceptance Criteria**:
 - String operations work correctly
@@ -705,10 +705,10 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement dynamic array manipulation.
 
 **Subtasks**:
-- [ ] 6.5.1 Implement ArraySize
-- [ ] 6.5.2 Implement DelArrayAll
-- [ ] 6.5.3 Implement DelArrayAt, InsArrayAt
-- [ ] 6.5.4 Add tests for array operations
+- [x] 6.5.1 Implement ArraySize
+- [x] 6.5.2 Implement DelArrayAll
+- [x] 6.5.3 Implement DelArrayAt, InsArrayAt
+- [x] 6.5.4 Add tests for array operations
 
 **Acceptance Criteria**:
 - Arrays resize automatically
@@ -720,8 +720,8 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement system information and utility functions.
 
 **Subtasks**:
-- [ ] 6.6.1 Implement Random (random number generation)
-- [ ] 6.6.2 Implement GetSysTime, WhatDay, WhatTime (time/date)
+- [x] 6.6.1 Implement Random (random number generation)
+- [x] 6.6.2 Implement GetSysTime, WhatDay, WhatTime (time/date)
 - [ ] 6.6.3 Implement GetCmdLine (command line args)
 - [ ] 6.6.4 Implement Shell (external process execution)
 - [ ] 6.6.5 Implement MakeLong, GetHiWord, GetLowWord (bit operations)
@@ -739,11 +739,11 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement message management functions.
 
 **Subtasks**:
-- [ ] 6.7.1 Implement GetMesNo (query message number)
-- [ ] 6.7.2 Implement DelMes (terminate specific message)
-- [ ] 6.7.3 Implement FreezeMes, ActivateMes (pause/resume)
-- [ ] 6.7.4 Implement PostMes (send custom message)
-- [ ] 6.7.5 Add tests for message system
+- [x] 6.7.1 Implement GetMesNo (query message number)
+- [x] 6.7.2 Implement DelMes (terminate specific message)
+- [x] 6.7.3 Implement FreezeMes, ActivateMes (pause/resume)
+- [x] 6.7.4 Implement PostMes (send custom message)
+- [x] 6.7.5 Add tests for message system
 
 **Acceptance Criteria**:
 - Message queries work correctly

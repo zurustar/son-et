@@ -752,6 +752,243 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		vm.logger.LogDebug("end_step: breaking out of step block")
 		return &EndStepSignal{}
 
+	// String operations
+	case "strlen":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("StrLen", fmt.Sprintf("%v", evaluatedArgs), "StrLen requires 1 argument (string)")
+		}
+		str := fmt.Sprintf("%v", evaluatedArgs[0])
+		length := len([]rune(str)) // Use rune count for proper Unicode support
+		seq.SetVariable("__return__", int64(length))
+		return nil
+
+	case "substr":
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("SubStr", fmt.Sprintf("%v", evaluatedArgs), "SubStr requires 3 arguments (string, start, length)")
+		}
+		str := fmt.Sprintf("%v", evaluatedArgs[0])
+		start := int(vm.toInt(evaluatedArgs[1]))
+		length := int(vm.toInt(evaluatedArgs[2]))
+
+		runes := []rune(str)
+		if start < 0 || start >= len(runes) {
+			seq.SetVariable("__return__", "")
+			return nil
+		}
+
+		end := start + length
+		if end > len(runes) {
+			end = len(runes)
+		}
+
+		result := string(runes[start:end])
+		seq.SetVariable("__return__", result)
+		return nil
+
+	case "strfind":
+		if len(evaluatedArgs) < 2 {
+			return NewRuntimeError("StrFind", fmt.Sprintf("%v", evaluatedArgs), "StrFind requires 2 arguments (string, search)")
+		}
+		str := fmt.Sprintf("%v", evaluatedArgs[0])
+		search := fmt.Sprintf("%v", evaluatedArgs[1])
+
+		// Find position (0-based rune index, -1 if not found)
+		bytePos := strings.Index(str, search)
+		if bytePos == -1 {
+			seq.SetVariable("__return__", int64(-1))
+			return nil
+		}
+
+		// Convert byte position to rune position
+		runePos := len([]rune(str[:bytePos]))
+		seq.SetVariable("__return__", int64(runePos))
+		return nil
+
+	case "strprint":
+		// StrPrint(format, args...) - printf-style formatting
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("StrPrint", fmt.Sprintf("%v", evaluatedArgs), "StrPrint requires at least 1 argument (format)")
+		}
+		format := fmt.Sprintf("%v", evaluatedArgs[0])
+		args := evaluatedArgs[1:]
+		result := fmt.Sprintf(format, args...)
+		seq.SetVariable("__return__", result)
+		return nil
+
+	case "strup":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("StrUp", fmt.Sprintf("%v", evaluatedArgs), "StrUp requires 1 argument (string)")
+		}
+		str := fmt.Sprintf("%v", evaluatedArgs[0])
+		result := strings.ToUpper(str)
+		seq.SetVariable("__return__", result)
+		return nil
+
+	case "strlow":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("StrLow", fmt.Sprintf("%v", evaluatedArgs), "StrLow requires 1 argument (string)")
+		}
+		str := fmt.Sprintf("%v", evaluatedArgs[0])
+		result := strings.ToLower(str)
+		seq.SetVariable("__return__", result)
+		return nil
+
+	case "charcode":
+		// CharCode(char) - returns ASCII/Unicode code of first character
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("CharCode", fmt.Sprintf("%v", evaluatedArgs), "CharCode requires 1 argument (char)")
+		}
+		str := fmt.Sprintf("%v", evaluatedArgs[0])
+		if len(str) == 0 {
+			seq.SetVariable("__return__", int64(0))
+			return nil
+		}
+		runes := []rune(str)
+		code := int64(runes[0])
+		seq.SetVariable("__return__", code)
+		return nil
+
+	case "strcode":
+		// StrCode(code) - returns character from ASCII/Unicode code
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("StrCode", fmt.Sprintf("%v", evaluatedArgs), "StrCode requires 1 argument (code)")
+		}
+		code := int(vm.toInt(evaluatedArgs[0]))
+		result := string(rune(code))
+		seq.SetVariable("__return__", result)
+		return nil
+
+	// Array operations
+	case "arraysize":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("ArraySize", fmt.Sprintf("%v", evaluatedArgs), "ArraySize requires 1 argument (array variable name)")
+		}
+		// Get array variable name
+		varName := fmt.Sprintf("%v", evaluatedArgs[0])
+		// Get array from sequencer
+		value := seq.GetVariable(varName)
+		if arr, ok := value.([]int64); ok {
+			seq.SetVariable("__return__", int64(len(arr)))
+		} else {
+			seq.SetVariable("__return__", int64(0))
+		}
+		return nil
+
+	case "delarrayall":
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("DelArrayAll", fmt.Sprintf("%v", evaluatedArgs), "DelArrayAll requires 1 argument (array variable name)")
+		}
+		// Get array variable name
+		varName := fmt.Sprintf("%v", evaluatedArgs[0])
+		// Clear array
+		seq.SetVariable(varName, []int64{})
+		return nil
+
+	case "delarrayat":
+		if len(evaluatedArgs) < 2 {
+			return NewRuntimeError("DelArrayAt", fmt.Sprintf("%v", evaluatedArgs), "DelArrayAt requires 2 arguments (array variable name, index)")
+		}
+		// Get array variable name and index
+		varName := fmt.Sprintf("%v", evaluatedArgs[0])
+		index := int(vm.toInt(evaluatedArgs[1]))
+
+		// Get array from sequencer
+		value := seq.GetVariable(varName)
+		if arr, ok := value.([]int64); ok {
+			if index >= 0 && index < len(arr) {
+				// Remove element at index
+				newArr := append(arr[:index], arr[index+1:]...)
+				seq.SetVariable(varName, newArr)
+			}
+		}
+		return nil
+
+	case "insarrayat":
+		if len(evaluatedArgs) < 3 {
+			return NewRuntimeError("InsArrayAt", fmt.Sprintf("%v", evaluatedArgs), "InsArrayAt requires 3 arguments (array variable name, index, value)")
+		}
+		// Get array variable name, index, and value
+		varName := fmt.Sprintf("%v", evaluatedArgs[0])
+		index := int(vm.toInt(evaluatedArgs[1]))
+		value := vm.toInt(evaluatedArgs[2])
+
+		// Get array from sequencer
+		arrValue := seq.GetVariable(varName)
+		arr, ok := arrValue.([]int64)
+		if !ok {
+			// Create new array if variable is not an array
+			arr = []int64{}
+		}
+
+		// Insert element at index
+		if index < 0 {
+			index = 0
+		}
+		if index > len(arr) {
+			index = len(arr)
+		}
+
+		// Create new array with inserted element
+		newArr := make([]int64, len(arr)+1)
+		copy(newArr[:index], arr[:index])
+		newArr[index] = value
+		copy(newArr[index+1:], arr[index:])
+
+		seq.SetVariable(varName, newArr)
+		return nil
+
+	// System functions
+	case "random":
+		// Random(max) - returns random number from 0 to max-1
+		// Random(min, max) - returns random number from min to max-1
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("Random", fmt.Sprintf("%v", evaluatedArgs), "Random requires at least 1 argument (max)")
+		}
+
+		var min, max int64
+		if len(evaluatedArgs) == 1 {
+			min = 0
+			max = vm.toInt(evaluatedArgs[0])
+		} else {
+			min = vm.toInt(evaluatedArgs[0])
+			max = vm.toInt(evaluatedArgs[1])
+		}
+
+		if max <= min {
+			seq.SetVariable("__return__", min)
+			return nil
+		}
+
+		// Generate random number in range [min, max)
+		result := min + int64(vm.engine.random.IntN(int(max-min)))
+		seq.SetVariable("__return__", result)
+		return nil
+
+	case "getsystime":
+		// GetSysTime() - returns current Unix timestamp in seconds
+		timestamp := vm.engine.GetSysTime()
+		seq.SetVariable("__return__", timestamp)
+		return nil
+
+	case "whatday":
+		// WhatDay() - returns day of month (1-31)
+		day := vm.engine.WhatDay()
+		seq.SetVariable("__return__", int64(day))
+		return nil
+
+	case "whattime":
+		// WhatTime(mode) - returns time component
+		// mode 0: hour (0-23)
+		// mode 1: minute (0-59)
+		// mode 2: second (0-59)
+		if len(evaluatedArgs) < 1 {
+			return NewRuntimeError("WhatTime", fmt.Sprintf("%v", evaluatedArgs), "WhatTime requires 1 argument (mode)")
+		}
+		mode := int(vm.toInt(evaluatedArgs[0]))
+		value := vm.engine.WhatTime(mode)
+		seq.SetVariable("__return__", int64(value))
+		return nil
+
 	default:
 		// Unknown built-in function - just log and ignore
 		vm.logger.LogDebug("Unknown built-in function: %s", funcName)

@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"image/color"
+	"math/rand/v2"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ type Engine struct {
 	wavPlayer         *WAVPlayer
 	textRenderer      *TextRenderer
 	drawingContext    *DrawingContext
+	random            *rand.Rand
 	headless          bool
 	programTerminated atomic.Bool
 	timeout           time.Duration
@@ -34,6 +36,7 @@ func NewEngine(renderer Renderer, assetLoader AssetLoader, imageDecoder ImageDec
 	engine := &Engine{
 		state:    state,
 		logger:   logger,
+		random:   rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(time.Now().UnixNano()))),
 		headless: false,
 		timeout:  0,
 	}
@@ -862,4 +865,113 @@ func (e *Engine) GetColor(picID, x, y int) (int, error) {
 
 	e.logger.LogDebug("GetColor: pic=%d (%d,%d) = 0x%06X", picID, x, y, colorValue)
 	return colorValue, nil
+}
+
+// GetSysTime returns the current Unix timestamp in seconds.
+func (e *Engine) GetSysTime() int64 {
+	return time.Now().Unix()
+}
+
+// WhatDay returns the current day of the month (1-31).
+func (e *Engine) WhatDay() int {
+	return time.Now().Day()
+}
+
+// WhatTime returns a time component based on the mode.
+// mode 0: hour (0-23)
+// mode 1: minute (0-59)
+// mode 2: second (0-59)
+func (e *Engine) WhatTime(mode int) int {
+	now := time.Now()
+	switch mode {
+	case 0:
+		return now.Hour()
+	case 1:
+		return now.Minute()
+	case 2:
+		return now.Second()
+	default:
+		return 0
+	}
+}
+
+// GetMesNo returns the sequence ID of a mes() block.
+// In FILLY, this is used to query the message number (sequence ID).
+// Returns the sequence ID, or 0 if not found.
+func (e *Engine) GetMesNo(seqID int) int {
+	// Verify the sequence exists
+	for _, seq := range e.state.GetSequencers() {
+		if seq.GetID() == seqID {
+			return seqID
+		}
+	}
+	return 0
+}
+
+// DelMes terminates a specific mes() block (sequence) by ID.
+// This is similar to DeleteMe but can target any sequence.
+func (e *Engine) DelMes(seqID int) {
+	e.state.DeactivateSequence(seqID)
+	e.logger.LogDebug("DelMes: deactivated sequence %d", seqID)
+}
+
+// FreezeMes pauses a mes() block (sequence) by ID.
+// The sequence stops executing but remains in the sequencer list.
+// Note: Current implementation uses deactivation; a proper implementation
+// would add a "paused" state to Sequencer.
+func (e *Engine) FreezeMes(seqID int) {
+	// For now, we deactivate the sequence
+	// A full implementation would add a "paused" flag to Sequencer
+	e.state.DeactivateSequence(seqID)
+	e.logger.LogDebug("FreezeMes: paused sequence %d", seqID)
+}
+
+// ActivateMes resumes a paused mes() block (sequence) by ID.
+// Note: Current implementation is a no-op since we don't have a proper
+// pause/resume mechanism yet. This would require adding a "paused" state
+// to Sequencer.
+func (e *Engine) ActivateMes(seqID int) {
+	// For now, this is a no-op
+	// A full implementation would clear the "paused" flag on Sequencer
+	e.logger.LogDebug("ActivateMes: resumed sequence %d (no-op in current implementation)", seqID)
+}
+
+// PostMes sends a custom message to mes() blocks.
+// This triggers event handlers registered with mes(USER, userID).
+// Parameters:
+//   - messageType: event type (KEY, CLICK, USER, etc.) or user ID for USER events
+//   - p1, p2, p3, p4: message parameters (stored in MesP1-MesP4)
+func (e *Engine) PostMes(messageType int, p1, p2, p3, p4 int) {
+	e.logger.LogDebug("PostMes: messageType=%d, params=(%d,%d,%d,%d)", messageType, p1, p2, p3, p4)
+
+	// Create event data
+	data := &EventData{
+		MesP1: p1,
+		MesP2: p2,
+		MesP3: p3,
+		MesP4: p4,
+	}
+
+	// Determine event type and trigger
+	// For USER events, messageType is the user ID
+	// For other events, messageType maps to EventType
+	switch messageType {
+	case 0: // TIME mode
+		e.TriggerEvent(EventTIME, data)
+	case 1: // MIDI_TIME mode
+		e.TriggerEvent(EventMIDI_TIME, data)
+	case 2: // MIDI_END
+		e.TriggerEvent(EventMIDI_END, data)
+	case 3: // KEY
+		e.TriggerEvent(EventKEY, data)
+	case 4: // CLICK
+		e.TriggerEvent(EventCLICK, data)
+	case 5: // RBDOWN
+		e.TriggerEvent(EventRBDOWN, data)
+	case 6: // RBDBLCLK
+		e.TriggerEvent(EventRBDBLCLK, data)
+	default:
+		// Treat as USER event with custom ID
+		e.TriggerUserEvent(messageType, data)
+	}
 }
