@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -147,14 +148,29 @@ func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, state *EngineState, 
 	// 5. Draw window content area
 	r.renderWindowContent(screen, state, win, logThisFrame)
 
-	// 6. Render casts for this window
-	casts := state.GetCastsByWindow(win.ID)
-	for _, cast := range casts {
-		if !cast.Visible {
-			continue
-		}
+	// Note: Casts are "baked" into pictures by PutCast/MoveCast, so we don't need to render them separately
 
-		r.renderCast(screen, state, win, cast)
+	// Debug: Draw window ID label if debug level >= 2
+	if r.logger != nil && r.logger.GetLevel() >= DebugLevelDebug {
+		contentX := win.X + BorderThickness
+		contentY := win.Y + TitleBarHeight + BorderThickness
+
+		// Draw window ID label at top-left
+		winLabel := fmt.Sprintf("W%d", win.ID)
+		labelX := contentX + 5
+		labelY := contentY + 15 // Same position as before
+
+		// Draw semi-transparent black background
+		bgWidth := float32(len(winLabel)*7 + 4)
+		bgHeight := float32(16)
+		bgImg := ebiten.NewImage(int(bgWidth), int(bgHeight))
+		bgImg.Fill(color.RGBA{0, 0, 0, 200})
+		bgOpts := &ebiten.DrawImageOptions{}
+		bgOpts.GeoM.Translate(float64(labelX-2), float64(labelY-13))
+		screen.DrawImage(bgImg, bgOpts)
+
+		// Draw cyan text for window ID
+		text.Draw(screen, winLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{0, 255, 255, 255})
 	}
 }
 
@@ -241,6 +257,26 @@ func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *Engine
 	if logThisFrame && r.logger != nil {
 		r.logger.LogDebug("  drew image at screen pos (%d,%d)", drawRect.Min.X, drawRect.Min.Y)
 	}
+
+	// Debug: Draw picture ID label on the image if debug level >= 2
+	if r.logger != nil && r.logger.GetLevel() >= DebugLevelDebug {
+		// Draw picture ID label at top-left of the actual drawn image
+		picLabel := fmt.Sprintf("P%d", win.PictureID)
+		labelX := drawRect.Min.X + 5
+		labelY := drawRect.Min.Y + 15
+
+		// Draw semi-transparent black background
+		bgWidth := float32(len(picLabel)*7 + 4)
+		bgHeight := float32(16)
+		bgImg := ebiten.NewImage(int(bgWidth), int(bgHeight))
+		bgImg.Fill(color.RGBA{0, 0, 0, 200})
+		bgOpts := &ebiten.DrawImageOptions{}
+		bgOpts.GeoM.Translate(float64(labelX-2), float64(labelY-13))
+		screen.DrawImage(bgImg, bgOpts)
+
+		// Draw green text for picture ID
+		text.Draw(screen, picLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{0, 255, 0, 255})
+	}
 }
 
 // renderCast renders a single cast (sprite).
@@ -248,7 +284,15 @@ func (r *EbitenRenderer) renderCast(screen *ebiten.Image, state *EngineState, wi
 	// Get cast's picture
 	pic := state.GetPicture(cast.PictureID)
 	if pic == nil {
+		if r.logger != nil {
+			r.logger.LogError("renderCast: cast %d references non-existent picture %d", cast.ID, cast.PictureID)
+		}
 		return
+	}
+
+	if r.logger != nil {
+		r.logger.LogInfo("renderCast: cast %d, pic %d, pos=(%d,%d), clip=(%d,%d,%d,%d)",
+			cast.ID, cast.PictureID, cast.X, cast.Y, cast.SrcX, cast.SrcY, cast.Width, cast.Height)
 	}
 
 	// Convert picture to Ebiten image
@@ -277,6 +321,39 @@ func (r *EbitenRenderer) renderCast(screen *ebiten.Image, state *EngineState, wi
 
 	// Draw cast
 	screen.DrawImage(subImg, opts)
+
+	// Debug: Draw cast ID and picture ID labels if debug level >= 2
+	if r.logger != nil && r.logger.GetLevel() >= DebugLevelDebug {
+		// Draw cast ID label with background
+		castLabel := fmt.Sprintf("C%d", cast.ID)
+		labelX := contentX + cast.X + 5
+		labelY := contentY + cast.Y + 20
+
+		// Draw semi-transparent black background
+		bgWidth := float32(len(castLabel)*7 + 4)
+		bgHeight := float32(16)
+		bgImg := ebiten.NewImage(int(bgWidth), int(bgHeight))
+		bgImg.Fill(color.RGBA{0, 0, 0, 200})
+		bgOpts := &ebiten.DrawImageOptions{}
+		bgOpts.GeoM.Translate(float64(labelX-2), float64(labelY-14))
+		screen.DrawImage(bgImg, bgOpts)
+
+		// Draw yellow text for cast ID
+		text.Draw(screen, castLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{255, 255, 0, 255})
+
+		// Draw picture ID label below cast ID
+		picLabel := fmt.Sprintf("P%d", cast.PictureID)
+		picLabelY := labelY + 18
+
+		bgImg2 := ebiten.NewImage(int(bgWidth), int(bgHeight))
+		bgImg2.Fill(color.RGBA{0, 0, 0, 200})
+		bgOpts2 := &ebiten.DrawImageOptions{}
+		bgOpts2.GeoM.Translate(float64(labelX-2), float64(picLabelY-13))
+		screen.DrawImage(bgImg2, bgOpts2)
+
+		// Draw green text for picture ID
+		text.Draw(screen, picLabel, basicfont.Face7x13, labelX, picLabelY, color.RGBA{0, 255, 0, 255})
+	}
 }
 
 // Clear clears the screen with the specified color.

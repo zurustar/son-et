@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"strings"
 	"sync"
@@ -63,10 +64,11 @@ type EngineState struct {
 
 // Picture represents a loaded or created image.
 type Picture struct {
-	ID     int         // Unique picture ID
-	Image  image.Image // The actual image data
-	Width  int         // Image width
-	Height int         // Image height
+	ID         int         // Unique picture ID
+	Image      image.Image // The actual image data
+	BackBuffer image.Image // Double buffer for cast rendering
+	Width      int         // Image width
+	Height     int         // Image height
 }
 
 // Window represents a virtual window on the desktop.
@@ -90,16 +92,17 @@ type Window struct {
 
 // Cast represents a sprite (movable image element).
 type Cast struct {
-	ID        int  // Unique cast ID
-	PictureID int  // Picture to display
-	WindowID  int  // Parent window
-	X         int  // Position X (relative to window)
-	Y         int  // Position Y (relative to window)
-	SrcX      int  // Source clipping X
-	SrcY      int  // Source clipping Y
-	Width     int  // Clipping width
-	Height    int  // Clipping height
-	Visible   bool // Is cast visible
+	ID               int  // Unique cast ID
+	PictureID        int  // Picture to display
+	WindowID         int  // Parent window
+	X                int  // Position X (relative to window)
+	Y                int  // Position Y (relative to window)
+	SrcX             int  // Source clipping X
+	SrcY             int  // Source clipping Y
+	Width            int  // Clipping width
+	Height           int  // Clipping height
+	TransparentColor int  // Transparent color (0xRRGGBB format, -1 = no transparency)
+	Visible          bool // Is cast visible
 }
 
 // NewEngineState creates a new engine state with the given dependencies.
@@ -634,8 +637,8 @@ func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX,
 //	x, y: window position on virtual desktop
 //	width, height: window dimensions (0,0 = use picture size)
 //	picX, picY: offset into the picture to display
-//	color: background color (0xRRGGBB format, currently unused)
-func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, color int) int {
+//	bgColor: background color (0xRRGGBB format)
+func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, bgColor int) int {
 	// If width and height are both 0, use picture dimensions
 	if width == 0 && height == 0 {
 		if pic := e.pictures[picID]; pic != nil {
@@ -645,6 +648,37 @@ func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, color i
 			// Fallback to default size
 			width = 640
 			height = 480
+		}
+	}
+
+	// Apply background color to the picture if specified
+	if bgColor >= 0 {
+		pic := e.pictures[picID]
+		if pic != nil {
+			// Convert 0xRRGGBB to RGB components
+			r := uint8((bgColor >> 16) & 0xFF)
+			g := uint8((bgColor >> 8) & 0xFF)
+			b := uint8(bgColor & 0xFF)
+			fillColor := color.RGBA{R: r, G: g, B: b, A: 255}
+
+			// Fill the picture with the background color
+			if rgba, ok := pic.Image.(*image.RGBA); ok {
+				// Fill directly
+				for py := 0; py < pic.Height; py++ {
+					for px := 0; px < pic.Width; px++ {
+						rgba.Set(px, py, fillColor)
+					}
+				}
+			} else {
+				// Convert to RGBA first
+				rgba := image.NewRGBA(image.Rect(0, 0, pic.Width, pic.Height))
+				for py := 0; py < pic.Height; py++ {
+					for px := 0; px < pic.Width; px++ {
+						rgba.Set(px, py, fillColor)
+					}
+				}
+				pic.Image = rgba
+			}
 		}
 	}
 
@@ -879,33 +913,147 @@ func (e *EngineState) GetDraggedWindowID() int {
 }
 
 // PutCast creates a new cast (sprite) and returns its ID.
+// In FILLY, PutCast not only creates a cast object but also draws it directly
+// to the destination picture.
 // Parameters:
 //
-//	windowID: parent window ID
-//	picID: picture to display
-//	x, y: position relative to window
+//	destPicID: destination picture ID (where to draw the cast)
+//	picID: source picture to display
+//	x, y: position on destination picture
 //	srcX, srcY: source clipping position in picture
 //	width, height: clipping dimensions
-func (e *EngineState) PutCast(windowID, picID, x, y, srcX, srcY, width, height int) int {
+//	transparentColor: color to treat as transparent (0xRRGGBB format, -1 = no transparency)
+//
+// Note: The cast is associated with the window that uses destPicID.
+func (e *EngineState) PutCast(destPicID, picID, x, y, srcX, srcY, width, height, transparentColor int) int {
 	// Create cast
 	cast := &Cast{
-		ID:        e.nextCastID,
-		PictureID: picID,
-		WindowID:  windowID,
-		X:         x,
-		Y:         y,
-		SrcX:      srcX,
-		SrcY:      srcY,
-		Width:     width,
-		Height:    height,
-		Visible:   true,
+		ID:               e.nextCastID,
+		PictureID:        picID,
+		WindowID:         destPicID, // Store destPicID as WindowID for now
+		X:                x,
+		Y:                y,
+		SrcX:             srcX,
+		SrcY:             srcY,
+		Width:            width,
+		Height:           height,
+		TransparentColor: transparentColor,
+		Visible:          true,
 	}
 
 	// Store cast
 	e.casts[cast.ID] = cast
 	e.nextCastID++
 
+	// Draw cast to destination picture immediately (FILLY behavior)
+	e.drawCastToPicture(cast, destPicID, transparentColor)
+
 	return cast.ID
+}
+
+// drawCastToPicture draws a cast directly to a picture.
+// This is used by PutCast and MoveCast to "bake" casts into pictures.
+// transparentColor: color to treat as transparent (0xRRGGBB format, -1 = no transparency)
+func (e *EngineState) drawCastToPicture(cast *Cast, destPicID int, transparentColor int) {
+	if e.debugLevel >= 2 {
+		fmt.Printf("[DEBUG] drawCastToPicture: cast %d (pic %d) -> dest pic %d at (%d,%d) clip=(%d,%d,%d,%d) transparent=0x%X\n",
+			cast.ID, cast.PictureID, destPicID, cast.X, cast.Y, cast.SrcX, cast.SrcY, cast.Width, cast.Height, transparentColor)
+	}
+
+	// Get source picture
+	srcPic := e.pictures[cast.PictureID]
+	if srcPic == nil {
+		if e.debugLevel >= 1 {
+			fmt.Printf("[ERROR] drawCastToPicture: source picture %d not found\n", cast.PictureID)
+		}
+		return
+	}
+
+	// Get destination picture
+	destPic := e.pictures[destPicID]
+	if destPic == nil {
+		if e.debugLevel >= 1 {
+			fmt.Printf("[ERROR] drawCastToPicture: destination picture %d not found\n", destPicID)
+		}
+		return
+	}
+
+	// Convert source to RGBA if needed
+	var srcRGBA *image.RGBA
+	switch img := srcPic.Image.(type) {
+	case *image.RGBA:
+		srcRGBA = img
+	default:
+		bounds := srcPic.Image.Bounds()
+		srcRGBA = image.NewRGBA(bounds)
+		draw.Draw(srcRGBA, bounds, srcPic.Image, bounds.Min, draw.Src)
+	}
+
+	// Convert destination to RGBA if needed
+	var destRGBA *image.RGBA
+	switch img := destPic.Image.(type) {
+	case *image.RGBA:
+		destRGBA = img
+	default:
+		bounds := destPic.Image.Bounds()
+		destRGBA = image.NewRGBA(bounds)
+		draw.Draw(destRGBA, bounds, destPic.Image, bounds.Min, draw.Src)
+		destPic.Image = destRGBA
+	}
+
+	// Extract the clipped region from source
+	srcRect := image.Rect(cast.SrcX, cast.SrcY, cast.SrcX+cast.Width, cast.SrcY+cast.Height)
+	dstRect := image.Rect(cast.X, cast.Y, cast.X+cast.Width, cast.Y+cast.Height)
+
+	// If transparency is enabled, draw pixel by pixel
+	if transparentColor >= 0 {
+		// Convert 0xRRGGBB to RGB components
+		tr := uint8((transparentColor >> 16) & 0xFF)
+		tg := uint8((transparentColor >> 8) & 0xFF)
+		tb := uint8(transparentColor & 0xFF)
+
+		if e.debugLevel >= 2 {
+			fmt.Printf("[DEBUG] drawCastToPicture: Using transparency RGB=(%d,%d,%d)\n", tr, tg, tb)
+		}
+
+		// Draw pixel by pixel, skipping transparent color
+		for sy := 0; sy < cast.Height; sy++ {
+			for sx := 0; sx < cast.Width; sx++ {
+				srcX := cast.SrcX + sx
+				srcY := cast.SrcY + sy
+				dstX := cast.X + sx
+				dstY := cast.Y + sy
+
+				// Check bounds
+				if srcX < 0 || srcX >= srcPic.Width || srcY < 0 || srcY >= srcPic.Height {
+					continue
+				}
+				if dstX < 0 || dstX >= destPic.Width || dstY < 0 || dstY >= destPic.Height {
+					continue
+				}
+
+				// Get source pixel
+				c := srcRGBA.At(srcX, srcY)
+				r, g, b, a := c.RGBA()
+
+				// Convert from 16-bit to 8-bit
+				r8 := uint8(r >> 8)
+				g8 := uint8(g >> 8)
+				b8 := uint8(b >> 8)
+
+				// Skip if matches transparent color
+				if r8 == tr && g8 == tg && b8 == tb {
+					continue
+				}
+
+				// Draw pixel with alpha blending
+				destRGBA.Set(dstX, dstY, color.RGBA{r8, g8, b8, uint8(a >> 8)})
+			}
+		}
+	} else {
+		// No transparency - use fast draw with alpha blending
+		draw.Draw(destRGBA, dstRect, srcRGBA, srcRect.Min, draw.Over)
+	}
 }
 
 // GetCast retrieves a cast by ID.
@@ -915,6 +1063,11 @@ func (e *EngineState) GetCast(id int) *Cast {
 }
 
 // MoveCast updates cast position and optionally clipping.
+// In FILLY, MoveCast uses double-buffering to prevent cast accumulation:
+// 1. Clears BackBuffer to transparent
+// 2. Redraws ALL casts onto BackBuffer
+// 3. Swaps BackBuffer with main Image
+// This ensures casts are redrawn cleanly each frame without accumulating.
 // Parameters:
 //
 //	id: cast ID
@@ -945,7 +1098,75 @@ func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
 		cast.Height = height
 	}
 
+	// IMPORTANT: In FILLY, MoveCast uses double-buffering to prevent cast accumulation
+	// cast.WindowID actually stores destPicID
+	destPicID := cast.WindowID
+
+	destPic := e.pictures[destPicID]
+	if destPic == nil {
+		return fmt.Errorf("destination picture %d not found", destPicID)
+	}
+
+	// Initialize BackBuffer if needed
+	if destPic.BackBuffer == nil {
+		destPic.BackBuffer = image.NewRGBA(image.Rect(0, 0, destPic.Width, destPic.Height))
+	}
+
+	// Get BackBuffer as RGBA
+	var backBuffer *image.RGBA
+	switch img := destPic.BackBuffer.(type) {
+	case *image.RGBA:
+		backBuffer = img
+	default:
+		backBuffer = image.NewRGBA(image.Rect(0, 0, destPic.Width, destPic.Height))
+		destPic.BackBuffer = backBuffer
+	}
+
+	// Clear BackBuffer to transparent
+	for py := 0; py < destPic.Height; py++ {
+		for px := 0; px < destPic.Width; px++ {
+			backBuffer.Set(px, py, color.RGBA{0, 0, 0, 0})
+		}
+	}
+
+	// Redraw ALL casts that belong to this destination picture onto BackBuffer
+	for _, c := range e.GetCasts() {
+		if c.WindowID == destPicID && c.Visible {
+			// Temporarily swap Image with BackBuffer for drawing
+			originalImage := destPic.Image
+			destPic.Image = backBuffer
+			e.drawCastToPicture(c, destPicID, c.TransparentColor)
+			destPic.Image = originalImage
+		}
+	}
+
+	// Swap BackBuffer with main Image (double buffering)
+	temp := destPic.Image
+	destPic.Image = destPic.BackBuffer
+	destPic.BackBuffer = temp
+
 	return nil
+}
+
+// redrawAllCastsOnWindow redraws all casts on a window to its picture.
+// This is called by MoveCast to update the destination picture.
+func (e *EngineState) redrawAllCastsOnWindow(windowID int) {
+	// Get the window to find its picture
+	window := e.windows[windowID]
+	if window == nil {
+		return
+	}
+
+	destPicID := window.PictureID
+
+	// Clear the destination picture first (or restore base image)
+	// For now, we'll just redraw all casts on top
+	// TODO: Implement proper base image restoration if needed
+
+	// Redraw all casts for this window
+	for _, cast := range e.GetCastsByWindow(windowID) {
+		e.drawCastToPicture(cast, destPicID, cast.TransparentColor)
+	}
 }
 
 // DeleteCast removes a cast and releases its resources.

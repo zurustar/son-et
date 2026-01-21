@@ -434,17 +434,17 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 
 	case "putcast":
 		// PutCast can be called with 4, 5, 8, or 12 arguments:
-		// PutCast(picID, winID, x, y) - 4 args: basic cast
-		// PutCast(picID, winID, x, y, transparentColor) - 5 args: with transparency
-		// PutCast(picID, winID, x, y, srcX, srcY, width, height) - 8 args: with clipping
-		// PutCast(picID, winID, x, y, transparentColor, ..., width, height, srcX, srcY) - 12 args: full
+		// PutCast(picID, destPicID, x, y) - 4 args: basic cast
+		// PutCast(picID, destPicID, x, y, transparentColor) - 5 args: with transparency
+		// PutCast(picID, destPicID, x, y, srcX, srcY, width, height) - 8 args: with clipping
+		// PutCast(picID, destPicID, x, y, transparentColor, ?, ?, ?, width, height, srcX, srcY) - 12 args: full
 		if len(evaluatedArgs) < 4 {
-			return NewRuntimeError("PutCast", fmt.Sprintf("%v", evaluatedArgs), "PutCast requires at least 4 arguments (picID, winID, x, y)")
+			return NewRuntimeError("PutCast", fmt.Sprintf("%v", evaluatedArgs), "PutCast requires at least 4 arguments (picID, destPicID, x, y)")
 		}
 
 		// Get basic arguments
 		picID := int(vm.toInt(evaluatedArgs[0]))
-		winID := int(vm.toInt(evaluatedArgs[1]))
+		destPicID := int(vm.toInt(evaluatedArgs[1]))
 		x := int(vm.toInt(evaluatedArgs[2]))
 		y := int(vm.toInt(evaluatedArgs[3]))
 
@@ -453,32 +453,54 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		srcY := 0
 		width := vm.engine.PicWidth(picID)
 		height := vm.engine.PicHeight(picID)
+		transparentColor := -1 // -1 means no transparency
 
 		// Parse optional arguments based on count
-		if len(evaluatedArgs) >= 8 {
-			// 8+ args: includes clipping parameters
+		if len(evaluatedArgs) == 5 {
+			// 5 args: includes transparent color
+			transparentColor = int(vm.toInt(evaluatedArgs[4]))
+		} else if len(evaluatedArgs) == 8 {
+			// 8 args: includes clipping parameters
 			srcX = int(vm.toInt(evaluatedArgs[4]))
 			srcY = int(vm.toInt(evaluatedArgs[5]))
 			width = int(vm.toInt(evaluatedArgs[6]))
 			height = int(vm.toInt(evaluatedArgs[7]))
+		} else if len(evaluatedArgs) >= 12 {
+			// 12 args: transparentColor at [4], width/height at [8-9], srcX/srcY at [10-11]
+			transparentColor = int(vm.toInt(evaluatedArgs[4]))
+			// args[5-7] = unused
+			width = int(vm.toInt(evaluatedArgs[8]))
+			height = int(vm.toInt(evaluatedArgs[9]))
+			srcX = int(vm.toInt(evaluatedArgs[10]))
+			srcY = int(vm.toInt(evaluatedArgs[11]))
 		}
-		// TODO: Handle transparent color (arg 4 when len==5, or other positions)
 
-		castID := vm.engine.PutCast(winID, picID, x, y, srcX, srcY, width, height)
+		castID := vm.engine.PutCast(destPicID, picID, x, y, srcX, srcY, width, height, transparentColor)
 		seq.SetVariable("__return__", int64(castID))
 		return nil
 
 	case "movecast":
-		// MoveCast can be called with 3 or 7 arguments
-		// MoveCast(cast_no, x, y) - 3 args: position only
-		// MoveCast(cast_no, x, y, src_x, src_y, width, height) - 7 args: position + clipping
+		// MoveCast parameters (based on old implementation and y_saru sample):
+		// args[0]: castID
+		// args[1]: picID (source picture, often ignored for transparency preservation)
+		// args[2]: x position
+		// args[3]: y position
+		// args[4]: unknown/transparent color (ignored for now)
+		// args[5]: width
+		// args[6]: height
+		// args[7]: srcX (source clipping X)
+		// args[8]: srcY (source clipping Y)
 		if len(evaluatedArgs) < 3 {
-			return NewRuntimeError("MoveCast", fmt.Sprintf("%v", evaluatedArgs), "MoveCast requires at least 3 arguments (castID, x, y)")
+			return NewRuntimeError("MoveCast", fmt.Sprintf("%v", evaluatedArgs), "MoveCast requires at least 3 arguments (castID, picID, x)")
 		}
 
 		castID := int(vm.toInt(evaluatedArgs[0]))
-		x := int(vm.toInt(evaluatedArgs[1]))
-		y := int(vm.toInt(evaluatedArgs[2]))
+		// picID := int(vm.toInt(evaluatedArgs[1])) // Ignored for now to preserve transparency
+		x := int(vm.toInt(evaluatedArgs[2]))
+		y := 0
+		if len(evaluatedArgs) > 3 {
+			y = int(vm.toInt(evaluatedArgs[3]))
+		}
 
 		// Default to -1 (no change) for clipping parameters
 		srcX := -1
@@ -486,12 +508,18 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		width := -1
 		height := -1
 
-		// If 7 arguments provided, update clipping
-		if len(evaluatedArgs) >= 7 {
-			srcX = int(vm.toInt(evaluatedArgs[3]))
-			srcY = int(vm.toInt(evaluatedArgs[4]))
+		// Parse additional arguments for dimensions and source offset
+		if len(evaluatedArgs) > 5 {
 			width = int(vm.toInt(evaluatedArgs[5]))
+		}
+		if len(evaluatedArgs) > 6 {
 			height = int(vm.toInt(evaluatedArgs[6]))
+		}
+		if len(evaluatedArgs) > 7 {
+			srcX = int(vm.toInt(evaluatedArgs[7]))
+		}
+		if len(evaluatedArgs) > 8 {
+			srcY = int(vm.toInt(evaluatedArgs[8]))
 		}
 
 		vm.engine.MoveCast(castID, x, y, srcX, srcY, width, height)
@@ -1193,14 +1221,13 @@ func (vm *VM) executeSetStep(seq *Sequencer, op interpreter.OpCode) error {
 		ticksPerStep = stepCount * 3
 	} else {
 		// MIDI_TIME mode: step(n) = n × (1/32nd note)
-		// 1/32nd note = PPQ / 8 ticks (where PPQ is typically 480)
-		// For PPQ=480: 1/32nd note = 60 ticks
-		// TODO: Get actual PPQ from MIDI file
-		ppq := 480 // Standard PPQ
-		ticksPerStep = stepCount * (ppq / 8)
+		// In FILLY's tick system, 1 quarter note = 8 ticks (32nd note resolution)
+		// Therefore, 1/32nd note = 1 tick
+		// So step(n) = n ticks
+		ticksPerStep = stepCount
 	}
 
-	vm.logger.LogDebug("SetStep: %d → %d ticks/step (mode: %d)", stepCount, ticksPerStep, seq.GetMode())
+	vm.logger.LogInfo("SetStep: %d → %d ticks/step (mode: %d)", stepCount, ticksPerStep, seq.GetMode())
 
 	// Set ticksPerStep in sequencer
 	seq.SetTicksPerStep(ticksPerStep)

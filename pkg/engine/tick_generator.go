@@ -8,7 +8,7 @@ import (
 // This ensures accurate timing regardless of audio buffer size.
 type WallClockTickGenerator struct {
 	sampleRate        int
-	ppq               int
+	ppq               int // Public for tick conversion
 	tempoMap          []TempoEvent
 	lastDeliveredTick int32 // atomic
 }

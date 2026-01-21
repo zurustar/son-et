@@ -8,7 +8,7 @@ func TestPutCast(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a cast
-	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64)
+	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64, -1)
 
 	if castID != 1 {
 		t.Errorf("Expected cast ID 1, got %d", castID)
@@ -53,7 +53,7 @@ func TestMoveCastPosition(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a cast
-	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64)
+	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64, -1)
 
 	// Move cast position only (clipping unchanged)
 	err := state.MoveCast(castID, 150, 250, -1, -1, -1, -1)
@@ -89,7 +89,7 @@ func TestMoveCastPositionAndClipping(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a cast
-	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64)
+	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64, -1)
 
 	// Move cast position and clipping
 	err := state.MoveCast(castID, 150, 250, 32, 32, 128, 128)
@@ -125,7 +125,7 @@ func TestDeleteCast(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create a cast
-	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64)
+	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64, -1)
 
 	// Delete the cast
 	state.DeleteCast(castID)
@@ -141,9 +141,9 @@ func TestGetCastsOrder(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create casts in specific order
-	id1 := state.PutCast(1, 2, 100, 100, 0, 0, 64, 64)
-	id2 := state.PutCast(1, 3, 200, 200, 0, 0, 64, 64)
-	id3 := state.PutCast(1, 4, 300, 300, 0, 0, 64, 64)
+	id1 := state.PutCast(1, 2, 100, 100, 0, 0, 64, 64, -1)
+	id2 := state.PutCast(1, 3, 200, 200, 0, 0, 64, 64, -1)
+	id3 := state.PutCast(1, 4, 300, 300, 0, 0, 64, 64, -1)
 
 	// Get casts
 	casts := state.GetCasts()
@@ -168,9 +168,9 @@ func TestGetCastsByWindow(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create casts in different windows
-	win1cast1 := state.PutCast(1, 2, 100, 100, 0, 0, 64, 64)
-	win2cast1 := state.PutCast(2, 3, 200, 200, 0, 0, 64, 64)
-	win1cast2 := state.PutCast(1, 4, 300, 300, 0, 0, 64, 64)
+	win1cast1 := state.PutCast(1, 2, 100, 100, 0, 0, 64, 64, -1)
+	win2cast1 := state.PutCast(2, 3, 200, 200, 0, 0, 64, 64, -1)
+	win1cast2 := state.PutCast(1, 4, 300, 300, 0, 0, 64, 64, -1)
 
 	// Get casts for window 1
 	casts := state.GetCastsByWindow(1)
@@ -215,9 +215,9 @@ func TestMultipleCastsZOrder(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
 	// Create multiple casts
-	id1 := state.PutCast(1, 2, 0, 0, 0, 0, 64, 64)
-	_ = state.PutCast(1, 3, 10, 10, 0, 0, 64, 64)
-	id3 := state.PutCast(1, 4, 20, 20, 0, 0, 64, 64)
+	id1 := state.PutCast(1, 2, 0, 0, 0, 0, 64, 64, -1)
+	_ = state.PutCast(1, 3, 10, 10, 0, 0, 64, 64, -1)
+	id3 := state.PutCast(1, 4, 20, 20, 0, 0, 64, 64, -1)
 
 	// Get all casts
 	casts := state.GetCasts()

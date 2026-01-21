@@ -83,8 +83,8 @@ func TestMockRenderer_RendersCasts(t *testing.T) {
 	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
 
 	// Create casts
-	state.PutCast(1, 2, 10, 10, 0, 0, 64, 64)
-	state.PutCast(1, 3, 20, 20, 0, 0, 64, 64)
+	state.PutCast(1, 2, 10, 10, 0, 0, 64, 64, -1)
+	state.PutCast(1, 3, 20, 20, 0, 0, 64, 64, -1)
 
 	// Create a dummy screen
 	screen := image.NewRGBA(image.Rect(0, 0, 1280, 720))
@@ -106,8 +106,8 @@ func TestMockRenderer_RendersOnlyVisibleCasts(t *testing.T) {
 	state.OpenWindow(1, 100, 100, 200, 150, 0, 0, 0)
 
 	// Create casts
-	cast1 := state.PutCast(1, 2, 10, 10, 0, 0, 64, 64)
-	cast2 := state.PutCast(1, 3, 20, 20, 0, 0, 64, 64)
+	cast1 := state.PutCast(1, 2, 10, 10, 0, 0, 64, 64, -1)
+	cast2 := state.PutCast(1, 3, 20, 20, 0, 0, 64, 64, -1)
 
 	// Hide cast 2
 	state.GetCast(cast2).Visible = false

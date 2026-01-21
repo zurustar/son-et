@@ -212,9 +212,22 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 		return nil
 	}
 
-	e.logger.LogDebug("UpdateMIDISequences: processing %d ticks", tickCount)
+	e.logger.LogInfo("UpdateMIDISequences: processing %d ticks", tickCount)
 
 	vm := NewVM(e.state, e, e.logger)
+
+	// Log MIDI sequences status (first tick only)
+	if tickCount > 0 {
+		midiSeqCount := 0
+		for _, seq := range e.state.GetSequencers() {
+			if seq.GetMode() == MIDI_TIME && seq.IsActive() && !seq.IsComplete() {
+				midiSeqCount++
+			}
+		}
+		if midiSeqCount == 0 {
+			e.logger.LogInfo("  No active MIDI_TIME sequences found")
+		}
+	}
 
 	// Process each MIDI tick sequentially
 	for tick := 0; tick < tickCount; tick++ {
@@ -249,13 +262,29 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 			// Execute one command if not waiting
 			cmd := seq.GetCurrentCommand()
 			if cmd == nil {
+				if tick == 0 {
+					e.logger.LogInfo("  Seq %d: no current command (PC=%d, complete=%v)",
+						seq.GetID(), seq.GetPC(), seq.IsComplete())
+				}
 				continue
+			}
+
+			// Log command execution (first tick only)
+			if tick == 0 {
+				e.logger.LogInfo("  Seq %d: executing command at PC=%d, waiting=%v",
+					seq.GetID(), seq.GetPC(), seq.IsWaiting())
 			}
 
 			// Execute command
 			if err := vm.ExecuteOp(seq, *cmd); err != nil {
 				e.logger.LogError("MIDI VM execution error at seq %d, pc %d: %v", seq.GetID(), seq.GetPC(), err)
 				return err
+			}
+
+			// Log PC after execution (first tick only)
+			if tick == 0 {
+				e.logger.LogInfo("  Seq %d: after execution, PC=%d, waiting=%v, waitCount=%d",
+					seq.GetID(), seq.GetPC(), seq.IsWaiting(), seq.GetWaitCount())
 			}
 
 			// Advance program counter
@@ -500,8 +529,7 @@ func (e *Engine) AllSequencesComplete() bool {
 		if seq.IsActive() {
 			activeCount++
 			if !seq.IsComplete() {
-				e.logger.LogDebug("AllSequencesComplete: sequence %d is active and not complete (pc=%d/%d, waiting=%v)",
-					seq.GetID(), seq.GetPC(), len(seq.commands), seq.IsWaiting())
+				// Sequence is still running
 				return false
 			} else {
 				completeCount++
@@ -509,16 +537,12 @@ func (e *Engine) AllSequencesComplete() bool {
 		}
 	}
 
-	// If all active sequences are complete, check for event handlers
+	// If all active sequences are complete, check if MIDI is still playing
 	if e.midiPlayer != nil && e.midiPlayer.IsPlaying() {
-		handlers := e.state.GetEventHandlers(EventMIDI_TIME)
-		if len(handlers) > 0 {
-			e.logger.LogDebug("AllSequencesComplete: %d active sequences complete, but MIDI is playing with %d MIDI_TIME handlers", activeCount, len(handlers))
-			return false
-		}
+		return false
 	}
 
-	e.logger.LogDebug("AllSequencesComplete: %d active sequences, %d complete", activeCount, completeCount)
+	// All sequences complete
 	return true
 }
 
@@ -538,7 +562,7 @@ func (e *Engine) LoadPic(filename string) int {
 // Returns the picture ID.
 func (e *Engine) CreatePic(width, height int) int {
 	picID := e.state.CreatePicture(width, height)
-	e.logger.LogDebug("Created picture %d: %dx%d", picID, width, height)
+	e.logger.LogInfo("Created picture %d: %dx%d", picID, width, height)
 	return picID
 }
 
@@ -677,10 +701,10 @@ func (e *Engine) GetDraggedWindowID() int {
 }
 
 // PutCast creates a new cast (sprite) and returns its ID.
-func (e *Engine) PutCast(windowID, picID, x, y, srcX, srcY, width, height int) int {
-	castID := e.state.PutCast(windowID, picID, x, y, srcX, srcY, width, height)
-	e.logger.LogDebug("Created cast %d: win=%d pic=%d pos=(%d,%d) clip=(%d,%d,%d,%d)",
-		castID, windowID, picID, x, y, srcX, srcY, width, height)
+func (e *Engine) PutCast(destPicID, picID, x, y, srcX, srcY, width, height, transparentColor int) int {
+	castID := e.state.PutCast(destPicID, picID, x, y, srcX, srcY, width, height, transparentColor)
+	e.logger.LogInfo("Created cast %d: destPic=%d pic=%d pos=(%d,%d) clip=(%d,%d,%d,%d) transparent=0x%X",
+		castID, destPicID, picID, x, y, srcX, srcY, width, height, transparentColor)
 	return castID
 }
 
@@ -691,7 +715,7 @@ func (e *Engine) MoveCast(id, x, y, srcX, srcY, width, height int) {
 		e.logger.LogError("MoveCast failed: %v", err)
 		return
 	}
-	e.logger.LogDebug("Moved cast %d: pos=(%d,%d) clip=(%d,%d,%d,%d)",
+	e.logger.LogInfo("Moved cast %d: pos=(%d,%d) clip=(%d,%d,%d,%d)",
 		id, x, y, srcX, srcY, width, height)
 }
 

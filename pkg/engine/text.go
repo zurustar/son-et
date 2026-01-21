@@ -65,11 +65,14 @@ func (tr *TextRenderer) SetFont(size int, name string, charset int) {
 	// Try each font path
 	for _, fontPath := range fontPaths {
 		if _, err := os.Stat(fontPath); err == nil {
+			tr.engine.logger.LogInfo("Attempting to load font: %s", fontPath)
 			if face := tr.loadFont(fontPath, float64(size)); face != nil {
 				tr.currentFont = face
-				tr.engine.logger.LogInfo("Loaded font: %s (size %d)", fontPath, size)
+				tr.engine.logger.LogInfo("Successfully loaded font: %s (size %d)", fontPath, size)
 				return
 			}
+		} else {
+			tr.engine.logger.LogDebug("Font not found: %s", fontPath)
 		}
 	}
 
@@ -153,6 +156,17 @@ func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
 		draw.Draw(rgba, bgRect, &image.Uniform{tr.bgColor}, image.Point{}, draw.Src)
 	}
 
+	// Log text rendering details BEFORE creating drawer
+	tr.engine.logger.LogInfo("TextWrite: text='%s' (len=%d), x=%d, y=%d, picID=%d, fontSize=%d, fontName=%s",
+		text, len(text), x, y, picID, tr.currentFontSize, tr.currentFontName)
+	tr.engine.logger.LogInfo("TextWrite: font type=%T", tr.currentFont)
+
+	// Check if font is nil
+	if tr.currentFont == nil {
+		tr.engine.logger.LogError("TextWrite: currentFont is nil, using basicfont fallback")
+		tr.currentFont = basicfont.Face7x13
+	}
+
 	// Create a drawer for text rendering
 	drawer := &font.Drawer{
 		Dst:  rgba,
@@ -161,14 +175,27 @@ func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
 		Dot:  fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y + tr.currentFontSize)},
 	}
 
-	// Draw the text
-	drawer.DrawString(text)
+	tr.engine.logger.LogInfo("TextWrite: drawer.Dot=%v", drawer.Dot)
+
+	// Draw the text character by character with panic recovery
+	// Some fonts may not have all characters (glyphs), so we handle panics gracefully
+	for i, r := range text {
+		func() {
+			defer func() {
+				if err := recover(); err != nil {
+					// Log the error but continue with next character
+					tr.engine.logger.LogError("Failed to render character #%d U+%04X ('%c') at position %v: %v",
+						i, r, r, drawer.Dot, err)
+				}
+			}()
+			drawer.DrawString(string(r))
+		}()
+	}
 
 	// Update picture dimensions if image bounds changed
 	newBounds := rgba.Bounds()
 	pic.Width = newBounds.Dx()
 	pic.Height = newBounds.Dy()
-
 	tr.engine.logger.LogDebug("Text written: %q at (%d, %d) on picture %d (new size: %dx%d)",
 		text, x, y, picID, pic.Width, pic.Height)
 	return nil

@@ -206,7 +206,15 @@ func (mp *MIDIPlayer) Stop() {
 func (mp *MIDIPlayer) IsPlaying() bool {
 	mp.mutex.Lock()
 	defer mp.mutex.Unlock()
-	return mp.isPlaying && mp.player != nil && mp.player.IsPlaying()
+
+	// Check if we have a player and it's marked as playing
+	if !mp.isPlaying || mp.player == nil {
+		return false
+	}
+
+	// Check if the audio player is still playing
+	// Note: player.IsPlaying() returns false when the stream has ended
+	return mp.player.IsPlaying()
 }
 
 // UpdateHeadless updates MIDI tick in headless mode.
@@ -219,9 +227,16 @@ func (mp *MIDIPlayer) UpdateHeadless() {
 		return
 	}
 
-	// Calculate current tick based on wall-clock time
+	// Calculate current tick based on wall-clock time (in MIDI PPQ units)
 	elapsed := time.Since(mp.stream.startTime).Seconds()
-	currentTick := mp.stream.tickGenerator.CalculateTickFromTime(elapsed)
+	currentMIDITick := mp.stream.tickGenerator.CalculateTickFromTime(elapsed)
+
+	// Convert MIDI ticks to FILLY ticks (32nd note resolution)
+	// 1 quarter note = 8 FILLY ticks (32nd notes)
+	// 1 quarter note = PPQ MIDI ticks
+	// Therefore: FILLY tick = MIDI tick * 8 / PPQ
+	ppq := mp.stream.tickGenerator.ppq
+	currentTick := currentMIDITick * 8 / ppq
 
 	// Calculate how many ticks have advanced
 	ticksAdvanced := currentTick - mp.stream.lastTick
@@ -229,23 +244,24 @@ func (mp *MIDIPlayer) UpdateHeadless() {
 		return
 	}
 
-	// Check if MIDI has ended
-	if currentTick >= mp.stream.totalTicks {
+	// Check if MIDI has ended (compare MIDI ticks)
+	if currentMIDITick >= mp.stream.totalTicks {
 		if !mp.stream.endReported {
 			mp.stream.endReported = true
-			mp.engine.logger.LogInfo("MIDI playback completed at tick %d", currentTick)
+			mp.engine.logger.LogInfo("MIDI playback completed at MIDI tick %d", currentMIDITick)
 			// Trigger MIDI_END event
 			mp.engine.TriggerEvent(EventMIDI_END, &EventData{})
+			// Mark MIDI player as not playing
 			mp.isPlaying = false
 		}
 		return
 	}
 
-	// Update MIDI sequences with the number of ticks advanced
+	// Update MIDI sequences with the number of ticks advanced (in FILLY ticks)
 	mp.engine.UpdateMIDISequences(ticksAdvanced)
 
-	// Update the last delivered tick
-	mp.stream.tickGenerator.SetLastDeliveredTick(currentTick)
+	// Update the last delivered tick (in FILLY ticks)
+	mp.stream.tickGenerator.SetLastDeliveredTick(currentMIDITick)
 	mp.stream.lastTick = currentTick
 }
 
@@ -285,30 +301,44 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 		binary.LittleEndian.PutUint16(p[i*4+2:], uint16(rightSample))
 	}
 
-	// Calculate current tick based on wall-clock time
+	// Calculate current tick based on wall-clock time (in MIDI PPQ units)
 	elapsed := time.Since(ms.startTime).Seconds()
-	currentTick := ms.tickGenerator.CalculateTickFromTime(elapsed)
+	currentMIDITick := ms.tickGenerator.CalculateTickFromTime(elapsed)
+
+	// Convert MIDI ticks to FILLY ticks (32nd note resolution)
+	// 1 quarter note = 8 FILLY ticks (32nd notes)
+	// 1 quarter note = PPQ MIDI ticks
+	// Therefore: FILLY tick = MIDI tick * 8 / PPQ
+	ppq := ms.tickGenerator.ppq
+	currentTick := currentMIDITick * 8 / ppq
 
 	// Calculate how many ticks have advanced
 	ticksAdvanced := currentTick - ms.lastTick
 	if ticksAdvanced > 0 {
-		ms.engine.logger.LogDebug("MIDIStream.Read: ticksAdvanced=%d (currentTick=%d, lastTick=%d)", ticksAdvanced, currentTick, ms.lastTick)
+		ms.engine.logger.LogDebug("MIDIStream.Read: ticksAdvanced=%d (currentTick=%d, lastTick=%d, currentMIDITick=%d)",
+			ticksAdvanced, currentTick, ms.lastTick, currentMIDITick)
 
-		// Check if MIDI has ended
-		if currentTick >= ms.totalTicks {
+		// Check if MIDI has ended (compare MIDI ticks)
+		if currentMIDITick >= ms.totalTicks {
 			if !ms.endReported {
 				ms.endReported = true
-				ms.engine.logger.LogInfo("MIDI playback completed at tick %d", currentTick)
+				ms.engine.logger.LogInfo("MIDI playback completed at MIDI tick %d", currentMIDITick)
 				// Trigger MIDI_END event
 				ms.engine.TriggerEvent(EventMIDI_END, &EventData{})
+				// Mark MIDI player as not playing
+				if ms.engine.midiPlayer != nil {
+					ms.engine.midiPlayer.mutex.Lock()
+					ms.engine.midiPlayer.isPlaying = false
+					ms.engine.midiPlayer.mutex.Unlock()
+				}
 			}
 		} else {
-			// Update MIDI sequences with the number of ticks advanced
+			// Update MIDI sequences with the number of ticks advanced (in FILLY ticks)
 			ms.engine.UpdateMIDISequences(ticksAdvanced)
 		}
 
-		// Update the last delivered tick
-		ms.tickGenerator.SetLastDeliveredTick(currentTick)
+		// Update the last delivered tick (in FILLY ticks)
+		ms.tickGenerator.SetLastDeliveredTick(currentMIDITick)
 		ms.lastTick = currentTick
 	}
 
@@ -429,56 +459,87 @@ func readVarInt(data []byte) (int, int) {
 	return value, bytesRead
 }
 
-// calculateMIDILength calculates the total number of ticks in a MIDI file.
+// calculateMIDILength calculates the total number of ticks in a MIDI file
+// by finding the last event in all tracks.
 func calculateMIDILength(data []byte, ppq int) int {
+	if len(data) < 14 {
+		return 0
+	}
+
+	// Skip header
+	offset := 14
 	maxTick := 0
 
-	// Scan all tracks to find the maximum tick
-	offset := 14 // Skip header
+	// Parse all tracks
 	for offset < len(data) {
 		if offset+8 > len(data) {
 			break
 		}
 
-		// Check for track chunk
-		if string(data[offset:offset+4]) != "MTrk" {
-			offset += 4
-			continue
-		}
-
-		// Read track length
-		trackLen := int(data[offset+4])<<24 | int(data[offset+5])<<16 |
-			int(data[offset+6])<<8 | int(data[offset+7])
+		chunkType := string(data[offset : offset+4])
+		chunkLen := int(data[offset+4])<<24 | int(data[offset+5])<<16 | int(data[offset+6])<<8 | int(data[offset+7])
 		offset += 8
-		trackEnd := offset + trackLen
-		if trackEnd > len(data) {
-			trackEnd = len(data)
-		}
 
-		// Parse track to find last event
-		currentTick := 0
-		pos := offset
-		for pos < trackEnd {
-			delta, n := readVarInt(data[pos:])
-			pos += n
-			currentTick += delta
+		if chunkType == "MTrk" {
+			if offset+chunkLen > len(data) {
+				break // Invalid chunk length
+			}
+			trackData := data[offset : offset+chunkLen]
+			trackOffset := 0
+			currentTick := 0
 
+			// Parse all events in this track
+			for trackOffset < len(trackData) {
+				// Read delta time
+				deltaTime, consumed := readVarInt(trackData[trackOffset:])
+				if consumed == 0 {
+					break
+				}
+				trackOffset += consumed
+				currentTick += deltaTime
+
+				if trackOffset >= len(trackData) {
+					break
+				}
+
+				// Skip event data (we only care about timing)
+				eventByte := trackData[trackOffset]
+				trackOffset++
+
+				if eventByte == 0xFF {
+					// Meta event
+					if trackOffset >= len(trackData) {
+						break
+					}
+					trackOffset++ // Skip meta type
+					length, consumed := readVarInt(trackData[trackOffset:])
+					trackOffset += consumed + length
+				} else if eventByte == 0xF0 || eventByte == 0xF7 {
+					// SysEx event
+					length, consumed := readVarInt(trackData[trackOffset:])
+					trackOffset += consumed + length
+				} else if eventByte >= 0x80 {
+					// MIDI event
+					if eventByte >= 0xC0 && eventByte < 0xE0 {
+						// Program change or channel pressure (1 data byte)
+						trackOffset++
+					} else {
+						// Other events (2 data bytes)
+						trackOffset += 2
+					}
+				}
+			}
+
+			// Update max tick
 			if currentTick > maxTick {
 				maxTick = currentTick
 			}
 
-			// Skip event data (simplified)
-			if pos < trackEnd {
-				pos++
-			}
+			offset += chunkLen
+		} else {
+			offset += chunkLen
 		}
-
-		offset = trackEnd
 	}
 
-	// Convert to 32nd note resolution (FILLY's tick resolution)
-	// MIDI ticks are in PPQ resolution, we need 32nd notes
-	// 1 quarter note = PPQ ticks
-	// 1 32nd note = PPQ / 8 ticks
-	return maxTick * 8 / ppq
+	return maxTick
 }
