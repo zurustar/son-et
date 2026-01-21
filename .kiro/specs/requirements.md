@@ -44,6 +44,8 @@ These requirements define the fundamental behavior of the FILLY execution model.
 14. WHEN a circular #include is detected, THE System SHALL report an error
 15. THE System SHALL process #include directives recursively (included files can include other files)
 16. THE System SHALL support all standard #info tags (INAM, IART, ICOP, GENR, WRIT, GRPC, COMP, PROD, CONT, MDFY, TRNS, JINT, VIDO, INST, ISBJ, ICMT)
+17. WHEN a #include directive has trailing comments, THE System SHALL ignore the comment and extract only the filename
+18. THE System SHALL support both `// comment` and `/* comment */` styles after #include directives
 
 **Character Encoding:**
 17. WHEN reading TFY files, THE System SHALL detect if the file is Shift-JIS encoded
@@ -53,10 +55,13 @@ These requirements define the fundamental behavior of the FILLY execution model.
 
 **Arrays:**
 21. THE System SHALL support dynamic integer arrays with automatic resizing
-22. THE System SHALL support 0-based array indexing
-23. WHEN an array element is accessed beyond current size, THE System SHALL expand the array automatically
-24. WHEN an uninitialized array element is read, THE System SHALL return 0
-25. THE System SHALL support array manipulation functions (ArraySize, DelArrayAll, DelArrayAt, InsArrayAt)
+22. THE System SHALL support dynamic string arrays with automatic resizing
+23. THE System SHALL support 0-based array indexing
+24. WHEN an array element is accessed beyond current size, THE System SHALL expand the array automatically
+25. WHEN an uninitialized integer array element is read, THE System SHALL return 0
+26. WHEN an uninitialized string array element is read, THE System SHALL return ""
+27. THE System SHALL support array manipulation functions (ArraySize, DelArrayAll, DelArrayAt, InsArrayAt)
+28. THE System SHALL support array declaration syntax: `int arr[];` for integer arrays, `str arr[];` for string arrays
 
 ### Requirement A2: Step-Based Execution Model
 
@@ -102,6 +107,8 @@ These modes have different execution characteristics and must be supported corre
 8. WHEN the game loop updates, THE System SHALL drive TIME sequences via 60 FPS frame updates
 9. WHEN step(n) is used in TIME mode, THE System SHALL interpret it as n × 50ms
 10. THE System SHALL NOT mix timing mode logic (applying TIME logic to MIDI_TIME or vice versa)
+11. WHEN mes(TIME) blocks, THE System SHALL continue processing the game loop (rendering, input handling)
+12. THE System SHALL allow multiple mes(TIME) blocks to execute concurrently when registered from different contexts
 
 ### Requirement A4: Lexical Variable Scoping
 
@@ -358,11 +365,13 @@ These requirements define the multimedia capabilities that scripts can use.
 #### Acceptance Criteria
 
 1. THE System SHALL support if-else conditionals
-2. THE System SHALL support for, while, and do-while loops
-3. THE System SHALL support switch-case multi-way branching
-4. THE System SHALL support break and continue statements in loops
-5. THE System SHALL support nested control structures
-6. THE System SHALL support comparison and logical operators
+2. THE System SHALL support if-else-if chains with any amount of whitespace between blocks
+3. THE System SHALL correctly associate else/else-if with the nearest preceding if statement
+4. THE System SHALL support for, while, and do-while loops
+5. THE System SHALL support switch-case multi-way branching
+6. THE System SHALL support break and continue statements in loops
+7. THE System SHALL support nested control structures
+8. THE System SHALL support comparison and logical operators
 
 ### Requirement B10: Function Definitions
 
@@ -571,6 +580,7 @@ These requirements support development, testing, and debugging workflows.
 4. WHEN running in headless mode, THE System SHALL output all logs to stdout/stderr
 5. THE System SHALL support both direct mode and embedded mode in headless operation
 6. WHEN running in headless mode, THE System SHALL exit cleanly when the script completes
+7. THE System SHALL accept CLI flags in any order relative to positional arguments (e.g., `son-et file.tfy --headless` or `son-et --headless file.tfy`)
 
 ### Requirement C2: Auto-Termination
 

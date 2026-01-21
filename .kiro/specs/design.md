@@ -104,6 +104,7 @@ type Variable string  // Distinguishes variable references from literals
 **TIME Mode (Frame-Based Timing)**:
 - **Tick Source**: 60 FPS game loop
 - **Blocking Behavior**: Blocking (RegisterSequence waits for completion)
+- **Game Loop Continuation**: Game loop continues during blocking (rendering, input handling)
 - **Step Duration**: Real time (50ms units)
 - **Use Case**: Procedural animations and sequential logic
 - **Execution Order**: Ensures sequential execution (mes completes before next statement)
@@ -158,13 +159,14 @@ Root Scope (main function)
 Arrays are dynamic integer arrays stored as Go slices in the variable map.
 
 ```go
-type VariableValue interface{}  // Can be int, string, or []int
+type VariableValue interface{}  // Can be int, string, []int, or []string
 
 // Variable storage in scope
 vars := map[string]VariableValue{
-    "x":      42,           // int
-    "name":   "FILLY",      // string
-    "scores": []int{85, 92, 78},  // array
+    "x":      42,                      // int
+    "name":   "FILLY",                 // string
+    "scores": []int{85, 92, 78},       // integer array
+    "names":  []string{"a", "b", "c"}, // string array
 }
 ```
 
@@ -188,7 +190,7 @@ When accessing arr[10] and len(arr) == 5:
 - Arrays are Go slices (efficient, dynamic)
 - Auto-expansion simplifies script authoring
 - Zero-fill maintains predictable behavior
-- Integer-only (no string arrays)
+- Integer arrays store []int, string arrays store []string
 - No multi-dimensional arrays
 
 ### Principle 5: Thread-Safe State Management
@@ -313,9 +315,10 @@ The system is organized into distinct layers with clear responsibilities:
 3. Process #info directives (store metadata)
 4. Process #include directives:
    a. Resolve file path (case-insensitive)
-   b. Check for circular includes
-   c. Recursively preprocess included file (with encoding conversion)
-   d. Insert processed content at #include location
+   b. Strip trailing comments from the directive (// or /* */)
+   c. Check for circular includes
+   d. Recursively preprocess included file (with encoding conversion)
+   e. Insert processed content at #include location
 5. Output preprocessed UTF-8 source to lexer
 ```
 
@@ -330,6 +333,7 @@ The system is organized into distinct layers with clear responsibilities:
 - All internal processing uses UTF-8
 - #info metadata stored separately (not in AST)
 - #include creates a single merged source file
+- #include supports trailing comments (stripped during parsing)
 - Circular include detection uses file path tracking
 - Case-insensitive file matching for Windows 3.1 compatibility
 - Encoding conversion is transparent to the rest of the compiler
@@ -380,6 +384,13 @@ Variable Declaration Syntax:
 - int arr[];          // Integer array declaration
 - str s;              // String variable
 - str s1, s2;         // Multiple string variables
+- str arr[];          // String array declaration
+
+Control Flow Syntax:
+- if (cond) { ... }
+- if (cond) { ... } else { ... }
+- if (cond) { ... } else if (cond) { ... } else { ... }
+- Whitespace/newlines between if and else/else-if are allowed
 
 Function Definition Syntax:
 - name() { ... }      // No 'function' keyword required
@@ -404,6 +415,8 @@ Expression Precedence (highest to lowest):
 - Array syntax `arr[index]` parsed as ArrayAccess node
 - Function definitions without 'function' keyword (FILLY legacy syntax)
 - Comma-separated variable declarations in single statement
+- String array declarations supported (`str arr[];`)
+- else/else-if associated with nearest preceding if regardless of whitespace
 
 **OpCode Generation Design**:
 ```
