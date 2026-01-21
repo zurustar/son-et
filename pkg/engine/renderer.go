@@ -145,37 +145,40 @@ func (r *EbitenRenderer) renderWindow(screen *ebiten.Image, state *EngineState, 
 			captionColor)
 	}
 
+	// Debug: Draw window ID in title bar if debug level >= 2
+	// This is drawn in the title bar area so it doesn't overlap with picture content
+	if r.logger != nil && r.logger.GetLevel() >= DebugLevelDebug {
+		// Draw window ID at the right side of the title bar
+		winLabel := fmt.Sprintf("[W%d]", win.ID)
+		labelX := int(winX) + BorderThickness + win.Width - len(winLabel)*7 - 4
+		labelY := int(winY) + BorderThickness + 14 // Same Y as caption
+
+		// Draw yellow text for window ID (visible on blue title bar)
+		text.Draw(screen, winLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{255, 255, 0, 255})
+	}
+
 	// 5. Draw window content area
 	r.renderWindowContent(screen, state, win, logThisFrame)
 
 	// Note: Casts are "baked" into pictures by PutCast/MoveCast, so we don't need to render them separately
-
-	// Debug: Draw window ID label if debug level >= 2
-	if r.logger != nil && r.logger.GetLevel() >= DebugLevelDebug {
-		contentX := win.X + BorderThickness
-		contentY := win.Y + TitleBarHeight + BorderThickness
-
-		// Draw window ID label at top-left
-		winLabel := fmt.Sprintf("W%d", win.ID)
-		labelX := contentX + 5
-		labelY := contentY + 15 // Same position as before
-
-		// Draw semi-transparent black background
-		bgWidth := float32(len(winLabel)*7 + 4)
-		bgHeight := float32(16)
-		bgImg := ebiten.NewImage(int(bgWidth), int(bgHeight))
-		bgImg.Fill(color.RGBA{0, 0, 0, 200})
-		bgOpts := &ebiten.DrawImageOptions{}
-		bgOpts.GeoM.Translate(float64(labelX-2), float64(labelY-13))
-		screen.DrawImage(bgImg, bgOpts)
-
-		// Draw cyan text for window ID
-		text.Draw(screen, winLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{0, 255, 255, 255})
-	}
 }
 
 // renderWindowContent renders the content area of a window (picture).
 func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *EngineState, win *Window, logThisFrame bool) {
+	// Content area starts at (win.X + BorderThickness, win.Y + TitleBarHeight + BorderThickness)
+	contentX := win.X + BorderThickness
+	contentY := win.Y + TitleBarHeight + BorderThickness
+
+	// 1. Draw window background color first (before picture content)
+	// This ensures transparent areas in the picture show the background color
+	if win.Color != nil {
+		vector.DrawFilledRect(screen,
+			float32(contentX),
+			float32(contentY),
+			float32(win.Width), float32(win.Height),
+			win.Color, false)
+	}
+
 	// Get window's picture
 	pic := state.GetPicture(win.PictureID)
 	if pic == nil {
@@ -202,10 +205,6 @@ func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *Engine
 		draw.Draw(rgba, bounds, pic.Image, bounds.Min, draw.Src)
 		ebitenPic = ebiten.NewImageFromImage(rgba)
 	}
-
-	// Content area starts at (win.X + BorderThickness, win.Y + TitleBarHeight + BorderThickness)
-	contentX := win.X + BorderThickness
-	contentY := win.Y + TitleBarHeight + BorderThickness
 
 	// Window rectangle (content area in screen coordinates)
 	winRect := image.Rect(contentX, contentY, contentX+win.Width, contentY+win.Height)
@@ -276,6 +275,45 @@ func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *Engine
 
 		// Draw green text for picture ID
 		text.Draw(screen, picLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{0, 255, 0, 255})
+
+		// Draw cast ID labels for all casts that belong to this window's picture
+		// Casts are "baked" into pictures, so we draw labels as overlay
+		r.renderCastDebugLabels(screen, state, win, contentX, contentY)
+	}
+}
+
+// renderCastDebugLabels draws debug labels for all casts belonging to a window's picture.
+// Since casts are "baked" into pictures, this draws overlay labels at cast positions.
+func (r *EbitenRenderer) renderCastDebugLabels(screen *ebiten.Image, state *EngineState, win *Window, contentX, contentY int) {
+	// Get all casts that belong to this window's picture (destPicID)
+	// In the current implementation, cast.WindowID stores destPicID
+	for _, cast := range state.GetCasts() {
+		if cast.WindowID != win.PictureID || !cast.Visible {
+			continue
+		}
+
+		// Calculate screen position for the cast label
+		// Cast position is relative to the destination picture
+		// We need to account for window's picture offset (PicX, PicY)
+		screenX := contentX + win.PicX + cast.X
+		screenY := contentY + win.PicY + cast.Y
+
+		// Draw cast ID label with background
+		castLabel := fmt.Sprintf("C%d(P%d)", cast.ID, cast.PictureID)
+		labelX := screenX + 5
+		labelY := screenY + 15
+
+		// Draw semi-transparent black background
+		bgWidth := float32(len(castLabel)*7 + 4)
+		bgHeight := float32(16)
+		bgImg := ebiten.NewImage(int(bgWidth), int(bgHeight))
+		bgImg.Fill(color.RGBA{0, 0, 0, 200})
+		bgOpts := &ebiten.DrawImageOptions{}
+		bgOpts.GeoM.Translate(float64(labelX-2), float64(labelY-13))
+		screen.DrawImage(bgImg, bgOpts)
+
+		// Draw yellow text for cast ID
+		text.Draw(screen, castLabel, basicfont.Face7x13, labelX, labelY, color.RGBA{255, 255, 0, 255})
 	}
 }
 

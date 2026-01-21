@@ -133,9 +133,10 @@ func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
 	textWidth := len(text) * tr.currentFontSize // Rough estimate
 	textHeight := tr.currentFontSize + 4        // Add some padding
 
-	// Use opaque white background to completely erase previous text
-	// (transparent background doesn't work well with antialiased text)
-	clearColor := color.RGBA{255, 255, 255, 255} // Opaque white
+	// Use the background color for clearing (respects BgColor setting)
+	// In transparent mode (backMode=0), use the current bgColor for clearing
+	// In opaque mode (backMode=1), the background will be drawn separately below
+	clearColor := tr.bgColor
 	for py := 0; py < textHeight; py++ {
 		for px := 0; px < textWidth; px++ {
 			if x+px >= 0 && x+px < pic.Width && y+py >= 0 && y+py < pic.Height {

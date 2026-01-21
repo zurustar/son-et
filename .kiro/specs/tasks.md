@@ -476,7 +476,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 **Goal**: Implement window creation and management with drag support.
 
 **Subtasks**:
-- [x] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption, SrcX, SrcY)
+- [x] 4.3.1 Define Window struct (ID, PictureID, Position, Size, Caption, SrcX, SrcY, Color)
 - [x] 4.3.2 Implement OpenWin (create window with PicX/PicY offset support)
 - [x] 4.3.3 Fix PicX/PicY offset inversion for legacy compatibility (-picX, -picY)
 - [x] 4.3.4 Implement MoveWin (update properties)
@@ -488,6 +488,8 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 4.3.10 Implement window drag update (mouse move while dragging)
 - [x] 4.3.11 Implement window drag constraints (keep within virtual desktop)
 - [x] 4.3.12 Add tests for window operations including drag
+- [x] 4.3.13 Implement Window.Color field for background color storage
+- [x] 4.3.14 Implement renderer background color drawing (before picture content)
 
 **Acceptance Criteria**:
 - Windows display pictures correctly with proper offset handling
@@ -499,11 +501,14 @@ This task list implements the requirements defined in [requirements.md](requirem
 - Windows with captions can be dragged by title bar
 - Dragged windows constrain to desktop bounds
 - Smooth drag interaction with real-time updates
+- Window background color stored in Window.Color field (not applied to picture)
+- Renderer draws background color before picture content (layered rendering)
 
 **Critical Implementation Note**:
 - In `OpenWindow()`, offsets must be inverted: `window.SrcX = -picX`, `window.SrcY = -picY`
 - This is essential for legacy FILLY script compatibility
 - Allows centering large images in small windows using negative offsets
+- Background color is stored in Window.Color and drawn by renderer (not applied to picture)
 
 ---
 
@@ -626,7 +631,7 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 6.1.2 Implement font loading for .ttf and .ttc files
 - [x] 6.1.3 Implement font fallback chain (Hiragino → Arial Unicode → basicfont)
 - [x] 6.1.4 Implement TextWrite (draw text with anti-aliasing artifact prevention)
-- [x] 6.1.5 Implement text area clearing before drawing (opaque white fill)
+- [x] 6.1.5 Implement text area clearing before drawing (uses BgColor setting)
 - [x] 6.1.6 Implement TextColor, BgColor (set colors)
 - [x] 6.1.7 Implement BackMode (transparent/opaque background)
 - [x] 6.1.8 Update to modern API (os.ReadFile instead of ioutil.ReadFile)
@@ -638,12 +643,13 @@ This task list implements the requirements defined in [requirements.md](requirem
 - TrueType font loading works for both .ttf and .ttc files
 - Font fallback chain works correctly
 - Anti-aliasing artifacts prevented (no shadow from previous text)
+- Text area clearing respects BgColor setting (not hardcoded white)
 - Transparent background works
 - Modern Go APIs used (no deprecated functions)
 
 **Implementation Notes**:
 - System fonts searched in order: Hiragino Mincho → Hiragino Kaku Gothic → Arial Unicode → basicfont
-- Text area cleared with opaque white before drawing to prevent alpha blending artifacts
+- Text area cleared with `tr.bgColor` before drawing to prevent alpha blending artifacts
 - Font collections (.ttc) supported by extracting first font
 - Legacy font size handling (size > 200 treated as parameter order issue)
 

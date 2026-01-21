@@ -73,16 +73,17 @@ type Picture struct {
 
 // Window represents a virtual window on the desktop.
 type Window struct {
-	ID        int    // Unique window ID
-	PictureID int    // Picture to display
-	X         int    // Position X
-	Y         int    // Position Y
-	Width     int    // Window width
-	Height    int    // Window height
-	PicX      int    // Picture offset X
-	PicY      int    // Picture offset Y
-	Caption   string // Window caption (title bar)
-	Visible   bool   // Is window visible
+	ID        int         // Unique window ID
+	PictureID int         // Picture to display
+	X         int         // Position X
+	Y         int         // Position Y
+	Width     int         // Window width
+	Height    int         // Window height
+	PicX      int         // Picture offset X
+	PicY      int         // Picture offset Y
+	Caption   string      // Window caption (title bar)
+	Visible   bool        // Is window visible
+	Color     color.Color // Background color (drawn behind picture content)
 
 	// Drag state
 	IsDragging  bool // True if window is being dragged
@@ -651,35 +652,18 @@ func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, bgColor
 		}
 	}
 
-	// Apply background color to the picture if specified
+	// Convert background color from 0xRRGGBB format to color.Color
+	// The background color is stored in the window and drawn by the renderer
+	// BEFORE the picture content, so transparent areas in the picture show the background
+	var winColor color.Color
 	if bgColor >= 0 {
-		pic := e.pictures[picID]
-		if pic != nil {
-			// Convert 0xRRGGBB to RGB components
-			r := uint8((bgColor >> 16) & 0xFF)
-			g := uint8((bgColor >> 8) & 0xFF)
-			b := uint8(bgColor & 0xFF)
-			fillColor := color.RGBA{R: r, G: g, B: b, A: 255}
-
-			// Fill the picture with the background color
-			if rgba, ok := pic.Image.(*image.RGBA); ok {
-				// Fill directly
-				for py := 0; py < pic.Height; py++ {
-					for px := 0; px < pic.Width; px++ {
-						rgba.Set(px, py, fillColor)
-					}
-				}
-			} else {
-				// Convert to RGBA first
-				rgba := image.NewRGBA(image.Rect(0, 0, pic.Width, pic.Height))
-				for py := 0; py < pic.Height; py++ {
-					for px := 0; px < pic.Width; px++ {
-						rgba.Set(px, py, fillColor)
-					}
-				}
-				pic.Image = rgba
-			}
-		}
+		r := uint8((bgColor >> 16) & 0xFF)
+		g := uint8((bgColor >> 8) & 0xFF)
+		b := uint8(bgColor & 0xFF)
+		winColor = color.RGBA{R: r, G: g, B: b, A: 255}
+	} else {
+		// Default to white background
+		winColor = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 	}
 
 	// Create window
@@ -694,6 +678,7 @@ func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, bgColor
 		PicY:      -picY,               // Inverted for legacy compatibility
 		Caption:   e.globalWindowTitle, // Use global title if set
 		Visible:   true,
+		Color:     winColor,
 	}
 
 	// Store window

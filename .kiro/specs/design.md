@@ -707,21 +707,53 @@ This inversion is essential for correct image display in legacy FILLY scripts.
       - Border thickness: 4px
    b. Draw title bar (if caption exists):
       - Blue background (RGB 0, 0, 128)
-      - Height: 24px
+      - Height: 24px (TitleBarHeight constant)
       - White caption text
+      - [DEBUG] Window ID label at right side of title bar (yellow text)
    c. Draw window content area:
-      - Background color (from window color parameter)
-      - Picture with clipping and transparency
+      - First: Fill with window background color (from Window.Color field)
+      - Then: Draw picture with clipping and transparency
+      - [DEBUG] Picture ID label at top-left of content area (green text)
    d. For each cast in window (in creation order):
       - Apply clipping region
       - Apply transparency
       - Draw cast to window
+      - [DEBUG] Cast ID label at cast position (yellow text)
 3. Scale virtual desktop to screen
 4. Present to display
 ```
 
+**Window Background Color**:
+The window background color is stored in the `Window.Color` field and drawn by the renderer BEFORE the picture content. This ensures that transparent areas in the picture show the background color instead of the desktop.
+
+```go
+// Window struct includes Color field
+type Window struct {
+    // ... other fields ...
+    Color     color.Color // Background color (drawn behind picture content)
+}
+
+// In OpenWindow(), convert bgColor parameter to color.Color
+if bgColor >= 0 {
+    r := uint8((bgColor >> 16) & 0xFF)
+    g := uint8((bgColor >> 8) & 0xFF)
+    b := uint8(bgColor & 0xFF)
+    win.Color = color.RGBA{R: r, G: g, B: b, A: 255}
+} else {
+    win.Color = color.RGBA{R: 255, G: 255, B: 255, A: 255} // Default white
+}
+
+// In renderer, draw background color before picture
+if win.Color != nil {
+    vector.DrawFilledRect(screen, contentX, contentY, win.Width, win.Height, win.Color)
+}
+// Then draw picture content on top
+```
+
+**Key Design Decision**: The background color is NOT applied to the picture itself (which would overwrite picture content). Instead, it's drawn by the renderer as a separate layer behind the picture.
+
 **Window Decoration Constants**:
-- `TitleBarHeight = 24` pixels
+- `TitleBarHeight = 20` pixels
 - `BorderThickness = 4` pixels
 - Title bar color: RGB(0, 0, 128) - Dark blue
 - Border color: RGB(192, 192, 192) - Gray
@@ -734,6 +766,17 @@ This inversion is essential for correct image display in legacy FILLY scripts.
 - This color is visible in areas not covered by windows
 - Provides visual feedback that the engine is running
 - Matches the original FILLY implementation aesthetic
+
+**Debug Overlay (DEBUG_LEVEL >= 2)**:
+When debug level is set to 2 or higher, the renderer displays ID labels for debugging:
+
+| Element | Label Format | Position | Color |
+|---------|-------------|----------|-------|
+| Window | `[W{id}]` | Title bar, right side | Yellow (255, 255, 0) |
+| Picture | `P{id}` | Content area, top-left | Green (0, 255, 0) |
+| Cast | `C{id}(P{picID})` | Cast position | Yellow (255, 255, 0) |
+
+This layout prevents overlap when pictures are drawn at position (0,0) - Window ID is in the title bar, while Picture ID is in the content area.
 
 **Renderer Interface**:
 ```go
@@ -748,6 +791,7 @@ type Renderer interface {
 - Double buffering prevents flicker
 - Renderer is swappable (enables headless mode)
 - Desktop background is rendered first, before any windows
+- Window background color drawn before picture content (layered rendering)
 
 ---
 
@@ -1118,14 +1162,15 @@ func (tr *TextRenderer) loadFont(path string, size float64) font.Face {
 **Anti-Aliasing Artifact Prevention**:
 Text rendering uses alpha blending for smooth edges (anti-aliasing). When drawing text multiple times on the same area, semi-transparent pixels from the old text can create shadow artifacts.
 
-**Solution**: Clear the text area with opaque white before drawing new text.
+**Solution**: Clear the text area with the current background color (`tr.bgColor`) before drawing new text. This respects the `BgColor()` setting from the script.
 
 ```go
 func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
     // Clear text area first (prevents anti-aliasing artifacts)
+    // Use the background color set by BgColor() function
     textWidth := len(text) * tr.currentFontSize
     textHeight := tr.currentFontSize + 4
-    clearColor := color.RGBA{255, 255, 255, 255} // Opaque white
+    clearColor := tr.bgColor  // Respects BgColor() setting
     
     for py := 0; py < textHeight; py++ {
         for px := 0; px < textWidth; px++ {
@@ -1153,7 +1198,7 @@ func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
 - **Font collection support**: Handle both .ttf (single font) and .ttc (font collection) files
 - **Graceful fallback**: If system fonts unavailable, use built-in bitmap font
 - **Anti-aliasing handling**: Clear area before drawing to prevent shadow artifacts
-- **Opaque clearing**: Use opaque white (not transparent) for complete pixel replacement
+- **Background color respect**: Use `tr.bgColor` (not hardcoded white) for clearing, respecting script's `BgColor()` setting
 - **Modern API usage**: Use `os.ReadFile` instead of deprecated `ioutil.ReadFile`
 
 **Text Rendering State**:
