@@ -960,6 +960,87 @@ This task list implements the requirements defined in [requirements.md](requirem
 
 ---
 
+---
+
+## Phase 10: Parser and Preprocessor Enhancements
+
+### Task 10.1: String Array Declaration Support
+**Goal**: Support string array declarations in variable declarations.
+
+**Subtasks**:
+- [ ] 10.1.1 Add string array type to AST (str varname[])
+- [ ] 10.1.2 Implement parser support for string array declarations
+- [ ] 10.1.3 Implement string array storage in variable scope
+- [ ] 10.1.4 Add tests for string array declarations
+
+**Acceptance Criteria**:
+- `str MIDIFile[];` parses correctly
+- String arrays can be assigned and accessed
+- String array operations work correctly
+
+---
+
+### Task 10.2: Else-If Statement Parsing Fix
+**Goal**: Fix parsing of else-if statements separated by whitespace/newlines.
+
+**Subtasks**:
+- [ ] 10.2.1 Investigate else-if parsing when separated from if block by blank lines
+- [ ] 10.2.2 Fix parser to correctly associate else with preceding if
+- [ ] 10.2.3 Add tests for else-if with various whitespace patterns
+
+**Acceptance Criteria**:
+- `if(...) { } else if(...) { }` parses correctly even with blank lines between
+- Nested if-else-if chains work correctly
+- Error messages are clear when else has no matching if
+
+---
+
+### Task 10.3: Preprocessor Comment Handling in #include
+**Goal**: Support comments after #include directives.
+
+**Subtasks**:
+- [ ] 10.3.1 Modify #include parsing to strip trailing comments
+- [ ] 10.3.2 Support both // and /* */ comment styles after filename
+- [ ] 10.3.3 Add tests for #include with comments
+
+**Acceptance Criteria**:
+- `#include "file.tfy" // comment` parses correctly
+- `#include "file.tfy" /* comment */` parses correctly
+- Filename is correctly extracted without comment text
+
+---
+
+### Task 10.4: TIME Mode Sequence Execution Fix
+**Goal**: Fix TIME mode sequences not advancing during game loop.
+
+**Subtasks**:
+- [ ] 10.4.1 Investigate why TIME mode sequences don't advance after initial registration
+- [ ] 10.4.2 Ensure UpdateVM is called for TIME mode sequences during game loop
+- [ ] 10.4.3 Fix blocking behavior to not prevent game loop updates
+- [ ] 10.4.4 Add tests for TIME mode sequence execution
+
+**Acceptance Criteria**:
+- TIME mode sequences advance each frame (60 FPS)
+- Multiple TIME mode sequences can run concurrently
+- Wait operations correctly pause sequences for specified ticks
+- Blocking mes(TIME) waits for completion but doesn't freeze game loop
+
+---
+
+### Task 10.5: CLI Flag Order Independence
+**Goal**: Allow CLI flags to appear in any order relative to positional arguments.
+
+**Subtasks**:
+- [ ] 10.5.1 Modify flag parsing to handle flags after positional arguments
+- [ ] 10.5.2 Add tests for various flag orderings
+
+**Acceptance Criteria**:
+- `./son-et file.tfy --headless --timeout 5s` works correctly
+- `./son-et --headless file.tfy --timeout 5s` works correctly
+- `./son-et --headless --timeout 5s file.tfy` works correctly
+
+---
+
 ## Notes
 
 **Implementation Order Rationale**:
