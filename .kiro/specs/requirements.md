@@ -188,6 +188,9 @@ These requirements define the multimedia capabilities that scripts can use.
 12. THE System SHALL support updating sprite positions and re-rendering
 13. THE System SHALL support sprite sheet clipping (srcX, srcY, width, height)
 14. THE System SHALL support removing sprites
+15. THE System SHALL support color key transparency (TransparentColor parameter, 0xRRGGBB format, -1 = no transparency)
+16. WHEN MoveCast is called, THE System SHALL use double buffering to prevent cast accumulation artifacts
+17. WHEN MoveCast is called, THE System SHALL redraw ALL casts on the destination picture to ensure clean rendering
 
 **Window Management:**
 15. THE System SHALL support creating virtual windows displaying pictures

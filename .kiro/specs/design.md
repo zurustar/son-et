@@ -618,8 +618,54 @@ This section describes the design of the graphics subsystem.
 **Cast (Sprite) Management**:
 - Casts reference pictures with optional clipping regions
 - Casts maintain creation order for z-ordering (painter's algorithm)
-- Casts support transparency and alpha blending
-- Casts are positioned relative to their containing window
+- Casts support transparency via color key (TransparentColor field)
+- Casts are positioned relative to their destination picture (WindowID field stores destPicID)
+
+**Cast Double Buffering (MoveCast)**:
+When `MoveCast` is called, the system uses double buffering to prevent cast accumulation artifacts:
+
+```
+1. Initialize BackBuffer if not exists (same size as destination picture)
+2. Clear BackBuffer to transparent (RGBA 0,0,0,0)
+3. Redraw ALL casts belonging to the destination picture onto BackBuffer
+4. Swap BackBuffer with main Image (atomic pointer swap)
+```
+
+This ensures that casts are redrawn cleanly each frame without accumulating previous positions.
+
+**Cast Data Structure**:
+```go
+type Cast struct {
+    ID               int   // Unique cast ID
+    PictureID        int   // Source picture ID
+    WindowID         int   // Destination picture ID (legacy name, actually destPicID)
+    X                int   // Position X relative to destination
+    Y                int   // Position Y relative to destination
+    SrcX             int   // Source clipping X
+    SrcY             int   // Source clipping Y
+    Width            int   // Clipping width
+    Height           int   // Clipping height
+    TransparentColor int   // Color key for transparency (0xRRGGBB, -1 = no transparency)
+    Visible          bool  // Is cast visible
+}
+```
+
+**Picture BackBuffer**:
+```go
+type Picture struct {
+    ID         int         // Unique picture ID
+    Image      image.Image // The actual image data (front buffer)
+    BackBuffer image.Image // Double buffer for cast rendering
+    Width      int         // Image width
+    Height     int         // Image height
+}
+```
+
+**Key Design Decisions**:
+- BackBuffer is lazily initialized on first MoveCast call
+- All casts on the destination picture are redrawn (not just the moved cast)
+- Atomic buffer swap prevents visual artifacts
+- Transparent clear ensures clean redraw without ghost images
 
 **Window Management**:
 - Windows display pictures with optional decorations

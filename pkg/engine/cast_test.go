@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"image"
 	"testing"
 )
 
@@ -52,6 +53,15 @@ func TestPutCast(t *testing.T) {
 func TestMoveCastPosition(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
 
+	// Create a destination picture (required for MoveCast double buffering)
+	destPic := &Picture{
+		ID:     1,
+		Image:  image.NewRGBA(image.Rect(0, 0, 200, 200)),
+		Width:  200,
+		Height: 200,
+	}
+	state.pictures[1] = destPic
+
 	// Create a cast
 	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64, -1)
 
@@ -87,6 +97,15 @@ func TestMoveCastPosition(t *testing.T) {
 
 func TestMoveCastPositionAndClipping(t *testing.T) {
 	state := NewEngineState(nil, nil, nil)
+
+	// Create a destination picture (required for MoveCast double buffering)
+	destPic := &Picture{
+		ID:     1,
+		Image:  image.NewRGBA(image.Rect(0, 0, 200, 200)),
+		Width:  200,
+		Height: 200,
+	}
+	state.pictures[1] = destPic
 
 	// Create a cast
 	castID := state.PutCast(1, 2, 100, 200, 0, 0, 64, 64, -1)

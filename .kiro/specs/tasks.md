@@ -517,12 +517,16 @@ This task list implements the requirements defined in [requirements.md](requirem
 - [x] 4.4.4 Implement DelCast (remove sprite)
 - [x] 4.4.5 Implement z-ordering (creation order)
 - [x] 4.4.6 Add tests for cast operations
+- [x] 4.4.7 Implement MoveCast double buffering (BackBuffer) to prevent cast accumulation
+- [x] 4.4.8 Add tests for MoveCast double buffering
 
 **Acceptance Criteria**:
 - Sprites created with transparency and clipping
 - Creation order determines z-order
 - Position updates work correctly
 - Sprites render within windows
+- MoveCast uses double buffering to prevent cast accumulation artifacts
+- All casts on destination picture are redrawn when any cast moves
 
 ---
 
