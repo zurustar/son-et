@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -69,8 +70,45 @@ func main() {
 	Run()
 }
 
+// reorderArgs reorders command-line arguments so that flags come before positional arguments.
+// This allows flags to appear in any order relative to positional arguments.
+// Example: "file.tfy --headless --timeout 5s" becomes "--headless --timeout 5s file.tfy"
+func reorderArgs(args []string) []string {
+	var flags []string
+	var positional []string
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			// This is a flag
+			flags = append(flags, arg)
+			// Check if this flag takes a value (not a boolean flag)
+			if arg == "--timeout" || arg == "-timeout" || arg == "--debug" || arg == "-debug" {
+				// This flag takes a value, include the next argument
+				if i+1 < len(args) {
+					i++
+					flags = append(flags, args[i])
+				}
+			}
+		} else {
+			// This is a positional argument
+			positional = append(positional, arg)
+		}
+		i++
+	}
+
+	// Return flags first, then positional arguments
+	return append(flags, positional...)
+}
+
 // Run is the main entry point, separated for testing and embedding.
 func Run() {
+	// Reorder arguments so flags come before positional arguments
+	// This allows: ./son-et file.tfy --headless --timeout 5s
+	reorderedArgs := reorderArgs(os.Args[1:])
+	os.Args = append([]string{os.Args[0]}, reorderedArgs...)
+
 	flag.Parse()
 
 	log.Printf("Parsed flags: headless=%v, timeout=%s, debug=%d", *headlessFlag, *timeoutFlag, *debugFlag)

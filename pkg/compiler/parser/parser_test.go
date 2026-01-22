@@ -515,3 +515,144 @@ func testLiteralExpression(
 	t.Errorf("type of exp not handled. got=%T", exp)
 	return false
 }
+
+func TestParseVarDeclaration(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedType  string
+		expectedNames []string
+		expectedArray []bool
+	}{
+		{"int x;", "int", []string{"x"}, []bool{false}},
+		{"int x, y, z;", "int", []string{"x", "y", "z"}, []bool{false, false, false}},
+		{"int arr[];", "int", []string{"arr"}, []bool{true}},
+		{"str s;", "string", []string{"s"}, []bool{false}},
+		{"str s1, s2;", "string", []string{"s1", "s2"}, []bool{false, false}},
+		{"str MIDIFile[];", "string", []string{"MIDIFile"}, []bool{true}},
+		{"string name;", "string", []string{"name"}, []bool{false}},
+		{"string names[];", "string", []string{"names"}, []bool{true}},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if len(program.Statements) != 1 {
+			t.Fatalf("input %q: expected 1 statement, got %d", tt.input, len(program.Statements))
+		}
+
+		stmt, ok := program.Statements[0].(*ast.VarDeclaration)
+		if !ok {
+			t.Fatalf("input %q: expected *ast.VarDeclaration, got %T", tt.input, program.Statements[0])
+		}
+
+		if stmt.Type != tt.expectedType {
+			t.Errorf("input %q: expected type %q, got %q", tt.input, tt.expectedType, stmt.Type)
+		}
+
+		if len(stmt.Names) != len(tt.expectedNames) {
+			t.Fatalf("input %q: expected %d names, got %d", tt.input, len(tt.expectedNames), len(stmt.Names))
+		}
+
+		for i, name := range stmt.Names {
+			if name.Name.Value != tt.expectedNames[i] {
+				t.Errorf("input %q: expected name[%d] %q, got %q", tt.input, i, tt.expectedNames[i], name.Name.Value)
+			}
+			if name.IsArray != tt.expectedArray[i] {
+				t.Errorf("input %q: expected name[%d] IsArray=%v, got %v", tt.input, i, tt.expectedArray[i], name.IsArray)
+			}
+		}
+	}
+}
+
+func TestParseIfElseIfStatement(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "else-if on same line",
+			input: `if (x > 0) { y = 1 } else if (x < 0) { y = -1 } else { y = 0 }`,
+		},
+		{
+			name: "else-if with newlines",
+			input: `if (x > 0) {
+				y = 1
+			} else if (x < 0) {
+				y = -1
+			} else {
+				y = 0
+			}`,
+		},
+		{
+			name: "else-if with blank lines between",
+			input: `if (x > 0) {
+				y = 1
+			}
+
+			else if (x < 0) {
+				y = -1
+			}
+
+			else {
+				y = 0
+			}`,
+		},
+		{
+			name:  "multiple else-if chains",
+			input: `if (x == 1) { y = 1 } else if (x == 2) { y = 2 } else if (x == 3) { y = 3 } else { y = 0 }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+			}
+
+			stmt, ok := program.Statements[0].(*ast.IfStatement)
+			if !ok {
+				t.Fatalf("expected *ast.IfStatement, got %T", program.Statements[0])
+			}
+
+			if stmt.Condition == nil {
+				t.Error("expected condition, got nil")
+			}
+			if stmt.Consequence == nil {
+				t.Error("expected consequence, got nil")
+			}
+			if stmt.Alternative == nil {
+				t.Error("expected alternative (else-if or else), got nil")
+			}
+		})
+	}
+}
+
+func TestParseIfWithoutElse(t *testing.T) {
+	input := `if (x > 0) { y = 1 }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.IfStatement)
+	if !ok {
+		t.Fatalf("expected *ast.IfStatement, got %T", program.Statements[0])
+	}
+
+	if stmt.Alternative != nil {
+		t.Error("expected no alternative, got one")
+	}
+}

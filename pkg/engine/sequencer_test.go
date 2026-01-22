@@ -314,3 +314,84 @@ func TestSequencer_Metadata(t *testing.T) {
 		t.Errorf("Expected TIME mode, got %v", seq.GetMode())
 	}
 }
+
+func TestSequencer_StringArrayOperations(t *testing.T) {
+	t.Run("Create and access string array", func(t *testing.T) {
+		seq := NewSequencer(nil, TIME, nil)
+
+		seq.SetStringArrayElement("arr", 0, "hello")
+		seq.SetStringArrayElement("arr", 1, "world")
+		seq.SetStringArrayElement("arr", 2, "test")
+
+		if seq.GetStringArrayElement("arr", 0) != "hello" {
+			t.Errorf("Expected arr[0]='hello', got %q", seq.GetStringArrayElement("arr", 0))
+		}
+		if seq.GetStringArrayElement("arr", 1) != "world" {
+			t.Errorf("Expected arr[1]='world', got %q", seq.GetStringArrayElement("arr", 1))
+		}
+		if seq.GetStringArrayElement("arr", 2) != "test" {
+			t.Errorf("Expected arr[2]='test', got %q", seq.GetStringArrayElement("arr", 2))
+		}
+	})
+
+	t.Run("Auto-expansion on set", func(t *testing.T) {
+		seq := NewSequencer(nil, TIME, nil)
+
+		// Set element at index 10 (array doesn't exist yet)
+		seq.SetStringArrayElement("arr", 10, "value")
+
+		// Array should be expanded to size 11, empty-string-filled
+		for i := 0; i < 10; i++ {
+			if seq.GetStringArrayElement("arr", i) != "" {
+				t.Errorf("Expected arr[%d]='' (empty-fill), got %q", i, seq.GetStringArrayElement("arr", i))
+			}
+		}
+		if seq.GetStringArrayElement("arr", 10) != "value" {
+			t.Errorf("Expected arr[10]='value', got %q", seq.GetStringArrayElement("arr", 10))
+		}
+	})
+
+	t.Run("Auto-expansion on get", func(t *testing.T) {
+		seq := NewSequencer(nil, TIME, nil)
+
+		// Create small array
+		seq.SetStringArrayElement("arr", 0, "first")
+
+		// Access beyond current size
+		val := seq.GetStringArrayElement("arr", 10)
+
+		// Should return "" and expand array
+		if val != "" {
+			t.Errorf("Expected '' for out-of-bounds access, got %q", val)
+		}
+
+		// Array should now be expanded
+		if seq.GetStringArrayElement("arr", 5) != "" {
+			t.Error("Array should be empty-string-filled after expansion")
+		}
+	})
+
+	t.Run("Case-insensitive string array names", func(t *testing.T) {
+		seq := NewSequencer(nil, TIME, nil)
+
+		seq.SetStringArrayElement("MIDIFile", 0, "song.mid")
+		val1 := seq.GetStringArrayElement("midifile", 0)
+		val2 := seq.GetStringArrayElement("MIDIFILE", 0)
+
+		if val1 != "song.mid" || val2 != "song.mid" {
+			t.Errorf("Case-insensitive string array access failed: %q, %q", val1, val2)
+		}
+	})
+
+	t.Run("String array in parent scope", func(t *testing.T) {
+		parent := NewSequencer(nil, TIME, nil)
+		parent.SetStringArrayElement("parentArr", 0, "parent_value")
+
+		child := NewSequencer(nil, TIME, parent)
+
+		val := child.GetStringArrayElement("parentArr", 0)
+		if val != "parent_value" {
+			t.Errorf("Expected 'parent_value' from parent array, got %q", val)
+		}
+	})
+}

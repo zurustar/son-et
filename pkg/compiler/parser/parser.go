@@ -408,11 +408,23 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	if p.peekTokenIs(token.ELSE) {
 		p.nextToken()
 
-		if !p.expectPeek(token.LBRACE) {
+		// Check for "else if" - handle as nested if statement
+		if p.peekTokenIs(token.IF) {
+			p.nextToken()
+			nestedIf := p.parseIfStatement()
+			if nestedIf == nil {
+				return nil
+			}
+			// Wrap the nested if in a block statement
+			stmt.Alternative = &ast.BlockStatement{
+				Token:      p.curToken,
+				Statements: []ast.Statement{nestedIf},
+			}
+		} else if p.expectPeek(token.LBRACE) {
+			stmt.Alternative = p.parseBlockStatement()
+		} else {
 			return nil
 		}
-
-		stmt.Alternative = p.parseBlockStatement()
 	}
 
 	return stmt

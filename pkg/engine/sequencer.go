@@ -41,13 +41,21 @@ type Sequencer struct {
 // NewSequencer creates a new sequencer with the given commands and mode.
 // parent can be nil for root-level sequences.
 func NewSequencer(commands []interpreter.OpCode, mode TimingMode, parent *Sequencer) *Sequencer {
+	// Set default ticksPerStep based on mode
+	// TIME mode: 1 step = 50ms = 3 ticks at 60 FPS
+	// MIDI_TIME mode: 1 step = 1 tick (MIDI ticks are already at 32nd note resolution)
+	ticksPerStep := 3
+	if mode == MIDI_TIME {
+		ticksPerStep = 1
+	}
+
 	return &Sequencer{
 		commands:     commands,
 		pc:           0,
 		active:       true,
 		mode:         mode,
 		waitCount:    0,
-		ticksPerStep: 3, // Default: 1 step = 50ms = 3 ticks at 60 FPS
+		ticksPerStep: ticksPerStep,
 		vars:         make(map[string]any),
 		parent:       parent,
 		id:           0, // Will be assigned by engine
@@ -173,6 +181,72 @@ func (s *Sequencer) SetArrayElement(name string, index int, value int) {
 	if index >= len(arr) {
 		// Expand array to index+1 size, zero-fill
 		newArr := make([]int, index+1)
+		copy(newArr, arr)
+		arr = newArr
+	}
+
+	// Set value
+	arr[index] = value
+
+	// Store back (important for scope chain)
+	s.SetVariable(name, arr)
+}
+
+// GetStringArrayElement retrieves a string array element with auto-expansion.
+// If the array doesn't exist, creates it.
+// If index >= len(array), expands array and empty-string-fills.
+// Returns "" if the element doesn't exist after expansion.
+func (s *Sequencer) GetStringArrayElement(name string, index int) string {
+	// Get or create array
+	val := s.GetVariable(name)
+
+	var arr []string
+	switch v := val.(type) {
+	case []string:
+		arr = v
+	case string:
+		// Variable exists but is not an array - treat as empty array
+		arr = []string{}
+	default:
+		// Variable doesn't exist - create empty array
+		arr = []string{}
+	}
+
+	// Auto-expand if needed
+	if index >= len(arr) {
+		// Expand array to index+1 size, empty-string-fill
+		newArr := make([]string, index+1)
+		copy(newArr, arr)
+		s.SetVariable(name, newArr)
+		return "" // Newly created element is ""
+	}
+
+	return arr[index]
+}
+
+// SetStringArrayElement sets a string array element with auto-expansion.
+// If the array doesn't exist, creates it.
+// If index >= len(array), expands array and empty-string-fills.
+func (s *Sequencer) SetStringArrayElement(name string, index int, value string) {
+	// Get or create array
+	val := s.GetVariable(name)
+
+	var arr []string
+	switch v := val.(type) {
+	case []string:
+		arr = v
+	case string:
+		// Variable exists but is not an array - replace with array
+		arr = []string{}
+	default:
+		// Variable doesn't exist - create empty array
+		arr = []string{}
+	}
+
+	// Auto-expand if needed
+	if index >= len(arr) {
+		// Expand array to index+1 size, empty-string-fill
+		newArr := make([]string, index+1)
 		copy(newArr, arr)
 		arr = newArr
 	}

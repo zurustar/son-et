@@ -84,6 +84,7 @@ const (
 var keywords = map[string]TokenType{
 	"if":        IF,
 	"else":      ELSE,
+	"str":       STRING, // FILLY uses "str" for string type
 	"for":       FOR,
 	"while":     WHILE,
 	"switch":    SWITCH,

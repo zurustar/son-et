@@ -206,14 +206,27 @@ func (p *Preprocessor) parseInfoDirective(line string) error {
 }
 
 // parseIncludeDirective parses a #include directive and processes the included file.
+// Supports trailing comments: #include "file.tfy" // comment
+//
+//	#include "file.tfy" /* comment */
 func (p *Preprocessor) parseIncludeDirective(line string, currentFile string) (string, error) {
-	// Format: #include "filename"
-	parts := strings.SplitN(line, " ", 2)
-	if len(parts) < 2 {
-		return "", fmt.Errorf("invalid #include directive: %s", line)
+	// Format: #include "filename" [// comment] or [/* comment */]
+
+	// Find the quoted filename
+	startQuote := strings.Index(line, "\"")
+	if startQuote == -1 {
+		return "", fmt.Errorf("invalid #include directive (missing opening quote): %s", line)
 	}
 
-	filename := strings.Trim(parts[1], "\"")
+	// Find the closing quote
+	endQuote := strings.Index(line[startQuote+1:], "\"")
+	if endQuote == -1 {
+		return "", fmt.Errorf("invalid #include directive (missing closing quote): %s", line)
+	}
+	endQuote += startQuote + 1 // Adjust for the offset
+
+	// Extract filename (between quotes)
+	filename := line[startQuote+1 : endQuote]
 
 	// Resolve path relative to current file
 	currentDir := filepath.Dir(currentFile)

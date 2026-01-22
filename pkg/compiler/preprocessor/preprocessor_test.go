@@ -331,3 +331,85 @@ func TestIsValidUTF8(t *testing.T) {
 		})
 	}
 }
+
+func TestPreprocessor_IncludeWithComments(t *testing.T) {
+	tests := []struct {
+		name        string
+		includeStmt string
+	}{
+		{"no comment", `#include "lib.tfy"`},
+		{"single-line comment with space", `#include "lib.tfy" // this is a comment`},
+		{"single-line comment no space", `#include "lib.tfy"// this is a comment`},
+		{"block comment with space", `#include "lib.tfy" /* this is a comment */`},
+		{"block comment no space", `#include "lib.tfy"/* this is a comment */`},
+		{"block comment multiword", `#include "lib.tfy" /* multi word comment here */`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := &MockAssetLoader{
+				Files: map[string][]byte{
+					"main.tfy": []byte("// Main\n" + tt.includeStmt + "\n// After"),
+					"lib.tfy":  []byte("// Library content\nfunction test() {}"),
+				},
+			}
+
+			p := NewPreprocessor(".", loader)
+			result, err := p.Process("main.tfy")
+			if err != nil {
+				t.Fatalf("Process failed for %q: %v", tt.includeStmt, err)
+			}
+
+			// Check that include is expanded
+			if !strings.Contains(result, "// Library content") {
+				t.Errorf("Included file content should be present for %q", tt.includeStmt)
+			}
+			if !strings.Contains(result, "function test()") {
+				t.Errorf("Included function should be present for %q", tt.includeStmt)
+			}
+			if !strings.Contains(result, "// Main") {
+				t.Errorf("Main file content should be preserved for %q", tt.includeStmt)
+			}
+			if !strings.Contains(result, "// After") {
+				t.Errorf("Content after include should be preserved for %q", tt.includeStmt)
+			}
+
+			// Check that #include directive is removed
+			if strings.Contains(result, "#include") {
+				t.Errorf("#include directive should be removed from output for %q", tt.includeStmt)
+			}
+		})
+	}
+}
+
+func TestPreprocessor_IncludeInvalidQuotes(t *testing.T) {
+	tests := []struct {
+		name        string
+		includeStmt string
+		errContains string
+	}{
+		{"missing opening quote", `#include lib.tfy"`, "missing"},
+		{"missing closing quote", `#include "lib.tfy`, "missing closing quote"},
+		{"no quotes", `#include lib.tfy`, "missing"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := &MockAssetLoader{
+				Files: map[string][]byte{
+					"main.tfy": []byte(tt.includeStmt),
+					"lib.tfy":  []byte("// Library"),
+				},
+			}
+
+			p := NewPreprocessor(".", loader)
+			_, err := p.Process("main.tfy")
+			if err == nil {
+				t.Errorf("Expected error for %q", tt.includeStmt)
+			}
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("Expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
