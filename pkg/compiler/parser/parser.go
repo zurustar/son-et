@@ -122,6 +122,12 @@ func (p *Parser) ParseProgram() *ast.Program {
 			continue
 		}
 
+		// Skip semicolons (statement terminators)
+		if p.curToken.Type == token.SEMICOLON {
+			p.nextToken()
+			continue
+		}
+
 		stmt := p.parseStatement()
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
@@ -137,6 +143,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case token.INT, token.STRING, token.FLOAT_TYPE:
 		// Variable declaration
 		return p.parseVarDeclaration()
+	case token.FUNCTION:
+		// Function declaration with 'function' keyword
+		return p.parseFunctionDeclaration()
 	case token.IF:
 		return p.parseIfStatement()
 	case token.FOR:
@@ -743,12 +752,39 @@ func (p *Parser) parseVarDeclaration() ast.Statement {
 		}
 	}
 
-	// Expect semicolon at end (optional in some contexts)
-	if p.peekTokenIs(token.SEMICOLON) {
-		p.nextToken()
+	// Don't consume semicolon here - let ParseProgram handle it
+	// This ensures consistent token advancement across all statement types
+	return decl
+}
+
+// parseFunctionDeclaration parses a function declaration starting with 'function' keyword.
+// Format: function name(params) { body }
+func (p *Parser) parseFunctionDeclaration() ast.Statement {
+	stmt := &ast.FunctionStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
 	}
 
-	return decl
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	stmt.Parameters = p.parseFunctionParameters()
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+
+	return stmt
 }
 
 // parseFunctionOrCall determines if this is a function declaration or call
