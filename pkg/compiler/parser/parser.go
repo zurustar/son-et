@@ -80,6 +80,18 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
 
+	// Allow keywords to be used as identifiers in expressions
+	// This is needed for cases like: PostMes(USER, ...) or int time=1
+	p.registerPrefix(token.TIME, p.parseIdentifier)
+	p.registerPrefix(token.MIDI_TIME, p.parseIdentifier)
+	p.registerPrefix(token.MIDI_END, p.parseIdentifier)
+	p.registerPrefix(token.KEY, p.parseIdentifier)
+	p.registerPrefix(token.CLICK, p.parseIdentifier)
+	p.registerPrefix(token.RBDOWN, p.parseIdentifier)
+	p.registerPrefix(token.RBDBLCLK, p.parseIdentifier)
+	p.registerPrefix(token.USER, p.parseIdentifier)
+	p.registerPrefix(token.STEP, p.parseIdentifier)
+
 	// Register infix parse functions
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -584,15 +596,50 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 
 	// Handle first parameter
 	if !p.curTokenIs(token.RPAREN) {
+		// Check if this is a typed parameter (int x, str s, etc.)
+		if p.curToken.Type == token.INT || p.curToken.Type == token.STRING || p.curToken.Type == token.FLOAT_TYPE {
+			// Skip type, get parameter name
+			p.nextToken()
+			// Allow keywords as parameter names (e.g., int time, int step)
+			if p.curToken.Type != token.IDENT && p.curToken.Type != token.TIME && p.curToken.Type != token.STEP {
+				return identifiers
+			}
+		}
+
 		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 		identifiers = append(identifiers, ident)
+
+		// Check for default value (e.g., int time=1)
+		if p.peekTokenIs(token.ASSIGN) {
+			p.nextToken() // consume =
+			p.nextToken() // consume default value
+			// TODO: Store default value in AST if needed
+		}
 
 		// Handle remaining parameters
 		for p.peekTokenIs(token.COMMA) {
 			p.nextToken() // consume comma
-			p.nextToken() // move to next identifier
+			p.nextToken() // move to next parameter
+
+			// Check if this is a typed parameter
+			if p.curToken.Type == token.INT || p.curToken.Type == token.STRING || p.curToken.Type == token.FLOAT_TYPE {
+				// Skip type, get parameter name
+				p.nextToken()
+				// Allow keywords as parameter names
+				if p.curToken.Type != token.IDENT && p.curToken.Type != token.TIME && p.curToken.Type != token.STEP {
+					return identifiers
+				}
+			}
+
 			ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 			identifiers = append(identifiers, ident)
+
+			// Check for default value
+			if p.peekTokenIs(token.ASSIGN) {
+				p.nextToken() // consume =
+				p.nextToken() // consume default value
+				// TODO: Store default value in AST if needed
+			}
 		}
 	}
 
@@ -625,18 +672,25 @@ func (p *Parser) parseMesStatement() ast.Statement {
 func (p *Parser) parseStepStatement() ast.Statement {
 	stmt := &ast.StepStatement{Token: p.curToken}
 
-	if !p.expectPeek(token.LPAREN) {
-		return nil
+	// Check if there's a parenthesis (step(N)) or direct block (step{})
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken() // consume (
+
+		p.nextToken()
+		stmt.Count = p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+	} else {
+		// No parenthesis means step{} which defaults to step(1)
+		stmt.Count = &ast.IntegerLiteral{
+			Token: p.curToken,
+			Value: 1,
+		}
 	}
 
-	p.nextToken()
-	stmt.Count = p.parseExpression(LOWEST)
-
-	if !p.expectPeek(token.RPAREN) {
-		return nil
-	}
-
-	// Check if there's a block: step(N) { ... }
+	// Check if there's a block: step(N) { ... } or step { ... }
 	if p.peekTokenIs(token.LBRACE) {
 		p.nextToken()
 		stmt.Body = p.parseStepBlock()
@@ -796,9 +850,29 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 		return nil
 	}
 
-	// Look ahead to determine if this is a function declaration or call
-	// Function declarations have parameter names (identifiers only)
-	// Function calls have arguments (any expression)
+	// Check if this looks like a typed parameter (int, str, float)
+	// If so, it's definitely a function declaration
+	if p.peekToken.Type == token.INT || p.peekToken.Type == token.STRING || p.peekToken.Type == token.FLOAT_TYPE {
+		// This is a function declaration with typed parameters
+		params := p.parseFunctionParameters()
+
+		if !p.expectPeek(token.RPAREN) {
+			return nil
+		}
+
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+
+		body := p.parseBlockStatement()
+
+		return &ast.FunctionStatement{
+			Token:      name.Token,
+			Name:       name,
+			Parameters: params,
+			Body:       body,
+		}
+	}
 
 	// Parse as expression list (works for both parameters and arguments)
 	args := p.parseExpressionList(token.RPAREN)
