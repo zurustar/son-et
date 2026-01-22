@@ -5,12 +5,15 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"os"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/opentype"
 )
 
 const (
@@ -20,16 +23,77 @@ const (
 
 var (
 	// Window decoration colors
-	titleBarColor  = color.RGBA{0, 0, 128, 255}     // Dark blue
-	borderColor    = color.RGBA{192, 192, 192, 255} // Gray
-	highlightColor = color.RGBA{255, 255, 255, 255} // White (for raised edge)
-	shadowColor    = color.RGBA{0, 0, 0, 255}       // Black (for recessed edge)
-	captionColor   = color.RGBA{255, 255, 255, 255} // White text
-	captionFont    font.Face                        // Font for window captions
+	titleBarColor   = color.RGBA{0, 0, 128, 255}     // Dark blue
+	borderColor     = color.RGBA{192, 192, 192, 255} // Gray
+	highlightColor  = color.RGBA{255, 255, 255, 255} // White (for raised edge)
+	shadowColor     = color.RGBA{0, 0, 0, 255}       // Black (for recessed edge)
+	captionColor    = color.RGBA{255, 255, 255, 255} // White text
+	captionFont     font.Face                        // Font for window captions
+	captionFontOnce sync.Once
 )
 
-func init() {
+func initCaptionFont() {
+	// Try to load Japanese-capable font for window captions
+	fontPaths := []string{
+		"/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+		"/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc",
+		"/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
+		"/Library/Fonts/Arial Unicode.ttf",
+		"/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+	}
+
+	for _, fontPath := range fontPaths {
+		if _, err := os.Stat(fontPath); err == nil {
+			if face := loadCaptionFont(fontPath, 12); face != nil {
+				captionFont = face
+				return
+			}
+		}
+	}
+
+	// Fall back to basicfont if no system font could be loaded
 	captionFont = basicfont.Face7x13
+}
+
+func loadCaptionFont(path string, size float64) font.Face {
+	fontData, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	// Try to parse as a single font first
+	tt, err := opentype.Parse(fontData)
+	if err != nil {
+		// If that fails, try as a font collection (.ttc)
+		collection, err := opentype.ParseCollection(fontData)
+		if err != nil {
+			return nil
+		}
+		// Use the first font in the collection
+		if collection.NumFonts() > 0 {
+			tt, err = collection.Font(0)
+			if err != nil {
+				return nil
+			}
+		} else {
+			return nil
+		}
+	}
+
+	face, err := opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    size,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		return nil
+	}
+
+	return face
+}
+
+func init() {
+	captionFontOnce.Do(initCaptionFont)
 }
 
 // EbitenRenderer implements the Renderer interface using Ebiten.

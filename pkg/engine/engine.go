@@ -154,13 +154,18 @@ func (e *Engine) Update() error {
 		return ErrTerminated
 	}
 
+	// Check termination again after execution (in case timeout occurred during update)
+	if e.CheckTermination() {
+		return ErrTerminated
+	}
+
 	// TODO: Update audio (Phase 5)
 
 	return nil
 }
 
 // UpdateVM processes one tick for all active sequences.
-// Each active sequence that is not waiting executes one OpCode.
+// Each active sequence that is not waiting executes OpCodes until it hits a wait or completes.
 func (e *Engine) UpdateVM() error {
 	vm := NewVM(e.state, e, e.logger)
 
@@ -171,10 +176,8 @@ func (e *Engine) UpdateVM() error {
 			continue
 		}
 
-		// Skip completed sequences
-		if seq.IsComplete() {
-			continue
-		}
+		// Don't skip "completed" sequences - they should loop back to the beginning
+		// mes(TIME) and mes(MIDI_TIME) blocks run continuously until explicitly terminated
 
 		// Handle waiting sequences (only for TIME mode)
 		if seq.IsWaiting() {
@@ -186,20 +189,56 @@ func (e *Engine) UpdateVM() error {
 			continue
 		}
 
-		// Get current command
-		cmd := seq.GetCurrentCommand()
-		if cmd == nil {
-			continue
+		// If sequence reached the end, loop back to beginning (unless noLoop is set)
+		if seq.GetPC() >= len(seq.commands) {
+			if len(seq.commands) > 0 && seq.ShouldLoop() {
+				seq.SetPC(0)
+				e.logger.LogDebug("Sequence %d looped back to beginning", seq.GetID())
+			} else {
+				// Sequence is complete and should not loop
+				continue
+			}
 		}
 
-		// Execute command
-		if err := vm.ExecuteOp(seq, *cmd); err != nil {
-			e.logger.LogError("VM execution error at seq %d, pc %d: %v", seq.GetID(), seq.GetPC(), err)
-			return err
+		// Execute commands until we hit a wait or reach the end
+		// This prevents slow execution in mes() blocks with many OpCodes
+		maxOpsPerTick := 1000 // Safety limit to prevent infinite loops
+		opsExecuted := 0
+
+		for opsExecuted < maxOpsPerTick {
+			// Get current command
+			cmd := seq.GetCurrentCommand()
+			if cmd == nil {
+				break
+			}
+
+			// Execute command
+			if err := vm.ExecuteOp(seq, *cmd); err != nil {
+				e.logger.LogError("VM execution error at seq %d, pc %d: %v", seq.GetID(), seq.GetPC(), err)
+
+				// For resilience, continue execution instead of stopping the engine
+				// This allows games to continue running even if individual operations fail
+				// The original FILLY engine was likely more permissive with errors
+			}
+
+			// Advance program counter
+			seq.IncrementPC()
+			opsExecuted++
+
+			// If sequence is now waiting, stop executing for this tick
+			if seq.IsWaiting() {
+				break
+			}
+
+			// If sequence reached the end, stop
+			if seq.GetPC() >= len(seq.commands) {
+				break
+			}
 		}
 
-		// Advance program counter
-		seq.IncrementPC()
+		if opsExecuted >= maxOpsPerTick {
+			e.logger.LogError("Sequence %d hit max ops per tick limit (%d)", seq.GetID(), maxOpsPerTick)
+		}
 	}
 
 	return nil
@@ -238,10 +277,8 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 				continue
 			}
 
-			// Skip completed sequences
-			if seq.IsComplete() {
-				continue
-			}
+			// Don't skip "completed" sequences - they should loop back to the beginning
+			// mes(MIDI_TIME) blocks run continuously until explicitly terminated
 
 			// Only process MIDI_TIME mode sequences
 			if seq.GetMode() != MIDI_TIME {
@@ -259,12 +296,25 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 				continue
 			}
 
+			// If sequence reached the end, loop back to beginning (unless noLoop is set)
+			if seq.GetPC() >= len(seq.commands) {
+				if len(seq.commands) > 0 && seq.ShouldLoop() {
+					seq.SetPC(0)
+					if tick == 0 {
+						e.logger.LogDebug("  Seq %d: looped back to beginning", seq.GetID())
+					}
+				} else {
+					// Sequence is complete and should not loop
+					continue
+				}
+			}
+
 			// Execute one command if not waiting
 			cmd := seq.GetCurrentCommand()
 			if cmd == nil {
 				if tick == 0 {
-					e.logger.LogInfo("  Seq %d: no current command (PC=%d, complete=%v)",
-						seq.GetID(), seq.GetPC(), seq.IsComplete())
+					e.logger.LogInfo("  Seq %d: no current command (PC=%d)",
+						seq.GetID(), seq.GetPC())
 				}
 				continue
 			}
@@ -278,7 +328,10 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 			// Execute command
 			if err := vm.ExecuteOp(seq, *cmd); err != nil {
 				e.logger.LogError("MIDI VM execution error at seq %d, pc %d: %v", seq.GetID(), seq.GetPC(), err)
-				return err
+
+				// For resilience, continue execution instead of stopping the engine
+				// This allows games to continue running even if individual operations fail
+				// The original FILLY engine was likely more permissive with errors
 			}
 
 			// Log PC after execution (first tick only)
@@ -466,6 +519,9 @@ func (e *Engine) CallMainFunction() error {
 
 	// Create a new sequencer for main() execution (TIME mode, no parent)
 	mainSeq := NewSequencer(mainFunc.Body, TIME, nil)
+
+	// main() should not loop - it runs once to initialize and register mes() blocks
+	mainSeq.SetNoLoop(true)
 
 	// Register the main sequence
 	seqID := e.RegisterSequence(mainSeq, 0)

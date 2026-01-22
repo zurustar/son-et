@@ -320,6 +320,12 @@ func runHeadless(eng *engine.Engine) {
 			log.Printf("Headless tick: %d (%.1fs elapsed)", tickCount, float64(tickCount)/60.0)
 		}
 
+		// Check termination BEFORE update
+		if eng.IsTerminated() {
+			log.Println("Engine terminated (pre-check)")
+			break
+		}
+
 		if err := eng.Update(); err != nil {
 			if err == engine.ErrTerminated {
 				log.Println("Engine terminated normally")
@@ -329,8 +335,9 @@ func runHeadless(eng *engine.Engine) {
 			break
 		}
 
+		// Check termination AFTER update
 		if eng.IsTerminated() {
-			log.Println("Engine terminated")
+			log.Println("Engine terminated (post-check)")
 			break
 		}
 	}

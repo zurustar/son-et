@@ -168,8 +168,26 @@ main() {
 }
 
 // パラメータ付きの関数（型指定あり）
-MyFunction(int x, str name, int arr[]) {
+MyFunction(int x, str name) {
     // 関数本体
+}
+
+// 配列パラメータ（型指定あり）
+ProcessArray(int arr[], int size) {
+    // arr は整数配列
+}
+
+// 配列パラメータ（型指定なし）
+UpdateSprites(p[], c[]) {
+    // p と c は配列（型は実行時に決定）
+}
+
+// 混合パラメータ（通常 + 配列 + デフォルト値）
+DrawSprite(int cast_id, int positions[], int x, int y, int color=0xFFFFFF) {
+    // cast_id: 通常の整数パラメータ
+    // positions: 配列パラメータ
+    // x, y: 通常の整数パラメータ
+    // color: デフォルト値付きパラメータ
 }
 
 // デフォルトパラメータ値
@@ -180,31 +198,62 @@ DrawText(int x, int y, str text, int color=0xFFFFFF) {
 
 **関数の特徴**:
 - 関数名は大文字小文字を区別しない
-- パラメータには型を指定する（`int`, `str`, `int[]`）
+- パラメータには型を指定する（`int`, `str`）
+- 配列パラメータは `[]` を付けて宣言（`int arr[]`, `p[]`）
+- 型なし配列パラメータもサポート（`p[]`, `c[]`）
 - デフォルトパラメータ値をサポート（`=`で指定）
 - 戻り値の型指定は不要（暗黙的）
 - 再帰呼び出しをサポート
 
-**使用例**:
+**配列パラメータの使用例**:
 ```filly
-// グローバル変数
-int globalScore;
+// グローバル配列
+int sprites[];
+int colors[];
 
 // メイン関数
 main() {
-    globalScore = 0;
-    AddScore(100);
-    ShowMessage("Hello", 10, 20);
+    sprites[0] = 1;
+    sprites[1] = 2;
+    colors[0] = 0xFF0000;
+    colors[1] = 0x00FF00;
+    
+    // 配列を関数に渡す
+    InitializeSprites(sprites, colors);
 }
 
-// スコア加算関数
-AddScore(int points) {
-    globalScore = globalScore + points;
+// 型付き配列パラメータ
+InitializeSprites(int sprite_ids[], int color_values[]) {
+    // 配列要素にアクセス
+    MoveCast(sprite_ids[0], 100, 100);
+    SetPaintColor(color_values[0]);
 }
 
-// メッセージ表示関数（デフォルトパラメータ付き）
-ShowMessage(str text, int x=0, int y=0) {
-    // テキスト表示処理
+// 型なし配列パラメータ（レガシー構文）
+Scene1ON(p[], c[]) {
+    // p と c は配列として扱われる
+    p[0] = LoadPic("image1.bmp");
+    c[0] = PutCast(p[0], 0, 0);
+}
+```
+
+**実際のサンプルからの例**:
+```filly
+// robot サンプルより
+Chap1ON(int p[], int c[]) {
+    // 型付き配列パラメータ
+    p[0] = LoadPic("ROBOT002.bmp");
+    c[1] = PutCast(p[2], p[0], 0, 200);
+}
+
+// robot サンプルより（デフォルト値付き）
+OP_walk(c, p[], x, y, w, h, l=10) {
+    // c: 通常パラメータ
+    // p[]: 配列パラメータ
+    // l: デフォルト値10
+    if (l != 0) {
+        MoveCast(c, p[1], x, y);
+    }
 }
 ```
 

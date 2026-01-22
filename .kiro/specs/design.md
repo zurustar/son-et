@@ -393,9 +393,12 @@ Control Flow Syntax:
 - Whitespace/newlines between if and else/else-if are allowed
 
 Function Definition Syntax:
-- name() { ... }      // No 'function' keyword required
-- name(int x) { ... } // With typed parameters
-- name(int x=0) { ... } // With default values
+- name() { ... }                    // No 'function' keyword required
+- name(int x) { ... }               // With typed parameters
+- name(int x=0) { ... }             // With default values
+- name(int arr[]) { ... }           // With typed array parameters
+- name(p[], c[]) { ... }            // With untyped array parameters
+- name(c, p[], x, y, l=10) { ... }  // Mixed: normal + array + default
 
 Expression Precedence (highest to lowest):
 1. Primary: literals, variables, array access, parentheses
@@ -417,6 +420,10 @@ Expression Precedence (highest to lowest):
 - Comma-separated variable declarations in single statement
 - String array declarations supported (`str arr[];`)
 - else/else-if associated with nearest preceding if regardless of whitespace
+- Array parameters in function declarations: `int arr[]`, `p[]`
+- Default parameter values: `param=value`
+- Mixed parameter types: normal, array, and default values can be combined
+- Function call vs declaration disambiguation: checks for typed parameters or `{` after `)`
 
 **OpCode Generation Design**:
 ```

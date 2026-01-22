@@ -418,3 +418,117 @@ func TestToInt(t *testing.T) {
 		})
 	}
 }
+
+// TestLegacyFunctionShell tests that Shell() stub parses and returns without error
+func TestLegacyFunctionShell(t *testing.T) {
+	vm, _, _, _ := newTestVM()
+	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
+
+	// Test: Shell("program.exe", "args")
+	op := interpreter.OpCode{
+		Cmd: interpreter.OpCall,
+		Args: []any{
+			"Shell",
+			"program.exe",
+			"args",
+		},
+	}
+
+	err := vm.ExecuteOp(seq, op)
+	if err != nil {
+		t.Fatalf("Shell() stub failed: %v", err)
+	}
+
+	// Verify return value is 0 (safe default)
+	returnVal := seq.GetVariable("__return__")
+	if returnVal != int64(0) {
+		t.Errorf("Expected Shell() to return 0, got %v", returnVal)
+	}
+}
+
+// TestLegacyFunctionGetIniStr tests that GetIniStr() returns empty string default
+func TestLegacyFunctionGetIniStr(t *testing.T) {
+	vm, _, _, _ := newTestVM()
+	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
+
+	// Test: GetIniStr("section", "key", "default", "file.ini")
+	op := interpreter.OpCode{
+		Cmd: interpreter.OpCall,
+		Args: []any{
+			"GetIniStr",
+			"section",
+			"key",
+			"default",
+			"file.ini",
+		},
+	}
+
+	err := vm.ExecuteOp(seq, op)
+	if err != nil {
+		t.Fatalf("GetIniStr() stub failed: %v", err)
+	}
+
+	// Verify return value is empty string (safe default)
+	returnVal := seq.GetVariable("__return__")
+	if returnVal != "" {
+		t.Errorf("Expected GetIniStr() to return empty string, got %v", returnVal)
+	}
+}
+
+// TestLegacyFunctionMCI tests that MCI() logs warning and returns safely
+func TestLegacyFunctionMCI(t *testing.T) {
+	vm, _, _, logger := newTestVM()
+	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
+
+	// Set logger to info level to capture warnings
+	logger.SetLevel(DebugLevelInfo)
+
+	// Test: MCI("stop song")
+	op := interpreter.OpCode{
+		Cmd: interpreter.OpCall,
+		Args: []any{
+			"MCI",
+			"stop song",
+		},
+	}
+
+	err := vm.ExecuteOp(seq, op)
+	if err != nil {
+		t.Fatalf("MCI() stub failed: %v", err)
+	}
+
+	// Verify return value is 0 (safe default)
+	returnVal := seq.GetVariable("__return__")
+	if returnVal != int64(0) {
+		t.Errorf("Expected MCI() to return 0, got %v", returnVal)
+	}
+}
+
+// TestLegacyFunctionStrMCI tests that StrMCI() logs warning and returns safely
+func TestLegacyFunctionStrMCI(t *testing.T) {
+	vm, _, _, logger := newTestVM()
+	seq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
+
+	// Set logger to info level to capture warnings
+	logger.SetLevel(DebugLevelInfo)
+
+	// Test: StrMCI("status song")
+	op := interpreter.OpCode{
+		Cmd: interpreter.OpCall,
+		Args: []any{
+			"StrMCI",
+			"status song",
+		},
+	}
+
+	err := vm.ExecuteOp(seq, op)
+	if err != nil {
+		t.Fatalf("StrMCI() stub failed: %v", err)
+	}
+
+	// Verify return value is empty string (safe default)
+	returnVal := seq.GetVariable("__return__")
+	if returnVal != "" {
+		t.Errorf("Expected StrMCI() to return empty string, got %v", returnVal)
+	}
+}

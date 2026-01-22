@@ -656,3 +656,202 @@ func TestParseIfWithoutElse(t *testing.T) {
 		t.Error("expected no alternative, got one")
 	}
 }
+
+// TestParseFunctionWithArrayParameters tests parsing of function declarations with array parameters
+func TestParseFunctionWithArrayParameters(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		funcName string
+		params   []string
+	}{
+		{
+			name:     "typed array parameters",
+			input:    "Chap1ON(int p[], int c[]) { x = 1 }",
+			funcName: "Chap1ON",
+			params:   []string{"p", "c"},
+		},
+		{
+			name:     "untyped array parameters",
+			input:    "Scene1ON(p[], c[]) { x = 1 }",
+			funcName: "Scene1ON",
+			params:   []string{"p", "c"},
+		},
+		{
+			name:     "mixed parameters with arrays",
+			input:    "OP_walk(c, p[], x, y, w, h, l=10) { x = 1 }",
+			funcName: "OP_walk",
+			params:   []string{"c", "p", "x", "y", "w", "h", "l"},
+		},
+		{
+			name:     "function keyword with array params",
+			input:    "function test(int arr[]) { x = 1 }",
+			funcName: "test",
+			params:   []string{"arr"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("program.Statements does not contain 1 statement. got=%d",
+					len(program.Statements))
+			}
+
+			stmt, ok := program.Statements[0].(*ast.FunctionStatement)
+			if !ok {
+				t.Fatalf("program.Statements[0] is not ast.FunctionStatement. got=%T",
+					program.Statements[0])
+			}
+
+			if stmt.Name.Value != tt.funcName {
+				t.Errorf("function name wrong. expected=%s, got=%s",
+					tt.funcName, stmt.Name.Value)
+			}
+
+			if len(stmt.Parameters) != len(tt.params) {
+				t.Fatalf("function parameters wrong. expected=%d, got=%d",
+					len(tt.params), len(stmt.Parameters))
+			}
+
+			for i, expectedParam := range tt.params {
+				if stmt.Parameters[i].Value != expectedParam {
+					t.Errorf("parameter %d wrong. expected=%s, got=%s",
+						i, expectedParam, stmt.Parameters[i].Value)
+				}
+			}
+		})
+	}
+}
+
+// TestParseFunctionCallWithComplexArguments tests parsing of function calls with complex arguments
+func TestParseFunctionCallWithComplexArguments(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		funcName string
+		minArgs  int // Minimum number of arguments expected
+	}{
+		{
+			name:     "many integer arguments",
+			input:    "MoveCast(car_cast, car_pic, 600, 150, 0, 130, 100, 0, 0, 0xffffff)",
+			funcName: "MoveCast",
+			minArgs:  8, // At least 8 arguments
+		},
+		{
+			name:     "mixed expression arguments",
+			input:    "PutCast(car_pic, base_pic, 600, 150, 0xffffff, 0, 2, 0, 130, 100, 0, 0)",
+			funcName: "PutCast",
+			minArgs:  10, // At least 10 arguments
+		},
+		{
+			name:     "simple identifiers as arguments",
+			input:    "Scene1ON(p2, c2)",
+			funcName: "Scene1ON",
+			minArgs:  2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("program.Statements does not contain 1 statement. got=%d",
+					len(program.Statements))
+			}
+
+			stmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+			if !ok {
+				t.Fatalf("program.Statements[0] is not ast.ExpressionStatement. got=%T",
+					program.Statements[0])
+			}
+
+			callExpr, ok := stmt.Expression.(*ast.CallExpression)
+			if !ok {
+				t.Fatalf("stmt.Expression is not ast.CallExpression. got=%T",
+					stmt.Expression)
+			}
+
+			funcIdent, ok := callExpr.Function.(*ast.Identifier)
+			if !ok {
+				t.Fatalf("callExpr.Function is not ast.Identifier. got=%T",
+					callExpr.Function)
+			}
+
+			if funcIdent.Value != tt.funcName {
+				t.Errorf("function name wrong. expected=%s, got=%s",
+					tt.funcName, funcIdent.Value)
+			}
+
+			if len(callExpr.Arguments) < tt.minArgs {
+				t.Errorf("not enough arguments. expected at least %d, got=%d",
+					tt.minArgs, len(callExpr.Arguments))
+			}
+		})
+	}
+}
+
+func TestParseNestedCallExpression(t *testing.T) {
+	input := `foo(bar("a", "b"), "c")`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	// Check for parser errors
+	if len(p.Errors()) > 0 {
+		t.Logf("Parser had %d errors:", len(p.Errors()))
+		for _, err := range p.Errors() {
+			t.Logf("  %s", err)
+		}
+		t.Fatalf("Parser encountered errors")
+	}
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("program.Statements does not contain 1 statement. got=%d",
+			len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("stmt is not ast.ExpressionStatement. got=%T",
+			program.Statements[0])
+	}
+
+	exp, ok := stmt.Expression.(*ast.CallExpression)
+	if !ok {
+		t.Fatalf("stmt.Expression is not ast.CallExpression. got=%T",
+			stmt.Expression)
+	}
+
+	if !testIdentifier(t, exp.Function, "foo") {
+		return
+	}
+
+	if len(exp.Arguments) != 2 {
+		t.Fatalf("wrong number of arguments. want=2, got=%d", len(exp.Arguments))
+	}
+
+	// First argument should be a nested call expression
+	nestedCall, ok := exp.Arguments[0].(*ast.CallExpression)
+	if !ok {
+		t.Fatalf("first argument is not ast.CallExpression. got=%T", exp.Arguments[0])
+	}
+
+	if !testIdentifier(t, nestedCall.Function, "bar") {
+		return
+	}
+
+	if len(nestedCall.Arguments) != 2 {
+		t.Fatalf("nested call wrong number of arguments. want=2, got=%d", len(nestedCall.Arguments))
+	}
+}

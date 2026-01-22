@@ -381,11 +381,22 @@ These requirements define the multimedia capabilities that scripts can use.
 
 #### Acceptance Criteria
 
-1. THE System SHALL support function definitions with typed parameters (int, str, int[])
-2. THE System SHALL support default parameter values
-3. THE System SHALL use case-insensitive function names
-4. THE System SHALL create a new scope for each function call
-5. THE System SHALL support recursive function calls
+1. THE System SHALL support function definitions with typed parameters (int, str)
+2. THE System SHALL support function definitions with array parameters (int arr[], p[])
+3. THE System SHALL support typed array parameters (int arr[], str names[])
+4. THE System SHALL support untyped array parameters (p[], c[])
+5. THE System SHALL support mixed parameter lists (normal + array + default values)
+6. THE System SHALL support default parameter values (e.g., color=0xFFFFFF)
+7. THE System SHALL use case-insensitive function names
+8. THE System SHALL create a new scope for each function call
+9. THE System SHALL support recursive function calls
+10. WHEN a function is defined with array parameters, THE System SHALL pass arrays by reference
+11. WHEN a function modifies an array parameter, THE System SHALL modify the original array
+
+**Array Parameter Examples:**
+- Typed: `Chap1ON(int p[], int c[]) { }`
+- Untyped: `Scene1ON(p[], c[]) { }`
+- Mixed: `OP_walk(c, p[], x, y, w, h, l=10) { }`
 
 ### Requirement B11: Message System
 

@@ -1017,6 +1017,35 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		seq.SetVariable("__return__", int64(value))
 		return nil
 
+	// Legacy function stubs (Windows-specific functions no longer supported)
+	case "shell":
+		// Shell(program, args) - launches external programs (Windows-specific)
+		// This is a legacy function that is no longer supported on cross-platform systems
+		vm.logger.LogInfo("Shell() is a legacy Windows-specific function and is not supported")
+		seq.SetVariable("__return__", int64(0))
+		return nil
+
+	case "getinistr":
+		// GetIniStr(section, key, default, filename) - reads INI configuration files
+		// This is a legacy function that is no longer supported
+		vm.logger.LogInfo("GetIniStr() is a legacy function and is not supported")
+		seq.SetVariable("__return__", "")
+		return nil
+
+	case "mci":
+		// MCI(command) - Windows Media Control Interface commands
+		// This is a legacy Windows-specific function that is no longer supported
+		vm.logger.LogInfo("MCI() is a legacy Windows-specific function and is not supported")
+		seq.SetVariable("__return__", int64(0))
+		return nil
+
+	case "strmci":
+		// StrMCI(command) - String variant of MCI commands
+		// This is a legacy Windows-specific function that is no longer supported
+		vm.logger.LogInfo("StrMCI() is a legacy Windows-specific function and is not supported")
+		seq.SetVariable("__return__", "")
+		return nil
+
 	default:
 		// Unknown built-in function - just log and ignore
 		vm.logger.LogDebug("Unknown built-in function: %s", funcName)

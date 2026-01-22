@@ -609,6 +609,16 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 		identifiers = append(identifiers, ident)
 
+		// Check for array parameter syntax: param[]
+		if p.peekTokenIs(token.LBRACKET) {
+			p.nextToken() // consume [
+			if !p.expectPeek(token.RBRACKET) {
+				return identifiers
+			}
+			// Array parameter - we don't need to store this info in the AST
+			// since FILLY doesn't enforce type checking
+		}
+
 		// Check for default value (e.g., int time=1)
 		if p.peekTokenIs(token.ASSIGN) {
 			p.nextToken() // consume =
@@ -633,6 +643,16 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 
 			ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 			identifiers = append(identifiers, ident)
+
+			// Check for array parameter syntax: param[]
+			if p.peekTokenIs(token.LBRACKET) {
+				p.nextToken() // consume [
+				if !p.expectPeek(token.RBRACKET) {
+					return identifiers
+				}
+				// Array parameter - we don't need to store this info in the AST
+				// since FILLY doesn't enforce type checking
+			}
 
 			// Check for default value
 			if p.peekTokenIs(token.ASSIGN) {
@@ -874,24 +894,86 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 		}
 	}
 
-	// Parse as expression list (works for both parameters and arguments)
-	args := p.parseExpressionList(token.RPAREN)
+	// Parse parameters/arguments manually to handle array syntax
+	params := []*ast.Identifier{}
+
+	// Check if empty parameter list
+	if !p.peekTokenIs(token.RPAREN) {
+		p.nextToken()
+
+		// Parse first parameter/argument
+		if p.curToken.Type == token.IDENT || p.curToken.Type == token.TIME || p.curToken.Type == token.STEP {
+			ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+			// Check for array syntax: param[]
+			if p.peekTokenIs(token.LBRACKET) {
+				p.nextToken() // consume [
+				if !p.expectPeek(token.RBRACKET) {
+					return nil
+				}
+			}
+
+			// Check if this is a function call (identifier followed by LPAREN)
+			// If so, this must be a function call with complex arguments, not a declaration
+			if p.peekTokenIs(token.LPAREN) {
+				return p.parseFunctionCallFallback(name)
+			}
+
+			params = append(params, ident)
+
+			// Check for default value (e.g., l=10)
+			if p.peekTokenIs(token.ASSIGN) {
+				p.nextToken() // consume =
+				p.nextToken() // consume default value
+			}
+
+			// Parse remaining parameters
+			for p.peekTokenIs(token.COMMA) {
+				p.nextToken() // consume comma
+				p.nextToken() // move to next parameter
+
+				if p.curToken.Type == token.IDENT || p.curToken.Type == token.TIME || p.curToken.Type == token.STEP {
+					ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+					// Check for array syntax: param[]
+					if p.peekTokenIs(token.LBRACKET) {
+						p.nextToken() // consume [
+						if !p.expectPeek(token.RBRACKET) {
+							return nil
+						}
+					}
+
+					// Check if this is a function call (identifier followed by LPAREN)
+					if p.peekTokenIs(token.LPAREN) {
+						return p.parseFunctionCallFallback(name)
+					}
+
+					params = append(params, ident)
+
+					// Check for default value
+					if p.peekTokenIs(token.ASSIGN) {
+						p.nextToken() // consume =
+						p.nextToken() // consume default value
+					}
+				} else {
+					// Not a simple identifier - this must be a function call with complex arguments
+					// Reparse as expression list
+					p.errors = []string{} // Clear any errors from parameter parsing
+					return p.parseFunctionCallFallback(name)
+				}
+			}
+		} else {
+			// Not a simple identifier - this must be a function call with complex arguments
+			return p.parseFunctionCallFallback(name)
+		}
+	}
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
 
 	// If followed by {, it's a function declaration
 	if p.peekTokenIs(token.LBRACE) {
-		// This is a function declaration
-		// Convert arguments back to parameter names
-		params := make([]*ast.Identifier, len(args))
-		for i, arg := range args {
-			if ident, ok := arg.(*ast.Identifier); ok {
-				params[i] = ident
-			} else {
-				// Error: function parameters must be identifiers
-				p.errors = append(p.errors, fmt.Sprintf("function parameter must be identifier, got %T", arg))
-				return nil
-			}
-		}
-
 		p.nextToken()
 		body := p.parseBlockStatement()
 
@@ -909,9 +991,55 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 		Expression: &ast.CallExpression{
 			Token:     name.Token,
 			Function:  name,
+			Arguments: convertIdentifiersToExpressions(params),
+		},
+	}
+}
+
+// parseFunctionCallFallback handles function calls with complex arguments
+// We've already parsed some tokens, so we need to build the expression list from what we have
+func (p *Parser) parseFunctionCallFallback(name *ast.Identifier) ast.Statement {
+	// We've already consumed LPAREN and possibly the first token
+	// Parse the current token as an expression
+	args := []ast.Expression{}
+
+	// Parse current token as expression
+	expr := p.parseExpression(LOWEST)
+	if expr != nil {
+		args = append(args, expr)
+	}
+
+	// Parse remaining arguments
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume comma
+		p.nextToken() // move to next argument
+		expr := p.parseExpression(LOWEST)
+		if expr != nil {
+			args = append(args, expr)
+		}
+	}
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	return &ast.ExpressionStatement{
+		Token: name.Token,
+		Expression: &ast.CallExpression{
+			Token:     name.Token,
+			Function:  name,
 			Arguments: args,
 		},
 	}
+}
+
+// convertIdentifiersToExpressions converts a slice of Identifiers to Expressions
+func convertIdentifiersToExpressions(idents []*ast.Identifier) []ast.Expression {
+	exprs := make([]ast.Expression, len(idents))
+	for i, ident := range idents {
+		exprs[i] = ident
+	}
+	return exprs
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {

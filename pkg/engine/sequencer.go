@@ -23,6 +23,7 @@ type Sequencer struct {
 	commands []interpreter.OpCode // OpCode sequence to execute
 	pc       int                  // Program counter
 	active   bool                 // Is sequence active?
+	noLoop   bool                 // If true, don't loop back to beginning when complete
 
 	// Timing state
 	mode         TimingMode // TIME or MIDI_TIME
@@ -53,6 +54,7 @@ func NewSequencer(commands []interpreter.OpCode, mode TimingMode, parent *Sequen
 		commands:     commands,
 		pc:           0,
 		active:       true,
+		noLoop:       false, // By default, sequences loop
 		mode:         mode,
 		waitCount:    0,
 		ticksPerStep: ticksPerStep,
@@ -295,6 +297,11 @@ func (s *Sequencer) GetPC() int {
 	return s.pc
 }
 
+// SetPC sets the program counter
+func (s *Sequencer) SetPC(pc int) {
+	s.pc = pc
+}
+
 // IncrementPC advances the program counter
 func (s *Sequencer) IncrementPC() {
 	s.pc++
@@ -357,4 +364,14 @@ func (s *Sequencer) GetTicksPerStep() int {
 // SetTicksPerStep sets the ticks per step
 func (s *Sequencer) SetTicksPerStep(ticks int) {
 	s.ticksPerStep = ticks
+}
+
+// SetNoLoop sets whether the sequence should loop
+func (s *Sequencer) SetNoLoop(noLoop bool) {
+	s.noLoop = noLoop
+}
+
+// ShouldLoop returns whether the sequence should loop back to the beginning
+func (s *Sequencer) ShouldLoop() bool {
+	return !s.noLoop
 }
