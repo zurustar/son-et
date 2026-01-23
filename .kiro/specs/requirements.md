@@ -158,6 +158,59 @@ These modes have different execution characteristics and must be supported corre
 5. WHEN a sequence that started audio terminates, THE System SHALL continue audio playback
 6. THE System SHALL support concurrent playback of multiple WAV files
 
+### Requirement A7: Reliable Program Termination
+
+**User Story:** As a developer, I want programs to terminate reliably when execution completes or timeout is reached, so that the engine exits cleanly without hanging.
+
+**Rationale:** Programs must terminate properly in all scenarios: normal completion, timeout, ESC key press, or error conditions. Unreliable termination causes hung processes and resource leaks, especially problematic in automated testing and CI/CD environments.
+
+#### Acceptance Criteria
+
+**Normal Termination:**
+1. WHEN a TFY script completes all execution paths, THE Engine SHALL terminate within 1 second
+2. WHEN the main() function returns, THE Engine SHALL clean up all resources and exit
+3. WHEN a game reaches its final instruction, THE Engine SHALL not enter an infinite wait state
+4. IF a mes() block has no more scheduled events, THEN THE Engine SHALL recognize completion and allow termination
+5. WHEN termination occurs normally, THE Engine SHALL return exit code 0
+
+**Timeout-Based Termination:**
+6. WHEN a timeout is specified, THE Engine SHALL use context-based cancellation that propagates to all goroutines
+7. WHEN timeout occurs, THE Engine SHALL terminate within the specified duration ± 500ms
+8. WHEN timeout occurs, THE Engine SHALL cancel all background goroutines (MIDI player, WAV players)
+9. WHEN timeout occurs, THE Engine SHALL clean up all resources before exit
+10. THE Engine SHALL perform periodic termination checks during VM execution (every 100 operations)
+11. THE Engine SHALL perform periodic termination checks during loop execution (every 100 iterations)
+12. THE Engine SHALL enforce safety limits on loops (max 100,000 iterations) to prevent infinite loops
+
+**Goroutine Cancellation:**
+13. WHEN the engine context is cancelled, THE MIDI player goroutine SHALL stop playback and exit
+14. WHEN the engine context is cancelled, THE WAV player goroutines SHALL stop playback and exit
+15. WHEN the engine context is cancelled, THE MIDI stream SHALL return EOF to stop audio processing
+16. THE Engine SHALL not leak goroutines after termination
+
+### Requirement A8: Legacy Function Compatibility
+
+**User Story:** As a developer, I want legacy TFY scripts that use obsolete Windows-specific functions to parse and execute without errors, so that existing content remains playable.
+
+**Rationale:** Many legacy FILLY scripts contain calls to Windows-specific functions (Shell, MCI, GetIniStr with registry paths) that cannot be implemented on modern cross-platform systems. Rather than failing to parse these scripts, the engine should provide stub implementations that allow scripts to continue execution.
+
+#### Acceptance Criteria
+
+1. WHEN the parser encounters Shell() function calls, THE System SHALL parse them successfully
+2. WHEN Shell() is called at runtime, THE System SHALL log a warning and return without error
+3. WHEN the parser encounters MCI() or StrMCI() function calls, THE System SHALL parse them successfully
+4. WHEN MCI() or StrMCI() is called at runtime, THE System SHALL log a warning and return a safe default value
+5. WHEN the parser encounters GetIniStr() with unsupported paths, THE System SHALL parse successfully
+6. WHEN GetIniStr() is called with unsupported paths, THE System SHALL return an empty string
+7. THE System SHALL log warnings for all legacy function calls to aid debugging
+8. THE System SHALL allow script execution to continue after legacy function calls
+
+**Stubbed Functions:**
+- `Shell(command)` - Launches external programs (Windows-specific, no-op on modern systems)
+- `MCI(command)` - Windows Media Control Interface (returns 0)
+- `StrMCI(command)` - String variant of MCI (returns empty string)
+- `GetIniStr(section, key, default, file)` - Returns default value for unsupported paths
+
 ---
 
 ## Part 2: Graphics and Multimedia Requirements
@@ -710,21 +763,29 @@ These requirements support development, testing, and debugging workflows.
 4. THE System SHALL support WAV audio format
 5. THE System SHALL use modern cross-platform libraries for graphics and audio
 
-### Requirement D3: Legacy Feature Exclusions
+### Requirement D3: Legacy Feature Handling
 
-**User Story:** As a developer, I want to know which legacy features are not supported, so that I can plan migrations.
+**User Story:** As a developer, I want to know how legacy features are handled, so that I can understand script behavior and plan migrations.
+
+**Rationale:** Legacy FILLY scripts may contain Windows-specific function calls that cannot be fully implemented on modern cross-platform systems. The engine provides stub implementations for some functions to allow scripts to parse and execute, while other features are completely unsupported.
 
 #### Acceptance Criteria
 
-1. THE System SHALL NOT implement CD audio playback (PlayCD) - obsolete hardware
-2. THE System SHALL NOT implement MCI commands (MCI, StrMCI) - Windows-specific API
-3. THE System SHALL NOT implement Windows Registry access (SetRegStr, GetRegStr) - Windows-specific
-4. THE System SHALL NOT implement AVI video playback (PlayAVI) - complex codec support
-5. THE Documentation SHALL clearly list unsupported features and suggest alternatives
+**Stubbed Functions (parse and execute with warnings):**
+1. THE System SHALL provide stub implementations for Shell(), MCI(), StrMCI() that log warnings and return safe defaults
+2. THE System SHALL allow scripts containing these functions to parse and execute
+3. THE System SHALL log warnings when stubbed functions are called to aid debugging
+
+**Unsupported Features (not implemented):**
+4. THE System SHALL NOT implement CD audio playback (PlayCD) - obsolete hardware
+5. THE System SHALL NOT implement Windows Registry access (SetRegStr, GetRegStr) - Windows-specific
+6. THE System SHALL NOT implement AVI video playback (PlayAVI) - complex codec support
+7. THE Documentation SHALL clearly list unsupported features and suggest alternatives
 
 **Migration Guidance:**
 - CD audio → Use PlayMIDI or PlayWAVE with digital audio files
-- MCI commands → Use PlayMIDI, PlayWAVE, or platform-specific alternatives
+- MCI commands → Stubbed (logs warning, returns 0 or empty string)
+- Shell commands → Stubbed (logs warning, no-op)
 - Registry access → Use INI files (WriteIniInt, GetIniInt, WriteIniStr, GetIniStr)
 - AVI playback → Use modern video formats with external players
 
@@ -740,5 +801,7 @@ This requirements document defines **what** the son-et system must do to correct
 4. **Lexical Variable Scoping** - Variables follow lexical scoping rules with scope chain resolution
 5. **Thread-Safe Execution** - Concurrent access to shared state is safe
 6. **Non-Blocking Audio** - Audio playback runs in the background without blocking
+7. **Reliable Termination** - Programs terminate reliably via timeout, ESC key, or normal completion
+8. **Legacy Compatibility** - Obsolete Windows functions are stubbed to allow script execution
 
 For architectural design and implementation patterns that satisfy these requirements, see [design.md](design.md).

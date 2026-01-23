@@ -7,77 +7,86 @@ import (
 )
 
 func TestRegisterMesBlock_TIME(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
 	}
 
-	// Register TIME mes() block
-	handlerID := engine.RegisterMesBlock(EventTIME, opcodes, nil, 0)
+	// Register TIME mes() block - this creates a sequence immediately
+	seqID := engine.RegisterMesBlock(EventTIME, opcodes, nil, 0)
 
-	// Verify handler was registered
-	if handlerID != 1 {
-		t.Errorf("Expected handler ID 1, got %d", handlerID)
+	// Verify sequence was registered (not event handler)
+	if seqID != 1 {
+		t.Errorf("Expected sequence ID 1, got %d", seqID)
 	}
 
-	// Verify handler is in state
-	handlers := engine.GetState().GetEventHandlers(EventTIME)
-	if len(handlers) != 1 {
-		t.Errorf("Expected 1 handler, got %d", len(handlers))
+	// Verify sequence is in state
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 1 {
+		t.Errorf("Expected 1 sequencer, got %d", len(sequencers))
 	}
 
-	// Verify handler was created with TIME mode
-	if handlers[0].Mode != TIME {
-		t.Errorf("Expected TIME mode, got %d", handlers[0].Mode)
+	// Verify sequencer was created with TIME mode
+	if sequencers[0].GetMode() != TIME {
+		t.Errorf("Expected TIME mode, got %d", sequencers[0].GetMode())
 	}
 
-	// Verify handler stores the OpCode template
-	if len(handlers[0].Commands) != 1 {
-		t.Errorf("Expected 1 command in template, got %d", len(handlers[0].Commands))
+	// Verify sequencer has the commands
+	if len(sequencers[0].commands) != 1 {
+		t.Errorf("Expected 1 command, got %d", len(sequencers[0].commands))
 	}
 }
 
 func TestRegisterMesBlock_MIDI_TIME(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
 	}
 
-	// Register MIDI_TIME mes() block
-	handlerID := engine.RegisterMesBlock(EventMIDI_TIME, opcodes, nil, 0)
+	// Register MIDI_TIME mes() block - this creates a sequence immediately
+	seqID := engine.RegisterMesBlock(EventMIDI_TIME, opcodes, nil, 0)
 
-	// Verify handler was registered
-	if handlerID != 1 {
-		t.Errorf("Expected handler ID 1, got %d", handlerID)
+	// Verify sequence was registered (not event handler)
+	if seqID != 1 {
+		t.Errorf("Expected sequence ID 1, got %d", seqID)
 	}
 
-	// Verify handler is in state
-	handlers := engine.GetState().GetEventHandlers(EventMIDI_TIME)
-	if len(handlers) != 1 {
-		t.Errorf("Expected 1 handler, got %d", len(handlers))
+	// Verify sequence is in state
+	sequencers := engine.GetState().GetSequencers()
+	if len(sequencers) != 1 {
+		t.Errorf("Expected 1 sequencer, got %d", len(sequencers))
 	}
 
-	// Verify handler was created with MIDI_TIME mode
-	if handlers[0].Mode != MIDI_TIME {
-		t.Errorf("Expected MIDI_TIME mode, got %d", handlers[0].Mode)
+	// Verify sequencer was created with MIDI_TIME mode
+	if sequencers[0].GetMode() != MIDI_TIME {
+		t.Errorf("Expected MIDI_TIME mode, got %d", sequencers[0].GetMode())
 	}
 
-	// Verify handler stores the OpCode template
-	if len(handlers[0].Commands) != 1 {
-		t.Errorf("Expected 1 command in template, got %d", len(handlers[0].Commands))
+	// Verify sequencer has the commands
+	if len(sequencers[0].commands) != 1 {
+		t.Errorf("Expected 1 command, got %d", len(sequencers[0].commands))
 	}
 }
 
 func TestRegisterMultipleMesBlocks(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
 	}
 
-	// Register multiple handlers for the same event
+	// Register multiple handlers for the same event (KEY is not TIME/MIDI_TIME)
 	id1 := engine.RegisterMesBlock(EventKEY, opcodes, nil, 0)
 	id2 := engine.RegisterMesBlock(EventKEY, opcodes, nil, 0)
 	id3 := engine.RegisterMesBlock(EventKEY, opcodes, nil, 0)
@@ -95,7 +104,10 @@ func TestRegisterMultipleMesBlocks(t *testing.T) {
 }
 
 func TestRegisterUserEvent(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
@@ -120,7 +132,10 @@ func TestRegisterUserEvent(t *testing.T) {
 }
 
 func TestTriggerEvent(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
@@ -134,8 +149,7 @@ func TestTriggerEvent(t *testing.T) {
 	data := NewEventData(10, 20, 30, 40)
 	engine.TriggerEvent(EventKEY, data)
 
-	// Verify sequencers were registered (2 handlers + 2 triggered = 4 total)
-	// Note: TIME mode handlers also register sequences
+	// Verify sequencers were registered (2 handlers triggered = 2 sequencers)
 	sequencers := engine.GetState().GetSequencers()
 	if len(sequencers) != 2 {
 		t.Errorf("Expected 2 sequencers after trigger, got %d", len(sequencers))
@@ -158,7 +172,10 @@ func TestTriggerEvent(t *testing.T) {
 }
 
 func TestTriggerUserEvent(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
@@ -186,7 +203,10 @@ func TestTriggerUserEvent(t *testing.T) {
 }
 
 func TestMultipleHandlersSameEvent(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes1 := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(1)}},
@@ -298,7 +318,10 @@ func TestCleanupInactiveEventHandlers(t *testing.T) {
 // creates independent sequencer instances for each trigger.
 // This is a regression test for the Sequencer reuse bug.
 func TestTriggerEventMultipleTimes(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
@@ -344,7 +367,10 @@ func TestTriggerEventMultipleTimes(t *testing.T) {
 // TestTriggerEventSequencerIndependence verifies that each triggered sequencer
 // has independent execution state (pc, waitCount, active).
 func TestTriggerEventSequencerIndependence(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(1)}},
@@ -385,7 +411,10 @@ func TestTriggerEventSequencerIndependence(t *testing.T) {
 // TestTriggerUserEventMultipleTimes verifies that USER events also create
 // independent sequencer instances for each trigger.
 func TestTriggerUserEventMultipleTimes(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
@@ -428,7 +457,10 @@ func TestTriggerUserEventMultipleTimes(t *testing.T) {
 // TestEventHandlerPreservesTemplate verifies that the original event handler
 // is not modified when events are triggered.
 func TestEventHandlerPreservesTemplate(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	opcodes := []interpreter.OpCode{
 		{Cmd: interpreter.OpAssign, Args: []any{interpreter.Variable("x"), int64(5)}},
@@ -469,7 +501,10 @@ func TestEventHandlerPreservesTemplate(t *testing.T) {
 // TestEventHandlerInheritsParentScope verifies that triggered sequencers
 // can access variables from their parent scope.
 func TestEventHandlerInheritsParentScope(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	// Create a parent sequencer with a variable
 	parentSeq := NewSequencer([]interpreter.OpCode{}, TIME, nil)
@@ -504,7 +539,10 @@ func TestEventHandlerInheritsParentScope(t *testing.T) {
 // triggered sequencer's variables don't affect the parent scope
 // (unless the variable was originally defined in parent).
 func TestEventHandlerParentScopeIsolation(t *testing.T) {
-	engine := NewEngine(nil, nil, nil)
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	imageDecoder := &MockImageDecoder{Width: 640, Height: 480}
+	engine := NewEngine(nil, assetLoader, imageDecoder)
+	engine.Start() // Need to start engine for context
 
 	// Create a parent sequencer
 	parentSeq := NewSequencer([]interpreter.OpCode{}, TIME, nil)

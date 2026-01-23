@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -183,8 +184,32 @@ func (mp *MIDIPlayer) PlayMIDI(filename string) error {
 	// Start playback in goroutine (non-blocking)
 	mp.isPlaying = true
 	go func() {
+		// Check if context is already cancelled before starting
+		select {
+		case <-mp.engine.GetContext().Done():
+			mp.engine.logger.LogInfo("MIDI playback cancelled before start")
+			mp.mutex.Lock()
+			mp.isPlaying = false
+			mp.mutex.Unlock()
+			return
+		default:
+		}
+
 		mp.player.Play()
 		mp.engine.logger.LogInfo("MIDI playback started: %s", filename)
+
+		// Monitor context cancellation
+		go func() {
+			<-mp.engine.GetContext().Done()
+			mp.engine.logger.LogInfo("MIDI playback cancelled by context")
+			mp.mutex.Lock()
+			if mp.player != nil {
+				mp.player.Close()
+				mp.player = nil
+			}
+			mp.isPlaying = false
+			mp.mutex.Unlock()
+		}()
 	}()
 
 	return nil
@@ -222,6 +247,17 @@ func (mp *MIDIPlayer) IsPlaying() bool {
 func (mp *MIDIPlayer) UpdateHeadless() {
 	mp.mutex.Lock()
 	defer mp.mutex.Unlock()
+
+	// Check for context cancellation
+	select {
+	case <-mp.engine.GetContext().Done():
+		if mp.isPlaying {
+			mp.engine.logger.LogInfo("MIDI playback stopped due to context cancellation")
+			mp.isPlaying = false
+		}
+		return
+	default:
+	}
 
 	if !mp.isPlaying || mp.stream == nil {
 		return
@@ -281,6 +317,13 @@ type MIDIStream struct {
 func (ms *MIDIStream) Read(p []byte) (int, error) {
 	ms.mutex.Lock()
 	defer ms.mutex.Unlock()
+
+	// Check for context cancellation
+	select {
+	case <-ms.engine.GetContext().Done():
+		return 0, io.EOF
+	default:
+	}
 
 	// Calculate how many samples to render
 	sampleCount := len(p) / 4 // 2 channels * 2 bytes per sample

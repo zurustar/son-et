@@ -65,8 +65,31 @@ func (wp *WAVPlayer) PlayWAVE(filename string) error {
 
 	// Start playback in goroutine
 	go func() {
+		// Check if context is already cancelled before starting
+		select {
+		case <-wp.engine.GetContext().Done():
+			wp.engine.logger.LogDebug("WAV playback cancelled before start: %s", filename)
+			wp.mutex.Lock()
+			delete(wp.players, playerID)
+			wp.mutex.Unlock()
+			return
+		default:
+		}
+
 		player.Play()
 		wp.engine.logger.LogDebug("WAV playback started: %s (player %d)", filename, playerID)
+
+		// Monitor context cancellation
+		go func() {
+			<-wp.engine.GetContext().Done()
+			wp.engine.logger.LogDebug("WAV playback cancelled by context: %s", filename)
+			wp.mutex.Lock()
+			if p, ok := wp.players[playerID]; ok {
+				p.Close()
+				delete(wp.players, playerID)
+			}
+			wp.mutex.Unlock()
+		}()
 
 		// Wait for playback to complete, then cleanup
 		// Note: We can't easily detect when playback finishes with Ebiten's API,
@@ -136,8 +159,31 @@ func (wp *WAVPlayer) PlayRsc(resourceID int) error {
 
 	// Start playback in goroutine
 	go func() {
+		// Check if context is already cancelled before starting
+		select {
+		case <-wp.engine.GetContext().Done():
+			wp.engine.logger.LogDebug("WAV resource playback cancelled before start: %d", resourceID)
+			wp.mutex.Lock()
+			delete(wp.players, playerID)
+			wp.mutex.Unlock()
+			return
+		default:
+		}
+
 		player.Play()
 		wp.engine.logger.LogDebug("WAV resource playback started: %d (player %d)", resourceID, playerID)
+
+		// Monitor context cancellation
+		go func() {
+			<-wp.engine.GetContext().Done()
+			wp.engine.logger.LogDebug("WAV resource playback cancelled by context: %d", resourceID)
+			wp.mutex.Lock()
+			if p, ok := wp.players[playerID]; ok {
+				p.Close()
+				delete(wp.players, playerID)
+			}
+			wp.mutex.Unlock()
+		}()
 	}()
 
 	wp.engine.logger.LogInfo("Playing WAV resource: %d", resourceID)

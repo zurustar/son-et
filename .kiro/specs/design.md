@@ -1084,6 +1084,140 @@ The ESC key receives special treatment and is not delivered as a KEY event.
 
 **Rationale**: ESC key provides a guaranteed way for users to exit hung or misbehaving scripts. This is a safety feature that must always work.
 
+### Reliable Timeout Architecture
+
+**Problem Statement**:
+Simple timeout implementations that only check elapsed time in the main Update() loop are unreliable. If the loop is blocked by long-running operations, infinite loops in scripts, or hung mes() blocks, the timeout check never executes. Additionally, background goroutines (MIDI/WAV players) may continue running after timeout.
+
+**Solution**: Context-based cancellation architecture that propagates timeout signals to all components.
+
+**Architecture Overview**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Engine.Start()                            │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  context.WithTimeout(timeout)                        │    │
+│  │         │                                            │    │
+│  │         ├──► Timeout Monitor Goroutine               │    │
+│  │         │         │                                  │    │
+│  │         │         └──► Sets programTerminated        │    │
+│  │         │                                            │    │
+│  │         ├──► VM Execution (checks every 100 ops)     │    │
+│  │         │                                            │    │
+│  │         ├──► Loop Execution (checks every 100 iters) │    │
+│  │         │                                            │    │
+│  │         ├──► MIDI Player (monitors context.Done())   │    │
+│  │         │                                            │    │
+│  │         └──► WAV Players (monitor context.Done())    │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Components**:
+
+1. **Context Management**:
+```go
+// Engine.Start() creates timeout context
+func (e *Engine) Start() {
+    if e.timeout > 0 {
+        e.ctx, e.cancel = context.WithTimeout(context.Background(), e.timeout)
+    } else {
+        e.ctx, e.cancel = context.WithCancel(context.Background())
+    }
+    go e.monitorTimeout()
+}
+
+// Context accessible to all components
+func (e *Engine) GetContext() context.Context {
+    return e.ctx
+}
+```
+
+2. **Timeout Monitor Goroutine**:
+```go
+func (e *Engine) monitorTimeout() {
+    <-e.ctx.Done()
+    if e.ctx.Err() == context.DeadlineExceeded {
+        e.Log(1, "Timeout reached, terminating...")
+        e.programTerminated.Store(true)
+    }
+}
+```
+
+3. **Periodic Termination Checks**:
+```go
+// In VM execution loop
+func (vm *VM) ExecuteTick(seq *Sequencer) error {
+    for iterations := 0; iterations < maxOperations; iterations++ {
+        // Check termination every 100 operations
+        if iterations%100 == 0 && vm.engine.CheckTermination() {
+            return ErrTerminated
+        }
+        // ... execute operation
+    }
+    return nil
+}
+
+// In while/for loops
+func (vm *VM) executeWhile(seq *Sequencer, op OpCode) error {
+    for iterations := 0; iterations < maxLoopIterations; iterations++ {
+        // Check termination every 100 iterations
+        if iterations%100 == 0 && vm.engine.CheckTermination() {
+            return ErrTerminated
+        }
+        // ... execute loop body
+    }
+    return ErrMaxIterations  // Safety limit reached
+}
+```
+
+4. **Goroutine Cancellation**:
+```go
+// MIDI player monitors context
+func (mp *MIDIPlayer) playbackLoop() {
+    for {
+        select {
+        case <-mp.engine.GetContext().Done():
+            mp.cleanup()
+            return
+        default:
+            // Continue playback
+        }
+    }
+}
+
+// MIDI stream returns EOF on cancellation
+func (ms *MidiStream) Read(buf []byte) (int, error) {
+    select {
+    case <-ms.engine.GetContext().Done():
+        return 0, io.EOF
+    default:
+        // Continue reading
+    }
+}
+```
+
+**Safety Limits**:
+| Component | Limit | Purpose |
+|-----------|-------|---------|
+| While loops | 100,000 iterations | Prevent infinite loops |
+| For loops | 100,000 iterations | Prevent infinite loops |
+| Top-level execution | 10,000 operations/tick | Prevent runaway scripts |
+| VM per-tick | 1,000 operations | Ensure responsive updates |
+
+**Timeout Guarantees**:
+- Timeout triggers within specified duration ± 500ms
+- All goroutines terminate when timeout occurs
+- Resources are properly cleaned up
+- Exit code 0 for normal termination, error for timeout
+
+**Key Design Decisions**:
+- Use Go's `context.WithTimeout()` for reliable cancellation
+- Timeout signal propagates to all goroutines via context
+- Periodic checks in execution loops catch hung scripts
+- Safety limits prevent infinite loops even without timeout
+- Graceful shutdown sequence ensures resource cleanup
+
 ### Event Sequence Lifecycle
 
 **Registration**:
@@ -1342,6 +1476,66 @@ type MockImageDecoder struct {
 - Timestamped logging enables timing verification
 - Automatic termination prevents orphaned processes
 
+### Correctness Properties
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
+**Property 1: Engine Termination Completeness**
+
+*For any* TFY script that completes all execution paths (including mes() blocks with no more scheduled events), the engine should terminate within 1 second and return exit code 0, without entering an infinite wait state.
+
+**Validates: Requirements A7.1, A7.3, A7.4, A7.5**
+
+**Property 2: Sequencer Step Progression**
+
+*For any* mes() block containing step() sequences, the sequencer should execute each step in order without skipping or hanging on any valid step index.
+
+**Validates: Requirements A2.3, A2.4, A2.5**
+
+**Property 3: Step Timing Accuracy**
+
+*For any* step scheduled for a specific tick or time in a mes() block, the sequencer should execute it at the correct moment according to the timing mode (TIME or MIDI_TIME).
+
+**Validates: Requirements A3.4, A3.9**
+
+**Property 4: Step Block Completion Detection**
+
+*For any* mes() block, when all steps are complete, the sequencer should mark the block as finished and allow the engine to proceed with termination checks.
+
+**Validates: Requirements A2.5, A7.4**
+
+**Property 5: Animation Frame Completeness**
+
+*For any* sequence of MovePic() or MoveCast() commands in an animation, the engine should execute all animation frames in the correct order without skipping frames due to timing or rendering issues.
+
+**Validates: Requirements B1.12, B1.16, B1.17**
+
+**Property 6: Text Encoding Preservation**
+
+*For any* Japanese text string in a TFY script, the text should be correctly converted from Shift-JIS to UTF-8 during preprocessing, preserved through compilation, and rendered without mojibake (garbled characters) when displayed via TextWrite().
+
+**Validates: Requirements A1.17, A1.18, A1.19, A1.20, B5.5**
+
+**Property 7: Timeout Reliability**
+
+*For any* execution with a specified timeout duration T, the engine should terminate within T ± 500ms, regardless of whether the script contains infinite loops, hung mes() blocks, or long-running MIDI operations. All goroutines should be cancelled and resources cleaned up.
+
+**Validates: Requirements A7.6, A7.7, A7.8, A7.9**
+
+**Property-Based Testing Configuration**:
+- Use Go's testing/quick package or a PBT library like gopter
+- Minimum 100 iterations per property test
+- Each test tagged with: **Feature: core-engine, Property {number}: {property_text}**
+
+**Test Files**:
+- `pkg/engine/termination_property_test.go` - Property 1
+- `pkg/engine/step_progression_property_test.go` - Property 2
+- `pkg/engine/step_timing_property_test.go` - Property 3
+- `pkg/engine/step_completion_property_test.go` - Property 4
+- `pkg/engine/animation_property_test.go` - Property 5
+- `pkg/engine/text_test.go` - Property 6 (encoding tests)
+- `pkg/engine/timeout_reliability_test.go` - Property 7
+
 ---
 
 ## Part 8: Error Handling Philosophy
@@ -1390,6 +1584,55 @@ This section describes the error handling approach.
 - Runtime errors allow continued execution (graceful degradation)
 - All errors are logged with context
 - No silent failures (always log)
+
+### Legacy Function Stubs
+
+**Problem Statement**:
+Legacy FILLY scripts may contain calls to Windows-specific functions that cannot be implemented on modern cross-platform systems. Without stub implementations, these scripts fail to parse, preventing execution of otherwise valid content.
+
+**Solution**: Provide stub implementations that allow scripts to parse and execute while logging warnings for debugging.
+
+**Stubbed Functions**:
+
+| Function | Original Purpose | Stub Behavior |
+|----------|-----------------|---------------|
+| `Shell(cmd)` | Launch external Windows programs | Log warning, return 0 |
+| `MCI(cmd)` | Windows Media Control Interface | Log warning, return 0 |
+| `StrMCI(cmd)` | MCI with string return | Log warning, return "" |
+| `GetIniStr(sec, key, def, file)` | Read INI/Registry | Return default value |
+
+**Implementation Strategy**:
+
+```go
+// In VM.executeBuiltinFunction()
+case "shell":
+    vm.engine.Log(1, "WARNING: Shell() not supported on this platform")
+    return 0, nil
+
+case "mci":
+    vm.engine.Log(1, "WARNING: MCI() not supported on this platform")
+    return 0, nil
+
+case "strmci":
+    vm.engine.Log(1, "WARNING: StrMCI() not supported on this platform")
+    return "", nil
+
+case "getinistr":
+    // Return the default value (3rd argument)
+    if len(args) >= 3 {
+        return args[2], nil
+    }
+    return "", nil
+```
+
+**Key Design Decisions**:
+- Stubs are implemented in the VM, not the parser
+- All stub calls log warnings at debug level 1
+- Return values are safe defaults (0, "", or provided default)
+- Scripts continue execution after stub calls
+- No special parsing required (functions are treated as normal calls)
+
+**Rationale**: This approach maximizes compatibility with legacy content while providing clear feedback to developers about unsupported functionality.
 
 ---
 

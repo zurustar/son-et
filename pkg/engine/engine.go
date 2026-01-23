@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"image/color"
 	"math/rand/v2"
@@ -26,6 +27,8 @@ type Engine struct {
 	programTerminated atomic.Bool
 	timeout           time.Duration
 	startTime         time.Time
+	ctx               context.Context
+	cancel            context.CancelFunc
 }
 
 // NewEngine creates a new FILLY engine.
@@ -33,12 +36,17 @@ func NewEngine(renderer Renderer, assetLoader AssetLoader, imageDecoder ImageDec
 	state := NewEngineState(renderer, assetLoader, imageDecoder)
 	logger := NewLogger(DebugLevelError)
 
+	// Create a background context (will be replaced with timeout context in Start())
+	ctx, cancel := context.WithCancel(context.Background())
+
 	engine := &Engine{
 		state:    state,
 		logger:   logger,
 		random:   rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(time.Now().UnixNano()))),
 		headless: false,
 		timeout:  0,
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 
 	// Create MIDI player
@@ -89,7 +97,23 @@ func (e *Engine) SetDebugLevel(level DebugLevel) {
 func (e *Engine) Start() {
 	e.startTime = time.Now()
 	e.programTerminated.Store(false)
-	e.logger.LogInfo("Engine started")
+
+	// Cancel any existing context
+	if e.cancel != nil {
+		e.cancel()
+	}
+
+	// Create new context with timeout if specified
+	if e.timeout > 0 {
+		e.ctx, e.cancel = context.WithTimeout(context.Background(), e.timeout)
+		e.logger.LogInfo("Engine started with timeout: %v", e.timeout)
+	} else {
+		e.ctx, e.cancel = context.WithCancel(context.Background())
+		e.logger.LogInfo("Engine started (no timeout)")
+	}
+
+	// Start timeout monitor goroutine
+	go e.monitorTimeout()
 }
 
 // Terminate sets the termination flag.
@@ -97,6 +121,27 @@ func (e *Engine) Terminate() {
 	if !e.programTerminated.Load() {
 		e.programTerminated.Store(true)
 		e.logger.LogInfo("Engine termination requested")
+		// Cancel context to propagate termination to all goroutines
+		if e.cancel != nil {
+			e.cancel()
+		}
+	}
+}
+
+// GetContext returns the engine's context for cancellation propagation.
+func (e *Engine) GetContext() context.Context {
+	return e.ctx
+}
+
+// monitorTimeout monitors the context and sets termination flag when timeout occurs.
+func (e *Engine) monitorTimeout() {
+	<-e.ctx.Done()
+
+	// Check if context was cancelled due to timeout
+	if e.ctx.Err() == context.DeadlineExceeded {
+		elapsed := time.Since(e.startTime)
+		e.logger.LogInfo("Timeout exceeded: %v", elapsed)
+		e.programTerminated.Store(true)
 	}
 }
 
@@ -113,17 +158,15 @@ func (e *Engine) CheckTermination() bool {
 		return true
 	}
 
-	// Check timeout
-	if e.timeout > 0 {
-		elapsed := time.Since(e.startTime)
-		if elapsed >= e.timeout {
-			e.logger.LogInfo("Timeout exceeded: %v", elapsed)
-			e.Terminate()
-			return true
-		}
+	// Check context cancellation (timeout or explicit cancel)
+	select {
+	case <-e.ctx.Done():
+		e.logger.LogInfo("Context cancelled: %v", e.ctx.Err())
+		e.programTerminated.Store(true)
+		return true
+	default:
+		return false
 	}
-
-	return false
 }
 
 // Update performs one engine tick (called at 60 FPS).
@@ -171,6 +214,11 @@ func (e *Engine) UpdateVM() error {
 
 	// Process all active sequences
 	for _, seq := range e.state.GetSequencers() {
+		// Check for termination before processing each sequence
+		if e.CheckTermination() {
+			return ErrTerminated
+		}
+
 		// Skip inactive sequences
 		if !seq.IsActive() {
 			continue
@@ -206,6 +254,11 @@ func (e *Engine) UpdateVM() error {
 		opsExecuted := 0
 
 		for opsExecuted < maxOpsPerTick {
+			// Check for termination periodically during execution
+			if opsExecuted%100 == 0 && e.CheckTermination() {
+				return ErrTerminated
+			}
+
 			// Get current command
 			cmd := seq.GetCurrentCommand()
 			if cmd == nil {
@@ -251,6 +304,11 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 		return nil
 	}
 
+	// Check for termination before processing MIDI sequences
+	if e.CheckTermination() {
+		return ErrTerminated
+	}
+
 	e.logger.LogInfo("UpdateMIDISequences: processing %d ticks", tickCount)
 
 	vm := NewVM(e.state, e, e.logger)
@@ -270,6 +328,11 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 
 	// Process each MIDI tick sequentially
 	for tick := 0; tick < tickCount; tick++ {
+		// Check for termination periodically
+		if tick%10 == 0 && e.CheckTermination() {
+			return ErrTerminated
+		}
+
 		// Process all MIDI_TIME sequences for this tick
 		for _, seq := range e.state.GetSequencers() {
 			// Skip inactive sequences
@@ -363,7 +426,21 @@ func (e *Engine) Render() {
 // Shutdown performs cleanup and releases resources.
 func (e *Engine) Shutdown() {
 	e.logger.LogInfo("Engine shutdown")
-	// TODO: Cleanup resources (Phase 3+)
+
+	// Cancel context to stop all goroutines
+	if e.cancel != nil {
+		e.cancel()
+	}
+
+	// Stop MIDI and WAV playback
+	if e.midiPlayer != nil {
+		e.midiPlayer.Stop()
+	}
+	if e.wavPlayer != nil {
+		e.wavPlayer.StopAll()
+	}
+
+	// TODO: Cleanup other resources (Phase 3+)
 }
 
 // GetState returns the engine state (for testing).
@@ -541,7 +618,14 @@ func (e *Engine) ExecuteTopLevel(opcodes []interpreter.OpCode) error {
 	vm := NewVM(e.state, e, e.logger)
 
 	// Execute all opcodes synchronously
+	opsExecuted := 0
+	maxOps := 10000 // Safety limit for top-level execution
 	for !seq.IsComplete() {
+		// Check for termination
+		if e.CheckTermination() {
+			return ErrTerminated
+		}
+
 		cmd := seq.GetCurrentCommand()
 		if cmd == nil {
 			break
@@ -552,9 +636,16 @@ func (e *Engine) ExecuteTopLevel(opcodes []interpreter.OpCode) error {
 		}
 
 		seq.IncrementPC()
+		opsExecuted++
+
+		// Safety check to prevent infinite loops in top-level code
+		if opsExecuted >= maxOps {
+			e.logger.LogError("Top-level execution hit max ops limit (%d)", maxOps)
+			return ErrTerminated
+		}
 	}
 
-	e.logger.LogDebug("Top-level execution complete")
+	e.logger.LogDebug("Top-level execution complete (%d ops)", opsExecuted)
 	return nil
 }
 

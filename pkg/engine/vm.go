@@ -1117,8 +1117,15 @@ func (vm *VM) executeFor(seq *Sequencer, op interpreter.OpCode) error {
 		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpFor fourth argument must be []OpCode, got %T", op.Args[3])
 	}
 
-	// Execute loop
+	// Execute loop with termination checks
+	iterations := 0
+	maxIterations := 100000 // Safety limit
 	for {
+		// Check for termination every 100 iterations
+		if iterations%100 == 0 && vm.engine.CheckTermination() {
+			return ErrTerminated
+		}
+
 		// Evaluate condition
 		if condition != nil {
 			condValue, err := vm.evaluateValue(seq, condition)
@@ -1148,6 +1155,12 @@ func (vm *VM) executeFor(seq *Sequencer, op interpreter.OpCode) error {
 				}
 			}
 		}
+
+		iterations++
+		if iterations >= maxIterations {
+			vm.logger.LogError("For loop hit max iterations limit (%d)", maxIterations)
+			return ErrTerminated
+		}
 	}
 
 	return nil
@@ -1165,8 +1178,15 @@ func (vm *VM) executeWhile(seq *Sequencer, op interpreter.OpCode) error {
 		return NewRuntimeError(op.Cmd.String(), fmt.Sprintf("%v", op.Args), "OpWhile second argument must be []OpCode, got %T", op.Args[1])
 	}
 
-	// Execute loop
+	// Execute loop with termination checks
+	iterations := 0
+	maxIterations := 100000 // Safety limit
 	for {
+		// Check for termination every 100 iterations
+		if iterations%100 == 0 && vm.engine.CheckTermination() {
+			return ErrTerminated
+		}
+
 		// Evaluate condition
 		condValue, err := vm.evaluateValue(seq, condition)
 		if err != nil {
@@ -1180,6 +1200,12 @@ func (vm *VM) executeWhile(seq *Sequencer, op interpreter.OpCode) error {
 		// Execute body
 		if err := vm.executeBlock(seq, body); err != nil {
 			return err
+		}
+
+		iterations++
+		if iterations >= maxIterations {
+			vm.logger.LogError("While loop hit max iterations limit (%d)", maxIterations)
+			return ErrTerminated
 		}
 	}
 
