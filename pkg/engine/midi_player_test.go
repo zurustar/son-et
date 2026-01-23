@@ -1,7 +1,13 @@
 package engine
 
 import (
+	"bytes"
+	"os"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/sinshu/go-meltysynth/meltysynth"
 )
 
 func TestNewMIDIPlayer(t *testing.T) {
@@ -40,6 +46,12 @@ func TestPlayMIDI_NoSoundFont(t *testing.T) {
 	err := engine.PlayMIDI("test.mid")
 	if err == nil {
 		t.Error("Expected error when playing MIDI without soundfont")
+	}
+
+	// Verify the error message indicates no soundfont is loaded (Requirement 5.5)
+	expectedMsg := "no soundfont loaded"
+	if err != nil && !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("Expected error message to contain '%s', got: %s", expectedMsg, err.Error())
 	}
 }
 
@@ -179,5 +191,175 @@ func TestCalculateMIDILength(t *testing.T) {
 	length := calculateMIDILength(data, 480)
 	if length < 0 {
 		t.Errorf("Expected non-negative length, got %d", length)
+	}
+}
+
+// TestStopCleanup tests that Stop() properly cleans up resources
+// Validates Requirements 7.1, 7.2
+func TestStopCleanup(t *testing.T) {
+	// Load soundfont for testing
+	sfData, err := os.ReadFile("../../GeneralUser-GS.sf2")
+	if err != nil {
+		t.Skipf("Skipping test: soundfont not available: %v", err)
+		return
+	}
+
+	sf, err := meltysynth.NewSoundFont(bytes.NewReader(sfData))
+	if err != nil {
+		t.Fatalf("Failed to parse soundfont: %v", err)
+	}
+
+	// Create test engine
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	engine := NewEngine(nil, assetLoader, nil)
+	engine.SetHeadless(true)
+	engine.Start()
+
+	// Create a minimal MIDI file
+	midiData := createTestMIDIFile(10, 20)
+	assetLoader.Files["test.mid"] = midiData
+
+	// Create MIDI player and assign soundfont directly
+	mp := NewMIDIPlayer(engine)
+	mp.soundFont = sf
+
+	// Start playback
+	err = mp.PlayMIDI("test.mid")
+	if err != nil {
+		t.Fatalf("Failed to start MIDI playback: %v", err)
+	}
+
+	// Wait for playback to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify playback is active
+	if !mp.IsPlaying() {
+		t.Fatalf("Playback did not start")
+	}
+
+	// Verify channels are created
+	mp.mutex.Lock()
+	stopChanExists := mp.stopChan != nil
+	finishedChanExists := mp.finishedChan != nil
+	playerExists := mp.player != nil
+	mp.mutex.Unlock()
+
+	if !stopChanExists {
+		t.Errorf("stopChan should be created during playback")
+	}
+	if !finishedChanExists {
+		t.Errorf("finishedChan should be created during playback")
+	}
+	if !playerExists {
+		t.Errorf("player should be created during playback")
+	}
+
+	// Call Stop()
+	mp.Stop()
+
+	// Wait for cleanup to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify playback has stopped
+	if mp.IsPlaying() {
+		t.Errorf("Playback should be stopped after Stop()")
+	}
+
+	// Verify audio player was closed (Requirement 7.1)
+	mp.mutex.Lock()
+	playerClosed := mp.player == nil
+	mp.mutex.Unlock()
+
+	if !playerClosed {
+		t.Errorf("Audio player should be closed after Stop()")
+	}
+
+	// Verify stop channel was signaled (Requirement 7.2)
+	// We can't directly verify the channel was signaled, but we can verify
+	// that calling Stop() multiple times doesn't panic
+	mp.Stop() // Should not panic
+	mp.Stop() // Should not panic
+}
+
+// TestStopWithoutPlayback tests that Stop() can be called safely without active playback
+func TestStopWithoutPlayback(t *testing.T) {
+	// Create test engine
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	engine := NewEngine(nil, assetLoader, nil)
+	engine.SetHeadless(true)
+	engine.Start()
+
+	// Create MIDI player
+	mp := NewMIDIPlayer(engine)
+
+	// Call Stop() without starting playback - should not panic
+	mp.Stop()
+
+	// Verify player is not playing
+	if mp.IsPlaying() {
+		t.Errorf("Player should not be playing")
+	}
+}
+
+// TestStopDuringPlayback tests that Stop() can interrupt active playback
+func TestStopDuringPlayback(t *testing.T) {
+	// Load soundfont for testing
+	sfData, err := os.ReadFile("../../GeneralUser-GS.sf2")
+	if err != nil {
+		t.Skipf("Skipping test: soundfont not available: %v", err)
+		return
+	}
+
+	sf, err := meltysynth.NewSoundFont(bytes.NewReader(sfData))
+	if err != nil {
+		t.Fatalf("Failed to parse soundfont: %v", err)
+	}
+
+	// Create test engine
+	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
+	engine := NewEngine(nil, assetLoader, nil)
+	engine.SetHeadless(true)
+	engine.Start()
+
+	// Create a longer MIDI file to ensure we can stop during playback
+	midiData := createTestMIDIFile(50, 30) // 50 notes, 30 ticks each
+	assetLoader.Files["test.mid"] = midiData
+
+	// Create MIDI player and assign soundfont directly
+	mp := NewMIDIPlayer(engine)
+	mp.soundFont = sf
+
+	// Start playback
+	err = mp.PlayMIDI("test.mid")
+	if err != nil {
+		t.Fatalf("Failed to start MIDI playback: %v", err)
+	}
+
+	// Wait for playback to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify playback is active
+	if !mp.IsPlaying() {
+		t.Fatalf("Playback did not start")
+	}
+
+	// Stop playback while it's active
+	mp.Stop()
+
+	// Wait for stop to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify playback has stopped
+	if mp.IsPlaying() {
+		t.Errorf("Playback should be stopped after Stop()")
+	}
+
+	// Verify audio player was closed
+	mp.mutex.Lock()
+	playerClosed := mp.player == nil
+	mp.mutex.Unlock()
+
+	if !playerClosed {
+		t.Errorf("Audio player should be closed after Stop()")
 	}
 }

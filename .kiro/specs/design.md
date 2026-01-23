@@ -854,13 +854,70 @@ This section describes the design of the audio subsystem.
 
 ### MIDI Architecture
 
-**MIDI Player Design**:
+**MIDI Player Design (gomidi Integration)**:
 - Global singleton (one MIDI file plays at a time)
 - Runs in separate goroutine (audio thread)
-- Uses MeltySynth for MIDI synthesis with SoundFont (.sf2)
+- **Uses gomidi for MIDI file parsing and playback control**
+- **Uses meltysynth for audio synthesis only (not playback control)**
+- **Implements MIDIBridge to forward messages from gomidi to meltysynth**
 - Implements io.Reader interface (MidiStream) for Ebiten audio integration
 - Generates ticks based on wall-clock time and tempo map
 - Invokes tick callbacks to drive MIDI_TIME sequences
+- **Detects playback completion via gomidi's finished channel (not manual parsing)**
+
+**Architecture Overview**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        MIDIPlayer                            │
+│                                                              │
+│  ┌──────────────┐      ┌──────────────┐    ┌─────────────┐ │
+│  │ gomidi.SMF   │─────>│  MIDIBridge  │───>│ meltysynth  │ │
+│  │ (parsing)    │      │ (midi.Writer)│    │ Synthesizer │ │
+│  └──────────────┘      └──────────────┘    └─────────────┘ │
+│         │                                          │         │
+│         │ playMIDIMessages goroutine               │         │
+│         v                                          v         │
+│  ┌──────────────┐                          ┌─────────────┐  │
+│  │ MIDI_END     │                          │ Audio       │  │
+│  │ Event        │                          │ Samples     │  │
+│  └──────────────┘                          └─────────────┘  │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │         WallClockTickGenerator                        │  │
+│  │  (Converts wall-clock time → FILLY ticks)            │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**MIDIBridge Component**:
+```go
+type MIDIBridge struct {
+    synthesizer *meltysynth.Synthesizer
+    mutex       sync.Mutex
+}
+
+func (mb *MIDIBridge) Write(msg midi.Message) error {
+    mb.mutex.Lock()
+    defer mb.mutex.Unlock()
+    
+    // Extract MIDI message components
+    channel, command, data1, data2 := extractMIDIComponents(msg)
+    
+    // Forward to meltysynth
+    mb.synthesizer.ProcessMidiMessage(channel, command, data1, data2)
+    
+    return nil
+}
+```
+
+**Key Architectural Changes**:
+- **Removed**: `meltysynth.MidiFileSequencer` (combined playback + synthesis)
+- **Removed**: `calculateMIDILength()` function (manual parsing)
+- **Removed**: `parseMIDITempo()` function (manual parsing)
+- **Added**: `gomidi.SMF` for MIDI file parsing
+- **Added**: `MIDIBridge` for message forwarding
+- **Added**: `playMIDIMessages()` goroutine for tempo-aware message timing
+- **Added**: `finishedChan` for reliable completion detection
 
 **MIDI Tick Calculation**:
 ```
@@ -917,26 +974,83 @@ The conversion to 32nd notes happens in step(n) calculation.
    c. If found, automatically load SoundFont
    d. If not found, MIDI playback will fail until LoadSoundFont() is called
 1. PlayMIDI(filename) called
-2. Load MIDI file and parse tempo/PPQ using MeltySynth
-3. Verify SoundFont is loaded (error if not)
-4. Create MidiStream (implements io.Reader):
-   a. Wraps MeltySynth sequencer
+2. Load MIDI file and parse using gomidi.SMF
+3. Extract tempo map and PPQ from MIDI file
+4. Verify SoundFont is loaded (error if not)
+5. Create MIDIBridge with meltysynth.Synthesizer
+6. Create channels: stopChan, finishedChan
+7. Start playMIDIMessages goroutine:
+   a. Build timeline of all MIDI messages with absolute ticks
+   b. Sort messages by tick position
+   c. For each message:
+      - Calculate wait duration using tempo map
+      - Wait or check for stop signal
+      - Forward message to MIDIBridge
+   d. Signal completion via finishedChan
+8. Create MidiStream (implements io.Reader):
+   a. Wraps meltysynth.Synthesizer (not sequencer)
    b. Stores tempo map and PPQ
    c. Records start time (wall-clock)
-   d. Calculates total ticks for end detection
-5. Create Ebiten audio player with MidiStream
-6. Start playback in goroutine (non-blocking)
-7. MidiStream.Read() called by audio thread:
-   a. Render audio samples via MeltySynth
-   b. Calculate current tick from elapsed time
-   c. Deliver all ticks from lastTick+1 to currentTick sequentially
-   d. Detect MIDI end (currentTick >= totalTicks)
-   e. Trigger MIDI_END event when complete
-8. On completion:
-   a. Set midiFinished flag
-   b. Trigger MIDI_END event
-   c. Stop tick generation
+   d. No longer tracks totalTicks (end detection via finishedChan)
+9. Create Ebiten audio player with MidiStream
+10. Start playback in goroutine (non-blocking)
+11. Monitor finishedChan in separate goroutine:
+    a. When signaled, trigger MIDI_END event
+    b. Set isPlaying = false
+12. MidiStream.Read() called by audio thread:
+    a. Render audio samples via meltysynth.Synthesizer
+    b. Calculate current tick from elapsed time
+    c. Deliver all ticks from lastTick+1 to currentTick sequentially
+    d. No end detection (handled by finishedChan)
+13. On completion:
+    a. finishedChan signals completion
+    b. Trigger MIDI_END event
+    c. Stop tick generation
 ```
+
+**Tempo-Aware Message Timing**:
+The `playMIDIMessages` goroutine calculates wait durations between MIDI messages using the tempo map:
+
+```go
+func (mp *MIDIPlayer) calculateWaitDuration(startTick, endTick, ppq int, tempoMap []TempoEvent) time.Duration {
+    totalDuration := 0.0
+    currentTick := startTick
+    
+    // Process each tempo segment
+    for i := 0; i < len(tempoMap); i++ {
+        tempoEvent := tempoMap[i]
+        microsPerBeat := float64(tempoEvent.MicrosPerBeat)
+        
+        // Calculate time per MIDI tick at this tempo
+        timePerTick := (microsPerBeat / 1000000.0) / float64(ppq)
+        
+        // Determine segment boundaries
+        var nextTempoTick int
+        if i+1 < len(tempoMap) {
+            nextTempoTick = tempoMap[i+1].Tick
+        } else {
+            nextTempoTick = endTick
+        }
+        
+        // Calculate duration for this segment
+        if currentTick < nextTempoTick && endTick > tempoEvent.Tick {
+            segmentStart := max(currentTick, tempoEvent.Tick)
+            segmentEnd := min(endTick, nextTempoTick)
+            ticksInSegment := segmentEnd - segmentStart
+            totalDuration += float64(ticksInSegment) * timePerTick
+            currentTick = segmentEnd
+        }
+        
+        if currentTick >= endTick {
+            break
+        }
+    }
+    
+    return time.Duration(totalDuration * 1e9) // Convert to nanoseconds
+}
+```
+
+This ensures that MIDI messages are played with correct timing even when tempo changes occur mid-song.
 
 **SoundFont Auto-Loading**:
 The engine automatically searches for and loads a SoundFont file during initialization:
@@ -961,15 +1075,20 @@ NotifyTick(105)
 ```
 
 **Key Design Decisions**:
+- **gomidi for playback control**: Reliable completion detection via finished channel
+- **meltysynth for synthesis only**: High-quality audio rendering
+- **MIDIBridge pattern**: Clean separation between playback and synthesis
+- **Tempo-aware message timing**: Correct playback of files with tempo changes
 - MIDI player is independent from sequences
 - Tick delivery uses wall-clock time (not sample counting) for accuracy
 - Sequential tick delivery prevents frame skipping
 - MidiStream implements io.Reader for Ebiten audio integration
-- MeltySynth provides accurate MIDI synthesis with SoundFont support
 - MIDI continues playing even if starting sequence terminates
 - Only one MIDI file plays at a time (matches original behavior)
-- MIDI end detection based on tick count comparison
+- **No manual MIDI parsing**: Eliminates bugs from running status handling
 - SoundFont auto-loading improves user experience (no manual setup required)
+- **Thread-safe message forwarding**: MIDIBridge uses mutex for concurrent access
+- **Context-based cancellation**: Proper cleanup when engine context is cancelled
 
 ### WAV Architecture
 

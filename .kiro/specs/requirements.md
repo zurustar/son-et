@@ -287,14 +287,24 @@ These requirements define the multimedia capabilities that scripts can use.
 9. THE System SHALL trigger MIDI_END event when playback completes
 10. THE System SHALL deliver all ticks sequentially without skipping (even if processing is delayed)
 
+**MIDI Playback Architecture (gomidi Integration):**
+11. THE System SHALL use gomidi for MIDI file parsing and playback control
+12. THE System SHALL use meltysynth for audio synthesis only (not for playback control)
+13. THE System SHALL implement a MIDI bridge to forward messages from gomidi to meltysynth
+14. THE System SHALL detect playback completion via gomidi's finished channel (not manual parsing)
+15. THE System SHALL maintain backward compatibility with existing MIDI playback API
+16. THE System SHALL support tempo-aware message timing during playback
+17. THE System SHALL handle all MIDI message types (note on/off, control change, program change, pitch bend)
+18. THE System SHALL maintain thread-safety when forwarding MIDI messages
+
 **WAV Playback:**
-11. THE System SHALL support decoding and playing WAV files
-12. THE System SHALL support concurrent playback of multiple WAV files
+19. THE System SHALL support decoding and playing WAV files
+20. THE System SHALL support concurrent playback of multiple WAV files
 
 **Resource Management:**
-13. THE System SHALL support preloading WAV files with resource IDs
-14. THE System SHALL support playing preloaded resources
-15. THE System SHALL support releasing preloaded resources
+21. THE System SHALL support preloading WAV files with resource IDs
+22. THE System SHALL support playing preloaded resources
+23. THE System SHALL support releasing preloaded resources
 
 ### Requirement B3: User Input Handling
 

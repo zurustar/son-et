@@ -6,11 +6,10 @@ toolchain go1.24.11
 
 require (
 	github.com/hajimehoshi/ebiten/v2 v2.9.7
-	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25
 	github.com/sinshu/go-meltysynth v0.0.0-20230205031334-05d311382fc4
+	gitlab.com/gomidi/midi/v2 v2.3.18
 	golang.org/x/image v0.34.0
 	golang.org/x/text v0.33.0
-	gopkg.in/ini.v1 v1.67.1
 )
 
 require (
