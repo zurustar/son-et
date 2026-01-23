@@ -685,7 +685,9 @@ func (e *Engine) AllSequencesComplete() bool {
 	}
 
 	// If all active sequences are complete, check if MIDI is still playing
-	if e.midiPlayer != nil && e.midiPlayer.IsPlaying() {
+	// IMPORTANT: Check IsFinished() first - if MIDI has finished, allow termination
+	// even if IsPlaying() still returns true (audio buffer draining)
+	if e.midiPlayer != nil && e.midiPlayer.IsPlaying() && !e.midiPlayer.IsFinished() {
 		return false
 	}
 

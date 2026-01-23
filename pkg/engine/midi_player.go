@@ -12,8 +12,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/sinshu/go-meltysynth/meltysynth"
-	"gitlab.com/gomidi/midi/v2"
-	"gitlab.com/gomidi/midi/v2/smf"
 )
 
 const (
@@ -44,63 +42,7 @@ type TempoEvent struct {
 	MicrosPerBeat int // Microseconds per quarter note
 }
 
-// MIDIBridge implements midi.Writer to forward MIDI messages from gomidi to meltysynth.
-type MIDIBridge struct {
-	synthesizer *meltysynth.Synthesizer
-	mutex       sync.Mutex
-}
-
-// NewMIDIBridge creates a new MIDI bridge.
-func NewMIDIBridge(synthesizer *meltysynth.Synthesizer) *MIDIBridge {
-	return &MIDIBridge{
-		synthesizer: synthesizer,
-	}
-}
-
-// Write implements midi.Writer interface to forward MIDI messages to meltysynth.
-func (mb *MIDIBridge) Write(msg midi.Message) error {
-	mb.mutex.Lock()
-	defer mb.mutex.Unlock()
-
-	// Extract MIDI message components
-	channel, command, data1, data2 := extractMIDIComponents(msg)
-
-	// Forward to meltysynth
-	mb.synthesizer.ProcessMidiMessage(int32(channel), int32(command), int32(data1), int32(data2))
-
-	return nil
-}
-
-// extractMIDIComponents extracts channel, command, data1, and data2 from a gomidi MIDI message.
-func extractMIDIComponents(msg midi.Message) (channel, command, data1, data2 byte) {
-	bytes := msg.Bytes()
-	if len(bytes) == 0 {
-		return 0, 0, 0, 0
-	}
-
-	// First byte contains status (command + channel for channel messages)
-	status := bytes[0]
-
-	// For channel messages (0x80-0xEF), extract channel and command
-	if status >= 0x80 && status < 0xF0 {
-		channel = status & 0x0F
-		command = status & 0xF0
-	} else {
-		// System messages (0xF0-0xFF) - no channel
-		channel = 0
-		command = status
-	}
-
-	// Extract data bytes
-	if len(bytes) > 1 {
-		data1 = bytes[1]
-	}
-	if len(bytes) > 2 {
-		data2 = bytes[2]
-	}
-
-	return channel, command, data1, data2
-}
+// MIDIBridge is no longer needed - we use MeltySynth's MidiFileSequencer directly
 
 // MIDIPlayer manages MIDI playback with tick generation.
 type MIDIPlayer struct {
@@ -108,11 +50,11 @@ type MIDIPlayer struct {
 	soundFont    *meltysynth.SoundFont
 	player       *audio.Player
 	stream       *MIDIStream
-	bridge       *MIDIBridge
+	sequencer    *meltysynth.MidiFileSequencer // Use MeltySynth's sequencer
 	stopChan     chan bool
-	finishedChan chan bool
 	mutex        sync.Mutex
 	isPlaying    bool
+	isFinished   bool // Flag to track if MIDI has finished playing
 	engine       *Engine
 }
 
@@ -176,9 +118,6 @@ func (mp *MIDIPlayer) PlayMIDI(filename string) error {
 	if mp.stopChan != nil {
 		close(mp.stopChan)
 	}
-	if mp.finishedChan != nil {
-		close(mp.finishedChan)
-	}
 
 	// Load MIDI file via AssetLoader
 	data, err := mp.engine.state.assetLoader.ReadFile(filename)
@@ -186,36 +125,29 @@ func (mp *MIDIPlayer) PlayMIDI(filename string) error {
 		return fmt.Errorf("failed to load MIDI file %s: %w", filename, err)
 	}
 
-	// Parse MIDI file using gomidi
-	smfData, err := smf.ReadFrom(bytes.NewReader(data))
+	// Parse MIDI file using MeltySynth
+	midiFile, err := meltysynth.NewMidiFile(bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to parse MIDI file %s: %w", filename, err)
 	}
 
-	// Extract PPQ from time format
-	ppq := 480 // default
-	if mt, ok := smfData.TimeFormat.(smf.MetricTicks); ok {
-		ppq = int(mt)
-	}
-
-	// Parse tempo map for tick generation
-	tempoMap, err := extractTempoMap(smfData, ppq)
+	// Parse tempo map and PPQ for tick generation
+	tempoMap, ppq, err := parseMIDITempo(data)
 	if err != nil {
-		mp.engine.logger.LogError("Failed to extract tempo map: %v, using defaults", err)
+		mp.engine.logger.LogError("Failed to parse tempo map: %v, using defaults", err)
 		tempoMap = []TempoEvent{{Tick: 0, MicrosPerBeat: 500000}} // 120 BPM
+		ppq = 480
 	}
 
-	// Calculate total ticks (find the last event across all tracks)
-	totalTicks := 0
-	for _, track := range smfData.Tracks {
-		absTick := 0
-		for _, event := range track {
-			absTick += int(event.Delta)
-		}
-		if absTick > totalTicks {
-			totalTicks = absTick
-		}
+	// Log tempo map for debugging
+	mp.engine.logger.LogInfo("Tempo map: %d events", len(tempoMap))
+	for i, te := range tempoMap {
+		bpm := 60000000 / te.MicrosPerBeat
+		mp.engine.logger.LogInfo("  Tempo %d: tick=%d, BPM=%d, microsPerBeat=%d", i, te.Tick, bpm, te.MicrosPerBeat)
 	}
+
+	// Calculate total ticks
+	totalTicks := calculateMIDILength(data, ppq)
 
 	// Calculate duration in seconds (considering tempo changes)
 	durationSeconds := 0.0
@@ -251,21 +183,22 @@ func (mp *MIDIPlayer) PlayMIDI(filename string) error {
 		return fmt.Errorf("failed to create synthesizer: %w", err)
 	}
 
-	// Create MIDI bridge
-	mp.bridge = NewMIDIBridge(synthesizer)
+	// Create sequencer (MeltySynth's built-in sequencer)
+	mp.sequencer = meltysynth.NewMidiFileSequencer(synthesizer)
+	mp.sequencer.Play(midiFile, false) // loop=false
 
 	// Create channels for playback control
 	mp.stopChan = make(chan bool, 1)
-	mp.finishedChan = make(chan bool, 1)
 
 	// Create tick generator
 	tickGen := NewWallClockTickGenerator(MIDISampleRate, ppq, tempoMap)
 
 	// Create MIDI stream
 	mp.stream = &MIDIStream{
-		synthesizer:   synthesizer,
+		sequencer:     mp.sequencer,
 		tickGenerator: tickGen,
 		startTime:     time.Now(),
+		totalTicks:    int64(totalTicks),
 		engine:        mp.engine,
 		lastTick:      -1,
 	}
@@ -284,9 +217,7 @@ func (mp *MIDIPlayer) PlayMIDI(filename string) error {
 
 	// Start playback in goroutine (non-blocking)
 	mp.isPlaying = true
-
-	// Start goroutine to play MIDI messages through the bridge
-	go mp.playMIDIMessages(smfData, ppq)
+	mp.isFinished = false // Reset finished flag
 
 	// Start audio playback
 	go func() {
@@ -337,147 +268,7 @@ func (mp *MIDIPlayer) PlayMIDI(filename string) error {
 		}()
 	}()
 
-	// Monitor finished channel
-	go func() {
-		<-mp.finishedChan
-		mp.engine.logger.LogInfo("MIDI playback completed")
-		mp.mutex.Lock()
-		mp.isPlaying = false
-		mp.mutex.Unlock()
-		// Trigger MIDI_END event
-		mp.engine.TriggerEvent(EventMIDI_END, &EventData{})
-	}()
-
 	return nil
-}
-
-// playMIDIMessages plays MIDI messages from the SMF file through the bridge with proper timing.
-func (mp *MIDIPlayer) playMIDIMessages(smfData *smf.SMF, ppq int) {
-	// Build a timeline of all MIDI messages across all tracks
-	type timedMessage struct {
-		absTick int
-		message smf.Message
-	}
-	var timeline []timedMessage
-
-	for _, track := range smfData.Tracks {
-		absTick := 0
-		for _, event := range track {
-			absTick += int(event.Delta)
-			msg := event.Message
-
-			// Skip meta messages (they don't produce sound)
-			if msg.IsMeta() {
-				continue
-			}
-
-			// Only process playable MIDI messages
-			if msg.IsPlayable() {
-				timeline = append(timeline, timedMessage{
-					absTick: absTick,
-					message: msg,
-				})
-			}
-		}
-	}
-
-	// Sort timeline by absolute tick
-	// (Simple bubble sort since we expect relatively few messages)
-	for i := 0; i < len(timeline); i++ {
-		for j := i + 1; j < len(timeline); j++ {
-			if timeline[j].absTick < timeline[i].absTick {
-				timeline[i], timeline[j] = timeline[j], timeline[i]
-			}
-		}
-	}
-
-	// Get tempo map from the stream's tick generator
-	mp.mutex.Lock()
-	tempoMap := mp.stream.tickGenerator.tempoMap
-	mp.mutex.Unlock()
-
-	// Play messages with timing
-	lastTick := 0
-	for _, tm := range timeline {
-		// Calculate wait time based on tick delta
-		tickDelta := tm.absTick - lastTick
-		if tickDelta > 0 {
-			// Calculate wait duration based on tempo map
-			waitDuration := mp.calculateWaitDuration(lastTick, tm.absTick, ppq, tempoMap)
-
-			// Wait or check for stop signal
-			select {
-			case <-mp.stopChan:
-				mp.engine.logger.LogInfo("MIDI playback stopped")
-				return
-			case <-time.After(waitDuration):
-				// Continue
-			}
-		}
-
-		// Send message to bridge (convert smf.Message to midi.Message)
-		midiMsg := midi.Message(tm.message.Bytes())
-		if err := mp.bridge.Write(midiMsg); err != nil {
-			mp.engine.logger.LogError("Failed to write MIDI message: %v", err)
-		}
-
-		lastTick = tm.absTick
-	}
-
-	// Signal completion
-	select {
-	case mp.finishedChan <- true:
-	default:
-	}
-}
-
-// calculateWaitDuration calculates the wait duration between two MIDI ticks,
-// accounting for tempo changes in the tempo map.
-func (mp *MIDIPlayer) calculateWaitDuration(startTick, endTick, ppq int, tempoMap []TempoEvent) time.Duration {
-	totalDuration := 0.0
-	currentTick := startTick
-
-	// Find the tempo at the start tick
-	currentTempoIdx := 0
-	for i := len(tempoMap) - 1; i >= 0; i-- {
-		if tempoMap[i].Tick <= startTick {
-			currentTempoIdx = i
-			break
-		}
-	}
-
-	// Calculate duration segment by segment, handling tempo changes
-	for currentTick < endTick {
-		currentTempo := tempoMap[currentTempoIdx]
-		microsPerBeat := float64(currentTempo.MicrosPerBeat)
-
-		// Calculate time per MIDI tick at current tempo
-		// 1 quarter note = PPQ ticks
-		// Time per tick = (microsPerBeat / 1000000) / PPQ seconds
-		timePerTick := (microsPerBeat / 1000000.0) / float64(ppq)
-
-		// Determine the end of this tempo segment
-		segmentEndTick := endTick
-		if currentTempoIdx+1 < len(tempoMap) {
-			nextTempoTick := tempoMap[currentTempoIdx+1].Tick
-			if nextTempoTick < endTick {
-				segmentEndTick = nextTempoTick
-			}
-		}
-
-		// Calculate duration for this segment
-		ticksInSegment := segmentEndTick - currentTick
-		segmentDuration := float64(ticksInSegment) * timePerTick
-		totalDuration += segmentDuration
-
-		// Move to next segment
-		currentTick = segmentEndTick
-		if currentTempoIdx+1 < len(tempoMap) && currentTick >= tempoMap[currentTempoIdx+1].Tick {
-			currentTempoIdx++
-		}
-	}
-
-	return time.Duration(totalDuration * float64(time.Second))
 }
 
 // Stop stops MIDI playback.
@@ -515,7 +306,13 @@ func (mp *MIDIPlayer) IsPlaying() bool {
 	return mp.player.IsPlaying()
 }
 
-// UpdateHeadless updates MIDI tick in headless mode.
+// IsFinished returns whether MIDI playback has finished.
+func (mp *MIDIPlayer) IsFinished() bool {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	return mp.isFinished
+}
+
 // This is called from the main loop when running in headless mode.
 func (mp *MIDIPlayer) UpdateHeadless() {
 	mp.mutex.Lock()
@@ -563,11 +360,13 @@ func (mp *MIDIPlayer) UpdateHeadless() {
 
 // MIDIStream implements io.Reader for MIDI audio streaming.
 type MIDIStream struct {
-	synthesizer   *meltysynth.Synthesizer
+	sequencer     *meltysynth.MidiFileSequencer // Use MeltySynth's sequencer
 	tickGenerator *WallClockTickGenerator
 	startTime     time.Time
+	totalTicks    int64
 	engine        *Engine
 	lastTick      int
+	endReported   bool
 	mutex         sync.Mutex
 }
 
@@ -586,10 +385,10 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 	// Calculate how many samples to render
 	sampleCount := len(p) / 4 // 2 channels * 2 bytes per sample
 
-	// Render audio samples
+	// Render audio samples using MeltySynth's sequencer
 	left := make([]float32, sampleCount)
 	right := make([]float32, sampleCount)
-	ms.synthesizer.Render(left, right)
+	ms.sequencer.Render(left, right)
 
 	// Convert float32 samples to int16 and interleave
 	for i := 0; i < sampleCount; i++ {
@@ -605,6 +404,26 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 	// Calculate current tick based on wall-clock time (in MIDI PPQ units)
 	elapsed := time.Since(ms.startTime).Seconds()
 	currentMIDITick := ms.tickGenerator.CalculateTickFromTime(elapsed)
+
+	// Check if we've reached the end of the MIDI file
+	if int64(currentMIDITick) >= ms.totalTicks && !ms.endReported {
+		ms.engine.logger.LogInfo("MIDI playback ended (currentTick=%d >= totalTicks=%d), triggering MIDI_END event",
+			currentMIDITick, ms.totalTicks)
+		ms.endReported = true
+
+		// Mark MIDI as finished in the player
+		if ms.engine.midiPlayer != nil {
+			ms.engine.midiPlayer.mutex.Lock()
+			ms.engine.midiPlayer.isFinished = true
+			ms.engine.midiPlayer.isPlaying = false
+			ms.engine.midiPlayer.mutex.Unlock()
+		}
+
+		// Trigger MIDI_END event
+		ms.engine.TriggerEvent(EventMIDI_END, &EventData{})
+		// Stop sending ticks - MIDI playback is complete
+		return len(p), nil
+	}
 
 	// Convert MIDI ticks to FILLY ticks (32nd note resolution)
 	// 1 quarter note = 8 FILLY ticks (32nd notes)
@@ -630,33 +449,6 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// extractTempoMap extracts tempo events from a gomidi SMF file.
-func extractTempoMap(smfData *smf.SMF, ppq int) ([]TempoEvent, error) {
-	// Default tempo: 120 BPM (500000 microseconds per beat)
-	events := []TempoEvent{{Tick: 0, MicrosPerBeat: 500000}}
-
-	// Scan all tracks for tempo events
-	for _, track := range smfData.Tracks {
-		absTick := 0
-		for _, event := range track {
-			absTick += int(event.Delta)
-			msg := event.Message
-
-			// Check for tempo meta message
-			var bpm float64
-			if msg.GetMetaTempo(&bpm) {
-				microsPerBeat := int(60000000 / bpm)
-				events = append(events, TempoEvent{
-					Tick:          absTick,
-					MicrosPerBeat: microsPerBeat,
-				})
-			}
-		}
-	}
-
-	return events, nil
-}
-
 // parseMIDITempo extracts tempo events and PPQ from MIDI file data.
 func parseMIDITempo(data []byte) ([]TempoEvent, int, error) {
 	if len(data) < 14 {
@@ -675,8 +467,8 @@ func parseMIDITempo(data []byte) ([]TempoEvent, int, error) {
 		ppq = timeDivision
 	}
 
-	// Default tempo: 120 BPM (500000 microseconds per beat)
-	events := []TempoEvent{{Tick: 0, MicrosPerBeat: 500000}}
+	// Don't add default tempo yet - only add if no tempo events found
+	var events []TempoEvent
 
 	// Scan tracks for tempo events
 	offset := 14
@@ -769,6 +561,14 @@ func parseMIDITempo(data []byte) ([]TempoEvent, int, error) {
 		}
 
 		offset = trackEnd
+	}
+
+	// If no tempo events found, add default 120 BPM at tick 0
+	if len(events) == 0 {
+		events = []TempoEvent{{Tick: 0, MicrosPerBeat: 500000}}
+	} else if events[0].Tick > 0 {
+		// If first tempo event is not at tick 0, add default tempo at tick 0
+		events = append([]TempoEvent{{Tick: 0, MicrosPerBeat: 500000}}, events...)
 	}
 
 	return events, ppq, nil
