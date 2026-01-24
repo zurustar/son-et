@@ -4,11 +4,13 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/zurustar/son-et/pkg/cli"
 	"github.com/zurustar/son-et/pkg/logger"
 	"github.com/zurustar/son-et/pkg/script"
 	"github.com/zurustar/son-et/pkg/title"
+	"github.com/zurustar/son-et/pkg/window"
 )
 
 // Application はアプリケーションのメインロジックを管理する
@@ -65,7 +67,10 @@ func (app *Application) Run(args []string) error {
 		app.log.Debug("Script content preview", "name", s.FileName, "preview", truncate(s.Content, 100))
 	}
 
-	// TODO: 5. 仮想デスクトップの実行
+	// 5. 仮想デスクトップの実行
+	if err := app.runDesktop(); err != nil {
+		return fmt.Errorf("failed to run desktop: %w", err)
+	}
 
 	app.log.Info("Application terminated normally")
 	return nil
@@ -120,13 +125,34 @@ func (app *Application) loadTitle() (*title.FillyTitle, error) {
 
 // selectTitle タイトルを選択（選択画面が必要な場合は表示）
 func (app *Application) selectTitle(titles []title.FillyTitle) (*title.FillyTitle, error) {
-	// TODO: 選択画面の実装（現在は仮実装：最初のタイトルを返す）
 	if len(titles) == 0 {
 		return nil, fmt.Errorf("no titles available for selection")
 	}
 
-	app.log.Info("Multiple titles available, selecting first one (temporary implementation)", "count", len(titles))
-	return &titles[0], nil
+	app.log.Info("Multiple titles available, showing selection screen", "count", len(titles))
+
+	// ヘッドレスモードの場合は標準入出力で選択
+	if app.config.Headless {
+		return window.RunHeadless(titles, app.config.Timeout, os.Stdin, os.Stdout)
+	}
+
+	// GUIモードの場合はウィンドウで選択
+	return window.Run(window.ModeSelection, titles, app.config.Timeout)
+}
+
+// runDesktop 仮想デスクトップを実行
+func (app *Application) runDesktop() error {
+	app.log.Info("Starting virtual desktop")
+
+	// ヘッドレスモードの場合は何もしない（将来的にスクリプト実行）
+	if app.config.Headless {
+		app.log.Info("Headless mode: skipping desktop display")
+		return nil
+	}
+
+	// GUIモードの場合は仮想デスクトップを表示
+	_, err := window.Run(window.ModeDesktop, nil, app.config.Timeout)
+	return err
 }
 
 // loadScripts スクリプトファイルを読み込む
