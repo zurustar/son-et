@@ -71,13 +71,13 @@ son-et --headless --timeout=5s <プロジェクトディレクトリ>
 **使用例:**
 ```bash
 # 5秒間ヘッドレスで実行してログを確認
-son-et --headless --timeout=5s samples/kuma2
+son-et --headless --timeout=5s <プロジェクトディレクトリ>
 
 # ログをファイルに保存
-son-et --headless --timeout=5s samples/kuma2 > test.log 2>&1
+son-et --headless --timeout=5s <プロジェクトディレクトリ> > test.log 2>&1
 
 # 環境変数を使用
-HEADLESS=1 son-et --timeout=3s samples/kuma2
+HEADLESS=1 son-et --timeout=3s <プロジェクトディレクトリ>
 ```
 
 **オーディオの動作:**
@@ -105,23 +105,36 @@ HEADLESS=1 son-et --timeout=3s samples/kuma2
 
 **ビルド手順:**
 
-1. ビルドタグを使用してプロジェクトを埋め込む：
+ビルドスクリプトを使用してプロジェクトを埋め込みます：
 
 ```bash
-go build -tags embed_<プロジェクト名> -o <実行ファイル名> ./cmd/son-et
+./scripts/build-embedded.sh <プロジェクトディレクトリ> [実行ファイル名]
 ```
 
-2. 生成された実行ファイルを配布：
-
+**例:**
 ```bash
-./<実行ファイル名>
+# プロジェクトを埋め込んだ実行ファイルを作成
+./scripts/build-embedded.sh samples/my_project my_project
+
+# 生成された実行ファイルを実行
+./bin/my_project
+
+# ヘッドレスモードで実行
+./bin/my_project --headless --timeout 5s
 ```
 
 **Embedded Modeの特徴:**
 *   TFYスクリプトがビルド時に実行ファイルに埋め込まれます
 *   アセットファイル（画像、音楽）も実行ファイルに埋め込まれます
 *   配布先でTFYファイルやアセットファイルを別途用意する必要がありません
+*   引数なしで実行可能（プロジェクトディレクトリの指定不要）
 *   ただし、MIDIを再生する場合はSoundFont（.sf2）ファイルが別途必要です
+
+**ビルドの仕組み:**
+1. ビルドスクリプトがプロジェクトファイルを一時ディレクトリにコピー
+2. Goの`embed`パッケージを使用してファイルを埋め込み
+3. ビルド後、一時ファイルを自動削除
+4. 生成された実行ファイルは`bin/`ディレクトリに配置されます
 
 ## 画面表示について
 
