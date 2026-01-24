@@ -186,6 +186,7 @@ FILLYタイトルは、アセットが格納されたディレクトリとして
 cmd/son-et/         # エントリーポイント
   main.go
 pkg/
+  app/              # アプリケーションのメインロジック
   cli/              # コマンドライン引数解析
   logger/           # ロガー
   window/           # Ebitengineウィンドウ管理
