@@ -46,16 +46,18 @@ type TempoEvent struct {
 
 // MIDIPlayer manages MIDI playback with tick generation.
 type MIDIPlayer struct {
-	audioContext *audio.Context
-	soundFont    *meltysynth.SoundFont
-	player       *audio.Player
-	stream       *MIDIStream
-	sequencer    *meltysynth.MidiFileSequencer // Use MeltySynth's sequencer
-	stopChan     chan bool
-	mutex        sync.Mutex
-	isPlaying    bool
-	isFinished   bool // Flag to track if MIDI has finished playing
-	engine       *Engine
+	audioContext     *audio.Context
+	soundFont        *meltysynth.SoundFont
+	player           *audio.Player
+	stream           *MIDIStream
+	sequencer        *meltysynth.MidiFileSequencer // Use MeltySynth's sequencer
+	stopChan         chan bool
+	mutex            sync.Mutex
+	isPlaying        bool
+	isFinished       bool // Flag to track if MIDI has finished playing
+	engine           *Engine
+	pendingMIDITicks int        // Accumulated MIDI ticks to process
+	midiTickMutex    sync.Mutex // Protects pendingMIDITicks
 }
 
 // NewMIDIPlayer creates a new MIDI player.
@@ -355,8 +357,11 @@ func (mp *MIDIPlayer) UpdateHeadless() {
 		return
 	}
 
-	// Update MIDI sequences with the number of ticks advanced (in FILLY ticks)
-	mp.engine.UpdateMIDISequences(ticksAdvanced)
+	// Accumulate MIDI ticks instead of processing immediately
+	// This allows the main thread (Update) to process them safely
+	mp.midiTickMutex.Lock()
+	mp.pendingMIDITicks += ticksAdvanced
+	mp.midiTickMutex.Unlock()
 
 	// Update the last delivered tick (in FILLY ticks)
 	mp.stream.tickGenerator.SetLastDeliveredTick(currentMIDITick)
@@ -444,8 +449,11 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 		ms.engine.logger.LogDebug("MIDIStream.Read: ticksAdvanced=%d (currentTick=%d, lastTick=%d, currentMIDITick=%d)",
 			ticksAdvanced, currentTick, ms.lastTick, currentMIDITick)
 
-		// Update MIDI sequences with the number of ticks advanced (in FILLY ticks)
-		ms.engine.UpdateMIDISequences(ticksAdvanced)
+		// Accumulate MIDI ticks instead of processing immediately
+		// This allows the main thread (Update) to process them safely
+		ms.engine.midiPlayer.midiTickMutex.Lock()
+		ms.engine.midiPlayer.pendingMIDITicks += ticksAdvanced
+		ms.engine.midiPlayer.midiTickMutex.Unlock()
 
 		// Update the last delivered tick (in FILLY ticks)
 		ms.tickGenerator.SetLastDeliveredTick(currentMIDITick)

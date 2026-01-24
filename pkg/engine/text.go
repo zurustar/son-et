@@ -106,6 +106,10 @@ func (tr *TextRenderer) SetBackMode(mode int) {
 
 // TextWrite draws text on a picture at the specified position.
 func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
+	// Lock for graphics state modification
+	tr.engine.state.renderMutex.Lock()
+	defer tr.engine.state.renderMutex.Unlock()
+
 	// Get the picture
 	pic := tr.engine.state.GetPicture(picID)
 	if pic == nil {

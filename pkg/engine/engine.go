@@ -180,6 +180,21 @@ func (e *Engine) Update() error {
 	// Increment tick counter
 	e.state.IncrementTick()
 
+	// Process pending MIDI ticks (from MIDI callback thread)
+	// This ensures all MIDI operations happen on the main thread
+	if e.midiPlayer != nil {
+		e.midiPlayer.midiTickMutex.Lock()
+		pendingTicks := e.midiPlayer.pendingMIDITicks
+		e.midiPlayer.pendingMIDITicks = 0
+		e.midiPlayer.midiTickMutex.Unlock()
+
+		if pendingTicks > 0 {
+			if err := e.UpdateMIDISequences(pendingTicks); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Update MIDI in headless mode
 	if e.IsHeadless() && e.midiPlayer != nil {
 		e.midiPlayer.UpdateHeadless()
@@ -309,12 +324,14 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 		return ErrTerminated
 	}
 
-	e.logger.LogInfo("UpdateMIDISequences: processing %d ticks", tickCount)
+	if e.logger.GetLevel() >= DebugLevelDebug {
+		e.logger.LogDebug("UpdateMIDISequences: processing %d ticks", tickCount)
+	}
 
 	vm := NewVM(e.state, e, e.logger)
 
-	// Log MIDI sequences status (first tick only)
-	if tickCount > 0 {
+	// Log MIDI sequences status (first tick only) - only at debug level
+	if tickCount > 0 && e.logger.GetLevel() >= DebugLevelDebug {
 		midiSeqCount := 0
 		for _, seq := range e.state.GetSequencers() {
 			if seq.GetMode() == MIDI_TIME && seq.IsActive() && !seq.IsComplete() {
@@ -322,7 +339,7 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 			}
 		}
 		if midiSeqCount == 0 {
-			e.logger.LogInfo("  No active MIDI_TIME sequences found")
+			e.logger.LogDebug("  No active MIDI_TIME sequences found")
 		}
 	}
 
@@ -350,12 +367,7 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 
 			// Handle waiting sequences
 			if seq.IsWaiting() {
-				waitBefore := seq.GetWaitCount()
 				seq.DecrementWait()
-				waitAfter := seq.GetWaitCount()
-				if tick == 0 {
-					e.logger.LogDebug("  Seq %d: wait %d -> %d", seq.GetID(), waitBefore, waitAfter)
-				}
 				continue
 			}
 
@@ -363,9 +375,6 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 			if seq.GetPC() >= len(seq.commands) {
 				if len(seq.commands) > 0 && seq.ShouldLoop() {
 					seq.SetPC(0)
-					if tick == 0 {
-						e.logger.LogDebug("  Seq %d: looped back to beginning", seq.GetID())
-					}
 				} else {
 					// Sequence is complete and should not loop
 					continue
@@ -375,10 +384,6 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 			// Execute one command if not waiting
 			cmd := seq.GetCurrentCommand()
 			if cmd == nil {
-				if tick == 0 {
-					e.logger.LogInfo("  Seq %d: no current command (PC=%d)",
-						seq.GetID(), seq.GetPC())
-				}
 				continue
 			}
 
@@ -395,12 +400,6 @@ func (e *Engine) UpdateMIDISequences(tickCount int) error {
 				// For resilience, continue execution instead of stopping the engine
 				// This allows games to continue running even if individual operations fail
 				// The original FILLY engine was likely more permissive with errors
-			}
-
-			// Log PC after execution (first tick only)
-			if tick == 0 {
-				e.logger.LogInfo("  Seq %d: after execution, PC=%d, waiting=%v, waitCount=%d",
-					seq.GetID(), seq.GetPC(), seq.IsWaiting(), seq.GetWaitCount())
 			}
 
 			// Advance program counter
@@ -732,14 +731,14 @@ func (e *Engine) PicHeight(picID int) int {
 }
 
 // MovePic copies pixels from source picture to destination picture with transparency.
-func (e *Engine) MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode int) {
-	err := e.state.MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
+func (e *Engine) MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) {
+	err := e.state.MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
 	if err != nil {
 		e.logger.LogError("MovePic failed: %v", err)
 		return
 	}
-	e.logger.LogDebug("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d) mode=%d",
-		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
+	e.logger.LogDebug("MovePic: src=%d (%d,%d,%d,%d) -> dst=%d (%d,%d)",
+		srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
 }
 
 // MoveSPic copies and scales pixels from source picture to destination picture with transparency.
@@ -977,6 +976,10 @@ func (e *Engine) SetROP(mode int) {
 
 // DrawLine draws a line on a picture.
 func (e *Engine) DrawLine(picID, x1, y1, x2, y2 int) error {
+	// Lock for graphics state modification
+	e.state.renderMutex.Lock()
+	defer e.state.renderMutex.Unlock()
+
 	pic := e.state.GetPicture(picID)
 	if pic == nil {
 		return NewRuntimeError("DrawLine", "", "Picture %d not found", picID)
@@ -992,6 +995,10 @@ func (e *Engine) DrawLine(picID, x1, y1, x2, y2 int) error {
 
 // DrawCircle draws a circle on a picture.
 func (e *Engine) DrawCircle(picID, x, y, radius, fillMode int) error {
+	// Lock for graphics state modification
+	e.state.renderMutex.Lock()
+	defer e.state.renderMutex.Unlock()
+
 	pic := e.state.GetPicture(picID)
 	if pic == nil {
 		return NewRuntimeError("DrawCircle", "", "Picture %d not found", picID)
@@ -1007,6 +1014,10 @@ func (e *Engine) DrawCircle(picID, x, y, radius, fillMode int) error {
 
 // DrawRect draws a rectangle on a picture.
 func (e *Engine) DrawRect(picID, x1, y1, x2, y2, fillMode int) error {
+	// Lock for graphics state modification
+	e.state.renderMutex.Lock()
+	defer e.state.renderMutex.Unlock()
+
 	pic := e.state.GetPicture(picID)
 	if pic == nil {
 		return NewRuntimeError("DrawRect", "", "Picture %d not found", picID)

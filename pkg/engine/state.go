@@ -111,24 +111,25 @@ type Cast struct {
 // NewEngineState creates a new engine state with the given dependencies.
 func NewEngineState(renderer Renderer, assetLoader AssetLoader, imageDecoder ImageDecoder) *EngineState {
 	return &EngineState{
-		pictures:      make(map[int]*Picture),
-		windows:       make(map[int]*Window),
-		casts:         make(map[int]*Cast),
-		sequencers:    make([]*Sequencer, 0),
-		eventHandlers: make([]*EventHandler, 0),
-		functions:     make(map[string]*FunctionDefinition),
-		nextSeqID:     1,
-		nextGroupID:   1,
-		nextHandlerID: 1,
-		nextPicID:     0, // Start from 0 for FILLY compatibility
-		nextWinID:     0, // Start from 0 for FILLY compatibility
-		nextCastID:    1,
-		tickCount:     0,
-		renderer:      renderer,
-		assetLoader:   assetLoader,
-		imageDecoder:  imageDecoder,
-		headlessMode:  false,
-		debugLevel:    0,
+		pictures:        make(map[int]*Picture),
+		windows:         make(map[int]*Window),
+		casts:           make(map[int]*Cast),
+		sequencers:      make([]*Sequencer, 0),
+		eventHandlers:   make([]*EventHandler, 0),
+		functions:       make(map[string]*FunctionDefinition),
+		nextSeqID:       1,
+		nextGroupID:     1,
+		nextHandlerID:   1,
+		nextPicID:       0, // Start from 0 for FILLY compatibility
+		nextWinID:       0, // Start from 0 for FILLY compatibility
+		nextCastID:      1,
+		tickCount:       0,
+		draggedWindowID: -1, // -1 means no window is being dragged
+		renderer:        renderer,
+		assetLoader:     assetLoader,
+		imageDecoder:    imageDecoder,
+		headlessMode:    false,
+		debugLevel:      0,
 	}
 }
 
@@ -488,7 +489,7 @@ func (e *EngineState) EnsureRGBA(img image.Image) *image.RGBA {
 //	mode: transfer mode (0=normal, 1=transparent, 2=scene change)
 //
 // Returns an error if source or destination doesn't exist.
-func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode int) error {
+func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) error {
 	// Lock for graphics state modification
 	e.renderMutex.Lock()
 	defer e.renderMutex.Unlock()
@@ -871,9 +872,9 @@ func (e *EngineState) GetWindowPictureID(id int) int {
 	return 0
 }
 
-// GetWindows returns all windows in creation order.
-// This is used for rendering windows in the correct z-order.
-func (e *EngineState) GetWindows() []*Window {
+// getWindowsUnsafe returns all windows in creation order without locking.
+// This is an internal helper function. Use GetWindows() for external calls.
+func (e *EngineState) getWindowsUnsafe() []*Window {
 	// Collect all windows
 	windows := make([]*Window, 0, len(e.windows))
 	for _, win := range e.windows {
@@ -893,6 +894,12 @@ func (e *EngineState) GetWindows() []*Window {
 	return windows
 }
 
+// GetWindows returns all windows in creation order.
+// This is used for rendering windows in the correct z-order.
+func (e *EngineState) GetWindows() []*Window {
+	return e.getWindowsUnsafe()
+}
+
 // TitleBarHeight returns the height of the title bar in pixels.
 // Windows with captions have a draggable title bar.
 const TitleBarHeight = 20
@@ -902,10 +909,14 @@ const TitleBarHeight = 20
 //
 //	mouseX, mouseY: current mouse position on virtual desktop
 //
-// Returns the window ID that started dragging, or 0 if no window was clicked.
+// Returns the window ID that started dragging, or -1 if no window was clicked.
 func (e *EngineState) StartWindowDrag(mouseX, mouseY int) int {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Find the topmost window under the mouse cursor (reverse order = top to bottom)
-	windows := e.GetWindows()
+	windows := e.getWindowsUnsafe() // Use unsafe version since we already have the lock
 	for i := len(windows) - 1; i >= 0; i-- {
 		win := windows[i]
 
@@ -934,7 +945,7 @@ func (e *EngineState) StartWindowDrag(mouseX, mouseY int) int {
 		}
 	}
 
-	return 0
+	return -1
 }
 
 // UpdateWindowDrag updates the position of the dragged window.
@@ -944,13 +955,17 @@ func (e *EngineState) StartWindowDrag(mouseX, mouseY int) int {
 //
 // Returns true if a window was updated, false if no window is being dragged.
 func (e *EngineState) UpdateWindowDrag(mouseX, mouseY int) bool {
-	if e.draggedWindowID == 0 {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
+	if e.draggedWindowID < 0 {
 		return false
 	}
 
 	win := e.windows[e.draggedWindowID]
 	if win == nil || !win.IsDragging {
-		e.draggedWindowID = 0
+		e.draggedWindowID = -1
 		return false
 	}
 
@@ -987,17 +1002,21 @@ func (e *EngineState) UpdateWindowDrag(mouseX, mouseY int) bool {
 
 // StopWindowDrag stops dragging the current window.
 func (e *EngineState) StopWindowDrag() {
-	if e.draggedWindowID != 0 {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
+	if e.draggedWindowID >= 0 {
 		win := e.windows[e.draggedWindowID]
 		if win != nil {
 			win.IsDragging = false
 		}
-		e.draggedWindowID = 0
+		e.draggedWindowID = -1
 	}
 }
 
 // GetDraggedWindowID returns the ID of the window currently being dragged.
-// Returns 0 if no window is being dragged.
+// Returns -1 if no window is being dragged.
 func (e *EngineState) GetDraggedWindowID() int {
 	return e.draggedWindowID
 }

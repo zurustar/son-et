@@ -27,7 +27,9 @@ func NewVM(state *EngineState, engine *Engine, logger *Logger) *VM {
 // This is the central dispatch point for all OpCode execution.
 // Returns an error if the operation fails.
 func (vm *VM) ExecuteOp(seq *Sequencer, op interpreter.OpCode) error {
-	vm.logger.LogDebug("ExecuteOp: %s (args: %d)", op.Cmd.String(), len(op.Args))
+	if vm.logger.GetLevel() >= DebugLevelDebug {
+		vm.logger.LogDebug("ExecuteOp: %s (args: %d)", op.Cmd.String(), len(op.Args))
+	}
 
 	switch op.Cmd {
 	case interpreter.OpAssign:
@@ -203,16 +205,22 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 	// Evaluate arguments
 	evaluatedArgs := make([]any, len(args))
 	for i, arg := range args {
-		vm.logger.LogDebug("  arg[%d] BEFORE eval: %v (type: %T)", i, arg, arg)
+		if vm.logger.GetLevel() >= DebugLevelDebug {
+			vm.logger.LogDebug("  arg[%d] BEFORE eval: %v (type: %T)", i, arg, arg)
+		}
 		val, err := vm.evaluateValue(seq, arg)
 		if err != nil {
 			return err
 		}
 		evaluatedArgs[i] = val
-		vm.logger.LogDebug("  arg[%d] AFTER eval: %v (type: %T)", i, val, val)
+		if vm.logger.GetLevel() >= DebugLevelDebug {
+			vm.logger.LogDebug("  arg[%d] AFTER eval: %v (type: %T)", i, val, val)
+		}
 	}
 
-	vm.logger.LogDebug("Call: %s (built-in function)", funcName)
+	if vm.logger.GetLevel() >= DebugLevelDebug {
+		vm.logger.LogDebug("Call: %s (built-in function)", funcName)
+	}
 
 	// Handle built-in functions
 	switch strings.ToLower(funcName) {
@@ -293,7 +301,7 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 	case "movepic":
 		// MovePic requires 9 arguments (srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
 		// Pad missing arguments with 0
-		for len(evaluatedArgs) < 9 {
+		for len(evaluatedArgs) < 8 {
 			evaluatedArgs = append(evaluatedArgs, int64(0))
 		}
 		srcID := int(vm.toInt(evaluatedArgs[0]))
@@ -304,8 +312,7 @@ func (vm *VM) executeBuiltinFunction(seq *Sequencer, funcName string, args []any
 		dstID := int(vm.toInt(evaluatedArgs[5]))
 		dstX := int(vm.toInt(evaluatedArgs[6]))
 		dstY := int(vm.toInt(evaluatedArgs[7]))
-		mode := int(vm.toInt(evaluatedArgs[8]))
-		vm.engine.MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode)
+		vm.engine.MovePic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY)
 		return nil
 
 	case "movespic":
