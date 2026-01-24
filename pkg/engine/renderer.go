@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"os"
 	"sync"
 
@@ -257,18 +256,8 @@ func (r *EbitenRenderer) renderWindowContent(screen *ebiten.Image, state *Engine
 			win.ID, win.PictureID, pic.Width, pic.Height, win.X, win.Y, win.Width, win.Height, win.PicX, win.PicY)
 	}
 
-	// Convert picture to Ebiten image
-	var ebitenPic *ebiten.Image
-	switch img := pic.Image.(type) {
-	case *image.RGBA:
-		ebitenPic = ebiten.NewImageFromImage(img)
-	default:
-		// Convert to RGBA if needed
-		bounds := pic.Image.Bounds()
-		rgba := image.NewRGBA(bounds)
-		draw.Draw(rgba, bounds, pic.Image, bounds.Min, draw.Src)
-		ebitenPic = ebiten.NewImageFromImage(rgba)
-	}
+	// Picture.Image is already an Ebiten image, use it directly
+	ebitenPic := pic.Image
 
 	// Window rectangle (content area in screen coordinates)
 	winRect := image.Rect(contentX, contentY, contentX+win.Width, contentY+win.Height)
@@ -397,18 +386,8 @@ func (r *EbitenRenderer) renderCast(screen *ebiten.Image, state *EngineState, wi
 			cast.ID, cast.PictureID, cast.X, cast.Y, cast.SrcX, cast.SrcY, cast.Width, cast.Height)
 	}
 
-	// Convert picture to Ebiten image
-	var ebitenPic *ebiten.Image
-	switch img := pic.Image.(type) {
-	case *image.RGBA:
-		ebitenPic = ebiten.NewImageFromImage(img)
-	default:
-		// Convert to RGBA if needed
-		bounds := pic.Image.Bounds()
-		rgba := image.NewRGBA(bounds)
-		draw.Draw(rgba, bounds, pic.Image, bounds.Min, draw.Src)
-		ebitenPic = ebiten.NewImageFromImage(rgba)
-	}
+	// Picture.Image is already an Ebiten image, use it directly
+	ebitenPic := pic.Image
 
 	// Clip the picture to the cast's source rectangle
 	subImg := ebitenPic.SubImage(image.Rect(cast.SrcX, cast.SrcY, cast.SrcX+cast.Width, cast.SrcY+cast.Height)).(*ebiten.Image)

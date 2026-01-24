@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"strings"
 	"sync"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/zurustar/son-et/pkg/compiler/interpreter"
 )
 
@@ -64,11 +64,11 @@ type EngineState struct {
 
 // Picture represents a loaded or created image.
 type Picture struct {
-	ID         int         // Unique picture ID
-	Image      image.Image // The actual image data
-	BackBuffer image.Image // Double buffer for cast rendering
-	Width      int         // Image width
-	Height     int         // Image height
+	ID         int           // Unique picture ID
+	Image      *ebiten.Image // The actual image data (Ebiten native)
+	BackBuffer *ebiten.Image // Double buffer for cast rendering
+	Width      int           // Image width
+	Height     int           // Image height
 }
 
 // Window represents a virtual window on the desktop.
@@ -93,17 +93,18 @@ type Window struct {
 
 // Cast represents a sprite (movable image element).
 type Cast struct {
-	ID               int  // Unique cast ID
-	PictureID        int  // Picture to display
-	WindowID         int  // Parent window
-	X                int  // Position X (relative to window)
-	Y                int  // Position Y (relative to window)
-	SrcX             int  // Source clipping X
-	SrcY             int  // Source clipping Y
-	Width            int  // Clipping width
-	Height           int  // Clipping height
-	TransparentColor int  // Transparent color (0xRRGGBB format, -1 = no transparency)
-	Visible          bool // Is cast visible
+	ID               int           // Unique cast ID
+	PictureID        int           // Picture to display
+	WindowID         int           // Parent window
+	X                int           // Position X (relative to window)
+	Y                int           // Position Y (relative to window)
+	SrcX             int           // Source clipping X
+	SrcY             int           // Source clipping Y
+	Width            int           // Clipping width
+	Height           int           // Clipping height
+	TransparentColor int           // Transparent color (0xRRGGBB format, -1 = no transparency)
+	Visible          bool          // Is cast visible
+	ProcessedImage   *ebiten.Image // Pre-processed image with transparency applied (cached)
 }
 
 // NewEngineState creates a new engine state with the given dependencies.
@@ -327,11 +328,14 @@ func (e *EngineState) LoadPicture(filename string) (int, error) {
 		return 0, fmt.Errorf("failed to decode picture %s: %w", filename, err)
 	}
 
-	// Create picture
+	// Convert to Ebiten image immediately
+	ebitenImg := ebiten.NewImageFromImage(img)
 	bounds := img.Bounds()
+
+	// Create picture
 	pic := &Picture{
 		ID:     e.nextPicID,
-		Image:  img,
+		Image:  ebitenImg,
 		Width:  bounds.Dx(),
 		Height: bounds.Dy(),
 	}
@@ -351,8 +355,8 @@ func (e *EngineState) LoadPicture(filename string) (int, error) {
 // CreatePicture creates an empty image buffer with the specified dimensions.
 // Returns the picture ID.
 func (e *EngineState) CreatePicture(width, height int) int {
-	// Create empty RGBA image
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	// Create empty Ebiten image
+	img := ebiten.NewImage(width, height)
 
 	// Create picture
 	pic := &Picture{
@@ -459,11 +463,12 @@ func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, ds
 			newH = requiredH
 		}
 
-		// Create new larger image
-		newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+		// Create new larger Ebiten image
+		newImg := ebiten.NewImage(newW, newH)
 
-		// Copy old content
-		draw.Draw(newImg, newImg.Bounds(), dstPic.Image, image.Point{}, draw.Src)
+		// Copy old content using Ebiten
+		opts := &ebiten.DrawImageOptions{}
+		newImg.DrawImage(dstPic.Image, opts)
 
 		// Update picture
 		dstPic.Image = newImg
@@ -471,19 +476,48 @@ func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, ds
 		dstPic.Height = newH
 	}
 
-	// Copy pixels with alpha blending (transparency support)
-	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
-	dstPoint := image.Point{dstX, dstY}
+	// Clip source rectangle to source image bounds
+	// If srcW or srcH exceed the source image, we need to clip them
+	actualSrcW := srcW
+	actualSrcH := srcH
 
-	// Use draw.Over for alpha blending (respects transparency)
-	draw.Draw(dstPic.Image.(draw.Image), image.Rectangle{dstPoint, dstPoint.Add(srcRect.Size())},
-		srcPic.Image, srcRect.Min, draw.Over)
+	// Ensure we don't read beyond source image bounds
+	if srcX+srcW > srcPic.Width {
+		actualSrcW = srcPic.Width - srcX
+		if actualSrcW < 0 {
+			actualSrcW = 0
+		}
+	}
+	if srcY+srcH > srcPic.Height {
+		actualSrcH = srcPic.Height - srcY
+		if actualSrcH < 0 {
+			actualSrcH = 0
+		}
+	}
+
+	if e.debugLevel >= 2 {
+		fmt.Printf("[DEBUG] MovePicture: src=%d (%d,%d,%d,%d) actual=(%d,%d) dst=%d (%d,%d)\n",
+			srcID, srcX, srcY, srcW, srcH, actualSrcW, actualSrcH, dstID, dstX, dstY)
+	}
+
+	// If nothing to copy, return early
+	if actualSrcW <= 0 || actualSrcH <= 0 {
+		return nil
+	}
+
+	// Use Ebiten's SubImage and DrawImage for efficient copying with alpha blending
+	srcRect := image.Rect(srcX, srcY, srcX+actualSrcW, srcY+actualSrcH)
+	subImg := srcPic.Image.SubImage(srcRect).(*ebiten.Image)
+
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(dstX), float64(dstY))
+	dstPic.Image.DrawImage(subImg, opts)
 
 	return nil
 }
 
 // MoveSPicture copies and scales pixels from source picture to destination picture with transparency.
-// Uses nearest-neighbor scaling for simplicity.
+// Uses Ebiten's scaling for efficient rendering.
 // Parameters:
 //
 //	srcID: source picture ID
@@ -525,11 +559,12 @@ func (e *EngineState) MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, d
 			newH = requiredH
 		}
 
-		// Create new larger image
-		newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+		// Create new larger Ebiten image
+		newImg := ebiten.NewImage(newW, newH)
 
 		// Copy old content
-		draw.Draw(newImg, newImg.Bounds(), dstPic.Image, image.Point{}, draw.Src)
+		opts := &ebiten.DrawImageOptions{}
+		newImg.DrawImage(dstPic.Image, opts)
 
 		// Update picture
 		dstPic.Image = newImg
@@ -537,25 +572,19 @@ func (e *EngineState) MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, d
 		dstPic.Height = newH
 	}
 
-	// Nearest-neighbor scaling
-	scaleX := float64(srcW) / float64(dstW)
-	scaleY := float64(srcH) / float64(dstH)
+	// Extract source region
+	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
+	subImg := srcPic.Image.SubImage(srcRect).(*ebiten.Image)
 
-	dstImg := dstPic.Image.(*image.RGBA)
+	// Calculate scale factors
+	scaleX := float64(dstW) / float64(srcW)
+	scaleY := float64(dstH) / float64(srcH)
 
-	for dy := 0; dy < dstH; dy++ {
-		for dx := 0; dx < dstW; dx++ {
-			// Map destination pixel to source pixel
-			sx := int(float64(dx) * scaleX)
-			sy := int(float64(dy) * scaleY)
-
-			// Get source pixel
-			srcColor := srcPic.Image.At(srcX+sx, srcY+sy)
-
-			// Set destination pixel (with alpha blending)
-			dstImg.Set(dstX+dx, dstY+dy, srcColor)
-		}
-	}
+	// Draw with scaling
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Scale(scaleX, scaleY)
+	opts.GeoM.Translate(float64(dstX), float64(dstY))
+	dstPic.Image.DrawImage(subImg, opts)
 
 	return nil
 }
@@ -601,11 +630,12 @@ func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX,
 			newH = requiredH
 		}
 
-		// Create new larger image
-		newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+		// Create new larger Ebiten image
+		newImg := ebiten.NewImage(newW, newH)
 
 		// Copy old content
-		draw.Draw(newImg, newImg.Bounds(), dstPic.Image, image.Point{}, draw.Src)
+		opts := &ebiten.DrawImageOptions{}
+		newImg.DrawImage(dstPic.Image, opts)
 
 		// Update picture
 		dstPic.Image = newImg
@@ -613,20 +643,15 @@ func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX,
 		dstPic.Height = newH
 	}
 
-	// Horizontal flip: copy pixels from right to left
-	dstImg := dstPic.Image.(*image.RGBA)
+	// Extract source region
+	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
+	subImg := srcPic.Image.SubImage(srcRect).(*ebiten.Image)
 
-	for sy := 0; sy < srcH; sy++ {
-		for sx := 0; sx < srcW; sx++ {
-			// Get source pixel
-			srcColor := srcPic.Image.At(srcX+sx, srcY+sy)
-
-			// Set destination pixel (flipped horizontally)
-			// When sx=0, we want to write to dstX+srcW-1
-			// When sx=srcW-1, we want to write to dstX
-			dstImg.Set(dstX+srcW-1-sx, dstY+sy, srcColor)
-		}
-	}
+	// Horizontal flip using GeoM
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Scale(-1, 1)                                 // Flip horizontally
+	opts.GeoM.Translate(float64(dstX+srcW), float64(dstY)) // Translate to destination
+	dstPic.Image.DrawImage(subImg, opts)
 
 	return nil
 }
@@ -911,6 +936,21 @@ func (e *EngineState) GetDraggedWindowID() int {
 //
 // Note: The cast is associated with the window that uses destPicID.
 func (e *EngineState) PutCast(destPicID, picID, x, y, srcX, srcY, width, height, transparentColor int) int {
+	// Get source picture
+	srcPic := e.pictures[picID]
+	if srcPic == nil {
+		if e.debugLevel >= 1 {
+			fmt.Printf("[ERROR] PutCast: source picture %d not found\n", picID)
+		}
+		return 0
+	}
+
+	// Pre-process transparency if needed
+	var processedImage *ebiten.Image
+	if transparentColor >= 0 {
+		processedImage = e.createTransparentImage(srcPic, srcX, srcY, width, height, transparentColor)
+	}
+
 	// Create cast
 	cast := &Cast{
 		ID:               e.nextCastID,
@@ -924,6 +964,7 @@ func (e *EngineState) PutCast(destPicID, picID, x, y, srcX, srcY, width, height,
 		Height:           height,
 		TransparentColor: transparentColor,
 		Visible:          true,
+		ProcessedImage:   processedImage, // Store pre-processed image
 	}
 
 	// Store cast
@@ -936,8 +977,65 @@ func (e *EngineState) PutCast(destPicID, picID, x, y, srcX, srcY, width, height,
 	return cast.ID
 }
 
-// drawCastToPicture draws a cast directly to a picture.
-// This is used by PutCast and MoveCast to "bake" casts into pictures.
+// createTransparentImage creates a new Ebiten image with transparency applied.
+// This is done once at PutCast time to avoid repeated pixel-by-pixel processing.
+func (e *EngineState) createTransparentImage(srcPic *Picture, srcX, srcY, width, height, transparentColor int) *ebiten.Image {
+	// In headless mode, skip transparency processing
+	// ReadPixels cannot be called before game starts
+	if e.headlessMode {
+		// Return a simple SubImage without transparency processing
+		srcRect := image.Rect(srcX, srcY, srcX+width, srcY+height)
+		return srcPic.Image.SubImage(srcRect).(*ebiten.Image)
+	}
+
+	// Create temporary RGBA image for pixel processing
+	processedImg := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	// Convert 0xRRGGBB to RGB components
+	tr := uint8((transparentColor >> 16) & 0xFF)
+	tg := uint8((transparentColor >> 8) & 0xFF)
+	tb := uint8(transparentColor & 0xFF)
+
+	// Read pixels from Ebiten image
+	// Note: This is still pixel-by-pixel but only done once at PutCast time
+	for sy := 0; sy < height; sy++ {
+		for sx := 0; sx < width; sx++ {
+			srcPixelX := srcX + sx
+			srcPixelY := srcY + sy
+
+			// Check bounds
+			if srcPixelX < 0 || srcPixelX >= srcPic.Width || srcPixelY < 0 || srcPixelY >= srcPic.Height {
+				// Out of bounds - make transparent
+				processedImg.Set(sx, sy, color.RGBA{0, 0, 0, 0})
+				continue
+			}
+
+			// Get source pixel from Ebiten image
+			c := srcPic.Image.At(srcPixelX, srcPixelY)
+			r, g, b, a := c.RGBA()
+
+			// Convert from 16-bit to 8-bit
+			r8 := uint8(r >> 8)
+			g8 := uint8(g >> 8)
+			b8 := uint8(b >> 8)
+
+			// Check if matches transparent color
+			if r8 == tr && g8 == tg && b8 == tb {
+				// Make fully transparent
+				processedImg.Set(sx, sy, color.RGBA{0, 0, 0, 0})
+			} else {
+				// Keep original color with alpha
+				processedImg.Set(sx, sy, color.RGBA{r8, g8, b8, uint8(a >> 8)})
+			}
+		}
+	}
+
+	// Convert to Ebiten image
+	return ebiten.NewImageFromImage(processedImg)
+}
+
+// drawCastToPicture draws a cast directly to a picture using Ebiten.
+// This is used by PutCast to "bake" casts into pictures.
 // transparentColor: color to treat as transparent (0xRRGGBB format, -1 = no transparency)
 func (e *EngineState) drawCastToPicture(cast *Cast, destPicID int, transparentColor int) {
 	if e.debugLevel >= 2 {
@@ -963,82 +1061,21 @@ func (e *EngineState) drawCastToPicture(cast *Cast, destPicID int, transparentCo
 		return
 	}
 
-	// Convert source to RGBA if needed
-	var srcRGBA *image.RGBA
-	switch img := srcPic.Image.(type) {
-	case *image.RGBA:
-		srcRGBA = img
-	default:
-		bounds := srcPic.Image.Bounds()
-		srcRGBA = image.NewRGBA(bounds)
-		draw.Draw(srcRGBA, bounds, srcPic.Image, bounds.Min, draw.Src)
+	// If we have a pre-processed image with transparency, use it
+	if cast.ProcessedImage != nil {
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(float64(cast.X), float64(cast.Y))
+		destPic.Image.DrawImage(cast.ProcessedImage, opts)
+		return
 	}
 
-	// Convert destination to RGBA if needed
-	var destRGBA *image.RGBA
-	switch img := destPic.Image.(type) {
-	case *image.RGBA:
-		destRGBA = img
-	default:
-		bounds := destPic.Image.Bounds()
-		destRGBA = image.NewRGBA(bounds)
-		draw.Draw(destRGBA, bounds, destPic.Image, bounds.Min, draw.Src)
-		destPic.Image = destRGBA
-	}
-
-	// Extract the clipped region from source
+	// Otherwise, extract the clipped region and draw it
 	srcRect := image.Rect(cast.SrcX, cast.SrcY, cast.SrcX+cast.Width, cast.SrcY+cast.Height)
-	dstRect := image.Rect(cast.X, cast.Y, cast.X+cast.Width, cast.Y+cast.Height)
+	subImg := srcPic.Image.SubImage(srcRect).(*ebiten.Image)
 
-	// If transparency is enabled, draw pixel by pixel
-	if transparentColor >= 0 {
-		// Convert 0xRRGGBB to RGB components
-		tr := uint8((transparentColor >> 16) & 0xFF)
-		tg := uint8((transparentColor >> 8) & 0xFF)
-		tb := uint8(transparentColor & 0xFF)
-
-		if e.debugLevel >= 2 {
-			fmt.Printf("[DEBUG] drawCastToPicture: Using transparency RGB=(%d,%d,%d)\n", tr, tg, tb)
-		}
-
-		// Draw pixel by pixel, skipping transparent color
-		for sy := 0; sy < cast.Height; sy++ {
-			for sx := 0; sx < cast.Width; sx++ {
-				srcX := cast.SrcX + sx
-				srcY := cast.SrcY + sy
-				dstX := cast.X + sx
-				dstY := cast.Y + sy
-
-				// Check bounds
-				if srcX < 0 || srcX >= srcPic.Width || srcY < 0 || srcY >= srcPic.Height {
-					continue
-				}
-				if dstX < 0 || dstX >= destPic.Width || dstY < 0 || dstY >= destPic.Height {
-					continue
-				}
-
-				// Get source pixel
-				c := srcRGBA.At(srcX, srcY)
-				r, g, b, a := c.RGBA()
-
-				// Convert from 16-bit to 8-bit
-				r8 := uint8(r >> 8)
-				g8 := uint8(g >> 8)
-				b8 := uint8(b >> 8)
-
-				// Skip if matches transparent color
-				if r8 == tr && g8 == tg && b8 == tb {
-					continue
-				}
-
-				// Draw pixel with alpha blending
-				destRGBA.Set(dstX, dstY, color.RGBA{r8, g8, b8, uint8(a >> 8)})
-			}
-		}
-	} else {
-		// No transparency - use fast draw with alpha blending
-		draw.Draw(destRGBA, dstRect, srcRGBA, srcRect.Min, draw.Over)
-	}
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(cast.X), float64(cast.Y))
+	destPic.Image.DrawImage(subImg, opts)
 }
 
 // GetCast retrieves a cast by ID.
@@ -1069,18 +1106,31 @@ func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
 	cast.X = x
 	cast.Y = y
 
-	// Update clipping if provided
-	if srcX >= 0 {
+	// Check if clipping parameters changed (animation frame change)
+	clippingChanged := false
+	if srcX >= 0 && srcX != cast.SrcX {
 		cast.SrcX = srcX
+		clippingChanged = true
 	}
-	if srcY >= 0 {
+	if srcY >= 0 && srcY != cast.SrcY {
 		cast.SrcY = srcY
+		clippingChanged = true
 	}
-	if width >= 0 {
+	if width >= 0 && width != cast.Width {
 		cast.Width = width
+		clippingChanged = true
 	}
-	if height >= 0 {
+	if height >= 0 && height != cast.Height {
 		cast.Height = height
+		clippingChanged = true
+	}
+
+	// If clipping changed and we have transparency, regenerate ProcessedImage
+	if clippingChanged && cast.TransparentColor >= 0 {
+		srcPic := e.pictures[cast.PictureID]
+		if srcPic != nil {
+			cast.ProcessedImage = e.createTransparentImage(srcPic, cast.SrcX, cast.SrcY, cast.Width, cast.Height, cast.TransparentColor)
+		}
 	}
 
 	// IMPORTANT: In FILLY, MoveCast uses double-buffering to prevent cast accumulation
@@ -1094,34 +1144,21 @@ func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
 
 	// Initialize BackBuffer if needed
 	if destPic.BackBuffer == nil {
-		destPic.BackBuffer = image.NewRGBA(image.Rect(0, 0, destPic.Width, destPic.Height))
+		destPic.BackBuffer = ebiten.NewImage(destPic.Width, destPic.Height)
 	}
 
-	// Get BackBuffer as RGBA
-	var backBuffer *image.RGBA
-	switch img := destPic.BackBuffer.(type) {
-	case *image.RGBA:
-		backBuffer = img
-	default:
-		backBuffer = image.NewRGBA(image.Rect(0, 0, destPic.Width, destPic.Height))
-		destPic.BackBuffer = backBuffer
-	}
-
-	// Clear BackBuffer to transparent
-	for py := 0; py < destPic.Height; py++ {
-		for px := 0; px < destPic.Width; px++ {
-			backBuffer.Set(px, py, color.RGBA{0, 0, 0, 0})
-		}
-	}
+	// CRITICAL: Copy current Image content to BackBuffer FIRST
+	// This preserves any MovePic drawings that were done to the main Image
+	// Then we'll draw all casts on top of this content
+	destPic.BackBuffer.Clear()
+	opts := &ebiten.DrawImageOptions{}
+	destPic.BackBuffer.DrawImage(destPic.Image, opts)
 
 	// Redraw ALL casts that belong to this destination picture onto BackBuffer
 	for _, c := range e.GetCasts() {
 		if c.WindowID == destPicID && c.Visible {
-			// Temporarily swap Image with BackBuffer for drawing
-			originalImage := destPic.Image
-			destPic.Image = backBuffer
-			e.drawCastToPicture(c, destPicID, c.TransparentColor)
-			destPic.Image = originalImage
+			// Draw cast directly to BackBuffer
+			e.drawCastToImage(c, destPic.BackBuffer, c.TransparentColor)
 		}
 	}
 
@@ -1131,6 +1168,43 @@ func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
 	destPic.BackBuffer = temp
 
 	return nil
+}
+
+// drawCastToImage draws a cast directly to a specific Ebiten image buffer.
+// This is used by MoveCast for double buffering.
+func (e *EngineState) drawCastToImage(cast *Cast, destImg *ebiten.Image, transparentColor int) {
+	if e.debugLevel >= 2 {
+		fmt.Printf("[DEBUG] drawCastToImage: cast %d (pic %d) at (%d,%d) clip=(%d,%d,%d,%d) transparent=0x%X\n",
+			cast.ID, cast.PictureID, cast.X, cast.Y, cast.SrcX, cast.SrcY, cast.Width, cast.Height, transparentColor)
+	}
+
+	// If we have a pre-processed image with transparency, use it directly
+	if cast.ProcessedImage != nil {
+		// Use the pre-processed image (transparency already applied)
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(float64(cast.X), float64(cast.Y))
+		destImg.DrawImage(cast.ProcessedImage, opts)
+		return
+	}
+
+	// Otherwise, fall back to original logic (for casts without transparency)
+	// Get source picture
+	srcPic := e.pictures[cast.PictureID]
+	if srcPic == nil {
+		if e.debugLevel >= 1 {
+			fmt.Printf("[ERROR] drawCastToImage: source picture %d not found\n", cast.PictureID)
+		}
+		return
+	}
+
+	// Extract the clipped region from source
+	srcRect := image.Rect(cast.SrcX, cast.SrcY, cast.SrcX+cast.Width, cast.SrcY+cast.Height)
+	subImg := srcPic.Image.SubImage(srcRect).(*ebiten.Image)
+
+	// Draw to destination
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(cast.X), float64(cast.Y))
+	destImg.DrawImage(subImg, opts)
 }
 
 // redrawAllCastsOnWindow redraws all casts on a window to its picture.

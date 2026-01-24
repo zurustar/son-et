@@ -636,7 +636,68 @@ mes(MIDI_TIME) {
 
 ---
 
-## Part 3: Development and Testing Requirements
+## Part 3: Performance Requirements
+
+These requirements define the performance characteristics that the system must achieve.
+
+### Requirement P1: Real-Time Graphics Performance
+
+**User Story:** As a script author, I want smooth, responsive graphics rendering without frame drops or lag, so that my multimedia applications feel professional and polished.
+
+**Rationale:** FILLY was designed for multimedia applications where visual quality and timing are critical. The engine must render graphics efficiently to maintain 60 FPS without frame drops, even during complex animations with multiple sprites and image transformations. Poor performance would make the engine unusable for its intended purpose.
+
+#### Acceptance Criteria
+
+**Frame Rate:**
+1. THE System SHALL maintain 60 FPS rendering in GUI mode under normal load
+2. WHEN rendering multiple windows with sprites, THE System SHALL NOT drop frames
+3. WHEN performing image transformations (MovePicture, MoveCast), THE System SHALL NOT cause visible lag
+4. THE System SHALL render animations smoothly without stuttering or frame skipping
+
+**Image Processing Efficiency:**
+5. THE System SHALL use native Ebiten images (`*ebiten.Image`) throughout the graphics pipeline
+6. THE System SHALL NOT convert between image formats during rendering (no `ebiten.NewImageFromImage()` calls per frame)
+7. WHEN loading images, THE System SHALL convert to Ebiten format once at load time
+8. WHEN creating images, THE System SHALL create Ebiten images directly
+9. WHEN copying or transforming images, THE System SHALL use Ebiten's native operations (DrawImage, SubImage, GeoM)
+
+**Cast (Sprite) Rendering:**
+10. WHEN PutCast is called with transparency, THE System SHALL pre-process transparency once at creation time
+11. WHEN MoveCast is called, THE System SHALL use pre-processed transparent images without re-processing pixels
+12. THE System SHALL use double buffering for cast rendering to prevent accumulation artifacts
+13. THE System SHALL minimize pixel-by-pixel operations during rendering
+
+**Memory Efficiency:**
+14. THE System SHALL reuse image buffers where possible (BackBuffer for double buffering)
+15. THE System SHALL NOT create temporary image copies during rendering
+16. THE System SHALL release image resources when pictures are deleted
+
+**Headless Mode Performance:**
+17. WHEN running in headless mode, THE System SHALL skip pixel-level operations that require ReadPixels
+18. WHEN running in headless mode, THE System SHALL skip text rendering (no visual output needed)
+19. WHEN running in headless mode, THE System SHALL skip transparency processing for casts (use simple SubImage)
+
+**Performance Monitoring:**
+20. THE System SHALL log performance warnings when frame time exceeds 16.67ms (60 FPS threshold)
+21. THE System SHALL provide debug logging for expensive operations (image conversions, pixel processing)
+
+**Anti-Patterns to Avoid:**
+- ❌ Calling `ebiten.NewImageFromImage()` every frame for the same image
+- ❌ Converting Ebiten images to RGBA and back during rendering
+- ❌ Processing transparency pixel-by-pixel every time a cast moves
+- ❌ Creating temporary image copies for simple operations
+- ❌ Calling ReadPixels (`.At()`) on Ebiten images before game starts
+
+**Performance-Critical Code Paths:**
+- Picture loading and creation (once per asset)
+- MovePicture (frequent - used for animations)
+- MoveCast (frequent - used for sprite animations)
+- Renderer (every frame - 60 times per second)
+- Text rendering (occasional - only when text changes)
+
+---
+
+## Part 4: Development and Testing Requirements
 
 These requirements support development, testing, and debugging workflows.
 

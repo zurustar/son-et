@@ -7,6 +7,7 @@ import (
 	"image/draw"
 	"os"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/font/opentype"
@@ -111,17 +112,23 @@ func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
 		return fmt.Errorf("picture %d not found", picID)
 	}
 
-	// Convert picture to RGBA if needed
-	var rgba *image.RGBA
-	switch img := pic.Image.(type) {
-	case *image.RGBA:
-		rgba = img
-	default:
-		// Convert to RGBA
-		bounds := pic.Image.Bounds()
-		rgba = image.NewRGBA(bounds)
-		draw.Draw(rgba, bounds, pic.Image, bounds.Min, draw.Src)
-		pic.Image = rgba
+	// In headless mode, skip text rendering entirely
+	// Text rendering requires ReadPixels which cannot be called before game starts
+	if tr.engine.state.headlessMode {
+		tr.engine.logger.LogDebug("TextWrite: skipping in headless mode (text='%s', picID=%d)", text, picID)
+		return nil
+	}
+
+	// For now, we need to convert Ebiten image to RGBA for text drawing
+	// TODO: Use Ebiten's text drawing directly
+	bounds := pic.Image.Bounds()
+	rgba := image.NewRGBA(bounds)
+
+	// Read pixels from Ebiten image
+	for py := bounds.Min.Y; py < bounds.Max.Y; py++ {
+		for px := bounds.Min.X; px < bounds.Max.X; px++ {
+			rgba.Set(px, py, pic.Image.At(px, py))
+		}
 	}
 
 	tr.engine.logger.LogDebug("TextWrite: before drawing, rgba.Bounds()=%v, pic.Width=%d, pic.Height=%d",
@@ -197,6 +204,10 @@ func (tr *TextRenderer) TextWrite(text string, picID, x, y int) error {
 	newBounds := rgba.Bounds()
 	pic.Width = newBounds.Dx()
 	pic.Height = newBounds.Dy()
+
+	// Convert back to Ebiten image
+	pic.Image = ebiten.NewImageFromImage(rgba)
+
 	tr.engine.logger.LogDebug("Text written: %q at (%d, %d) on picture %d (new size: %dx%d)",
 		text, x, y, picID, pic.Width, pic.Height)
 	return nil
