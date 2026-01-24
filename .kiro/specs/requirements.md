@@ -131,17 +131,66 @@ These modes have different execution characteristics and must be supported corre
 
 ### Requirement A5: Thread-Safe Concurrent Execution
 
-**User Story:** As a developer, I want the system to handle concurrent access to shared state safely, so that scripts execute correctly without race conditions.
+**User Story:** As a developer, I want the system to handle concurrent access to shared state safely, so that scripts execute correctly without race conditions or non-deterministic behavior.
 
-**Rationale:** FILLY scripts execute in a separate thread while the main thread handles rendering and input. Shared state must be protected from concurrent access.
+**Rationale:** FILLY scripts execute in a separate thread while the main thread handles rendering and input. Additionally, MIDI playback runs in its own thread and can trigger event handlers. Shared state (graphics, execution state) must be protected from concurrent access to prevent race conditions that cause non-deterministic behavior, visual artifacts, or crashes.
 
 #### Acceptance Criteria
 
-1. WHEN the script thread modifies graphics state, THE System SHALL ensure thread-safe access
-2. WHEN the main thread renders graphics, THE System SHALL ensure thread-safe access to graphics state
-3. WHEN concurrent access occurs, THE System SHALL prevent race conditions
-4. WHEN rendering occurs, THE System SHALL prevent flicker and visual artifacts
-5. THE System SHALL allow the script thread and main thread to execute concurrently without deadlocks
+**Graphics State Protection:**
+1. WHEN the script thread modifies graphics state (pictures, windows, casts), THE System SHALL use mutex locks to ensure thread-safe access
+2. WHEN the render thread reads graphics state, THE System SHALL use mutex locks to ensure thread-safe access
+3. WHEN concurrent access to graphics state occurs, THE System SHALL prevent race conditions
+4. WHEN rendering occurs, THE System SHALL prevent flicker and visual artifacts caused by concurrent modifications
+5. THE System SHALL use a dedicated `renderMutex` to protect graphics state (pictures, windows, casts)
+
+**Execution State Protection:**
+6. WHEN the MIDI thread registers new sequences, THE System SHALL use mutex locks to ensure thread-safe access
+7. WHEN the main thread iterates over sequences, THE System SHALL use mutex locks to ensure thread-safe access
+8. WHEN concurrent access to execution state occurs, THE System SHALL prevent race conditions
+9. THE System SHALL use a dedicated `executionMutex` to protect execution state (sequencers, eventHandlers, functions)
+
+**Mutex Design Principles:**
+10. THE System SHALL use separate mutexes for independent state (graphics vs execution)
+11. THE System SHALL minimize mutex scope to prevent unnecessary blocking
+12. THE System SHALL NOT share mutexes between unrelated state
+13. THE System SHALL lock mutexes consistently across all operations on shared state
+
+**Protected Operations:**
+
+Graphics state operations (protected by `renderMutex`):
+- LoadPicture(), CreatePicture(), DeletePicture()
+- MovePicture(), MoveSPicture(), ReversePicture()
+- OpenWindow(), MoveWindow(), CloseWindow()
+- PutCast(), MoveCast(), DeleteCast()
+- RenderFrame() (renderer reads graphics state)
+
+Execution state operations (protected by `executionMutex`):
+- RegisterSequence(), GetSequencers(), CleanupInactiveSequences()
+- DeactivateSequence(), DeactivateGroup(), DeactivateAll()
+- RegisterEventHandler(), GetEventHandlers(), CleanupInactiveEventHandlers()
+- RegisterFunction(), GetFunction()
+- AllocateGroupID()
+
+**Verification:**
+14. THE System SHALL pass Go's race detector (`go test -race`) without warnings
+15. WHEN the same script is executed multiple times, THE System SHALL produce deterministic, consistent behavior
+16. THE System SHALL NOT exhibit visual artifacts (white screens, flickering) caused by race conditions
+
+**Thread Interaction:**
+```
+Main Thread (UpdateVM)          Render Thread (RenderFrame)
+     |                                  |
+     | LoadPicture()                    |
+     | → renderMutex.Lock()             |
+     | → e.pictures[id] = pic           |
+     | → renderMutex.Unlock()           |
+     |                                  | renderMutex.Lock()
+     |                                  | → reads e.pictures
+     |                                  | renderMutex.Unlock()
+     ↓                                  ↓
+   NO RACE CONDITION ✅
+```
 
 ### Requirement A6: Non-Blocking Audio Playback
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the performance optimization work completed to eliminate per-frame image conversions and achieve smooth 60 FPS rendering.
+This document describes the performance optimization work completed to eliminate per-frame image conversions, fix race conditions, and achieve smooth 60 FPS rendering.
 
 **Date**: January 24, 2026  
 **Status**: ✅ Completed
@@ -11,7 +11,9 @@ This document describes the performance optimization work completed to eliminate
 
 ## Problem Statement
 
-### Original Issue
+### Original Issue 1: Per-Frame Image Conversions
+
+The original implementation was converting images between formats on every frame:
 
 The original implementation was converting images between formats on every frame:
 
@@ -398,6 +400,352 @@ pic.Image = ebiten.NewImageFromImage(rgba)
 
 ---
 
+## Known Issues (Resolved)
+
+### MIDI Playback Completion Detection (Fixed)
+
+**Issue**: MIDI integration test was failing with two problems:
+1. `IsPlaying()` returned `true` after `MIDI_END` event
+2. Test expected 19.20s duration but actual was ~18s
+
+**Root Cause**:
+1. `MIDIStream.Read()` was returning `len(p)` after triggering `MIDI_END`, allowing audio player to continue requesting samples
+2. Test expectation was based on incorrect duration calculation
+
+**Fix Applied**:
+1. Changed `MIDIStream.Read()` to return `io.EOF` after `MIDI_END` event, properly signaling audio player to stop
+2. Updated test expectation to 18.02s based on accurate tempo map analysis:
+   - Segment 1 (tick 0-1890 at 120 BPM): 1.97s
+   - Segment 2 (tick 1890-11520 at 75 BPM): 16.05s
+   - Total: 18.02s
+3. Increased test sleep time from 100ms to 500ms to allow audio player to fully stop
+
+**Files Modified**:
+- `pkg/engine/midi_player.go`: Return `io.EOF` after `MIDI_END`
+- `pkg/engine/kuma2_integration_test.go`: Updated expectations and timing
+
+**Verification**: Test now passes consistently with correct timing.
+
+---
+
+## Problem Statement (Continued)
+
+### Original Issue 2: Race Conditions
+
+**User Report**: "同じスクリプトを連続して実行した時に、動作が変わることがあります" (Behavior changes when running the same script repeatedly)
+
+**Symptoms**:
+- Non-deterministic behavior between runs
+- Images sometimes appearing white ("真っ白になったりする")
+- Visual appearance changing randomly
+- Timing-dependent issues
+
+**Root Cause Analysis**:
+
+Using Go's race detector (`go test -race`), we identified data races:
+
+```
+WARNING: DATA RACE
+Write at 0x00c0001f64e0 by goroutine 121:
+  github.com/zurustar/son-et/pkg/engine.(*EngineState).RegisterSequence()
+      /pkg/engine/state.go:178 +0x1f4
+
+Previous read at 0x00c0001f64e0 by goroutine 118:
+  github.com/zurustar/son-et/pkg/engine.(*EngineState).GetSequencers()
+      /pkg/engine/state.go:192 +0x154
+```
+
+**Two categories of race conditions**:
+
+1. **Graphics State Races**:
+   - Main thread: Calls graphics operations (LoadPicture, OpenWindow, MovePicture, etc.)
+   - Render thread: Reads graphics state in RenderFrame()
+   - Problem: Graphics operations did NOT lock `renderMutex`
+
+2. **Execution State Races**:
+   - MIDI thread: Calls RegisterSequence() to add new sequences
+   - Main thread: Calls GetSequencers() to iterate sequences
+   - Problem: No mutex protection for execution state
+
+### Thread Interaction Diagram
+
+```
+Main Thread (UpdateVM)          Render Thread (RenderFrame)
+     |                                  |
+     | LoadPicture()                    |
+     | → e.pictures[id] = pic           |
+     |   (NO LOCK!)                     |
+     |                                  | renderMutex.Lock()
+     |                                  | → reads e.pictures
+     |                                  | renderMutex.Unlock()
+     |                                  |
+     | MoveCast()                       |
+     | → modifies cast.X, cast.Y       |
+     |   (NO LOCK!)                     |
+     |                                  | renderMutex.Lock()
+     |                                  | → reads cast.X, cast.Y
+     |                                  | renderMutex.Unlock()
+     ↓                                  ↓
+   RACE CONDITION!
+```
+
+---
+
+## Solution: Comprehensive Mutex Protection
+
+### Architecture Decision: Separate Mutexes
+
+Following the principle of **minimal mutex scope**, we added TWO independent mutexes:
+
+```go
+type EngineState struct {
+    // Graphics state
+    pictures map[int]*Picture
+    windows  map[int]*Window
+    casts    map[int]*Cast
+    
+    // Execution state
+    sequencers    []*Sequencer
+    eventHandlers []*EventHandler
+    functions     map[string]*FunctionDefinition
+    
+    // Synchronization
+    renderMutex    sync.Mutex // Protects graphics state ONLY
+    executionMutex sync.Mutex // Protects execution state ONLY
+}
+```
+
+**Why separate mutexes?**
+- Graphics operations and execution operations have no overlap
+- Separate locks prevent unnecessary blocking
+- Better performance: graphics and execution can proceed in parallel
+- Follows best practice: "ミューテックスの範囲は常に最小限にとどめるべき"
+
+### Graphics State Protection (renderMutex)
+
+All functions that modify or read graphics state now lock `renderMutex`:
+
+**Picture Operations**:
+```go
+func (e *EngineState) LoadPicture(filename string) (int, error) {
+    // ... decode image ...
+    
+    // Lock for graphics state modification
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    e.pictures[pic.ID] = pic
+    e.nextPicID++
+    return pic.ID, nil
+}
+
+func (e *EngineState) CreatePicture(width, height int) int {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    // ... create picture ...
+    e.pictures[pic.ID] = pic
+    return pic.ID
+}
+
+func (e *EngineState) DeletePicture(id int) {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    delete(e.pictures, id)
+}
+
+func (e *EngineState) MovePicture(...) error {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    // ... modify picture contents ...
+    return nil
+}
+```
+
+**Window Operations**:
+```go
+func (e *EngineState) OpenWindow(...) int {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    e.windows[win.ID] = win
+    return win.ID
+}
+
+func (e *EngineState) MoveWindow(...) error {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    // ... modify window properties ...
+    return nil
+}
+
+func (e *EngineState) CloseWindow(id int) {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    delete(e.windows, id)
+}
+```
+
+**Cast Operations**:
+```go
+func (e *EngineState) PutCast(...) int {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    e.casts[cast.ID] = cast
+    return cast.ID
+}
+
+func (e *EngineState) MoveCast(...) error {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    // ... modify cast position and redraw ...
+    return nil
+}
+
+func (e *EngineState) DeleteCast(id int) {
+    e.renderMutex.Lock()
+    defer e.renderMutex.Unlock()
+    
+    delete(e.casts, id)
+}
+```
+
+**Renderer** (already had lock):
+```go
+func (r *EbitenRenderer) RenderFrame(screen image.Image, state *EngineState) {
+    // Lock state for reading
+    state.renderMutex.Lock()
+    defer state.renderMutex.Unlock()
+    
+    // ... render all windows and casts ...
+}
+```
+
+### Execution State Protection (executionMutex)
+
+All functions that modify or read execution state now lock `executionMutex`:
+
+**Sequencer Operations**:
+```go
+func (e *EngineState) RegisterSequence(seq *Sequencer, groupID int) int {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    seq.SetID(e.nextSeqID)
+    e.nextSeqID++
+    e.sequencers = append(e.sequencers, seq)
+    return seq.GetID()
+}
+
+func (e *EngineState) GetSequencers() []*Sequencer {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    return e.sequencers
+}
+
+func (e *EngineState) DeactivateSequence(id int) {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    // ... deactivate sequence ...
+}
+
+func (e *EngineState) CleanupInactiveSequences() {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    // ... remove inactive sequences ...
+}
+```
+
+**Event Handler Operations**:
+```go
+func (e *EngineState) RegisterEventHandler(...) int {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    e.nextHandlerID++
+    e.eventHandlers = append(e.eventHandlers, handler)
+    return handler.ID
+}
+
+func (e *EngineState) GetEventHandlers(eventType EventType) []*EventHandler {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    // ... collect handlers ...
+    return handlers
+}
+```
+
+**Function Operations**:
+```go
+func (e *EngineState) RegisterFunction(name string, parameters []string, body []interpreter.OpCode) {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    e.functions[lowerName] = &FunctionDefinition{...}
+}
+
+func (e *EngineState) GetFunction(name string) (*FunctionDefinition, bool) {
+    e.executionMutex.Lock()
+    defer e.executionMutex.Unlock()
+    
+    fn, ok := e.functions[lowerName]
+    return fn, ok
+}
+```
+
+---
+
+## Race Condition Fix: Impact
+
+### Before Fix
+
+- ❌ Non-deterministic behavior between runs
+- ❌ Images sometimes appearing white
+- ❌ Visual appearance changing randomly
+- ❌ Race detector reports multiple data races
+- ❌ Unpredictable crashes in production
+
+### After Fix
+
+- ✅ Deterministic behavior across multiple runs
+- ✅ Consistent visual output
+- ✅ Race detector reports zero races
+- ✅ y_saru runs successfully 3+ times consecutively
+- ✅ Stable production behavior
+
+### Verification
+
+**Race Detector Test**:
+```bash
+$ go test -race ./pkg/engine/...
+# Before: WARNING: DATA RACE detected
+# After:  PASS (no races detected)
+```
+
+**Consistency Test**:
+```bash
+# Run y_saru 3 times consecutively
+$ ./son-et samples/y_saru/Y-SARU.TFY --timeout 65s --headless
+# Run 1: Engine terminated normally (tick: 3900)
+# Run 2: Engine terminated normally (tick: 3900)
+# Run 3: Engine terminated normally (tick: 3900)
+# ✅ Consistent behavior!
+```
+
+---
+
+## Future optimization**:
+
 ## Testing
 
 ### Test Cases
@@ -420,6 +768,12 @@ pic.Image = ebiten.NewImageFromImage(rgba)
    - ✅ Text position correct (variable collision fixed)
    - ✅ All image operations produce correct visual output
 
+4. **Race Condition Testing**
+   - ✅ `go test -race` reports zero data races
+   - ✅ y_saru runs deterministically across multiple executions
+   - ✅ No visual artifacts or white screens
+   - ✅ Consistent behavior in both GUI and headless modes
+
 ### Test Commands
 
 ```bash
@@ -428,6 +782,15 @@ pic.Image = ebiten.NewImageFromImage(rgba)
 
 # Headless mode (verify no panic)
 ./son-et samples/y_saru/Y-SARU.TFY --headless --timeout 65s
+
+# Race detector (verify no data races)
+go test -race ./pkg/engine/...
+
+# Consistency test (run multiple times)
+for i in {1..3}; do
+  echo "Run $i:"
+  ./son-et samples/y_saru/Y-SARU.TFY --headless --timeout 65s 2>&1 | tail -5
+done
 ```
 
 ---
@@ -441,6 +804,14 @@ pic.Image = ebiten.NewImageFromImage(rgba)
 3. **Cache expensive operations**: Pre-process transparency once, reuse result
 4. **Profile before optimizing**: User feedback identified the bottleneck
 5. **Test both modes**: GUI and headless have different constraints
+
+### Concurrency Principles
+
+1. **Separate mutexes for independent state**: Graphics and execution state don't overlap
+2. **Minimal mutex scope**: Lock only what's necessary, unlock as soon as possible
+3. **Consistent locking**: All operations on shared state must use the same mutex
+4. **Use race detector**: `go test -race` catches concurrency bugs early
+5. **Test for determinism**: Run multiple times to verify consistent behavior
 
 ### Code Quality
 
@@ -462,13 +833,22 @@ pic.Image = ebiten.NewImageFromImage(rgba)
 
 ## Conclusion
 
-This optimization eliminated per-frame image conversions and achieved smooth 60 FPS rendering by:
+This optimization eliminated per-frame image conversions and race conditions to achieve smooth, deterministic 60 FPS rendering by:
 
-1. Using `*ebiten.Image` natively throughout the graphics pipeline
-2. Converting images once at load time instead of every frame
-3. Pre-processing cast transparency once at creation time
-4. Using Ebiten's hardware-accelerated operations (DrawImage, SubImage, GeoM)
-5. Implementing double buffering for cast rendering
-6. Skipping expensive operations in headless mode
+1. **Performance**: Using `*ebiten.Image` natively throughout the graphics pipeline
+2. **Performance**: Converting images once at load time instead of every frame
+3. **Performance**: Pre-processing cast transparency once at creation time
+4. **Performance**: Using Ebiten's hardware-accelerated operations (DrawImage, SubImage, GeoM)
+5. **Performance**: Implementing double buffering for cast rendering
+6. **Performance**: Skipping expensive operations in headless mode
+7. **Concurrency**: Adding separate mutexes for graphics and execution state
+8. **Concurrency**: Protecting all shared state access with appropriate locks
+9. **Concurrency**: Verifying thread safety with Go's race detector
 
-The result is a performant execution engine suitable for multimedia applications, as originally intended by the FILLY language design.
+The result is a performant, thread-safe execution engine suitable for multimedia applications, as originally intended by the FILLY language design.
+
+**Key Metrics**:
+- Image conversions per second: 60+ → 0
+- Frame rate: Variable with drops → Consistent 60 FPS
+- Race conditions detected: Multiple → Zero
+- Deterministic behavior: No → Yes

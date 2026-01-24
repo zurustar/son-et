@@ -55,7 +55,8 @@ type EngineState struct {
 	imageDecoder ImageDecoder // Image decoding abstraction
 
 	// Synchronization
-	renderMutex sync.Mutex // Protects graphics state from concurrent access
+	renderMutex    sync.Mutex // Protects graphics state (pictures, windows, casts) from concurrent access
+	executionMutex sync.Mutex // Protects execution state (sequencers, eventHandlers, functions) from concurrent access
 
 	// Configuration
 	headlessMode bool // True if running without GUI
@@ -165,6 +166,10 @@ func (e *EngineState) GetDesktopHeight() int {
 // RegisterSequence registers a new sequence with the engine.
 // Returns the sequence ID.
 func (e *EngineState) RegisterSequence(seq *Sequencer, groupID int) int {
+	// Lock for execution state modification
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	// Assign sequence ID
 	seq.SetID(e.nextSeqID)
 	e.nextSeqID++
@@ -182,6 +187,9 @@ func (e *EngineState) RegisterSequence(seq *Sequencer, groupID int) int {
 
 // AllocateGroupID allocates a new group ID.
 func (e *EngineState) AllocateGroupID() int {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	id := e.nextGroupID
 	e.nextGroupID++
 	return id
@@ -189,11 +197,17 @@ func (e *EngineState) AllocateGroupID() int {
 
 // GetSequencers returns all active sequencers.
 func (e *EngineState) GetSequencers() []*Sequencer {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	return e.sequencers
 }
 
 // DeactivateSequence deactivates a sequence by ID.
 func (e *EngineState) DeactivateSequence(id int) {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	for _, seq := range e.sequencers {
 		if seq.GetID() == id {
 			seq.Deactivate()
@@ -204,6 +218,9 @@ func (e *EngineState) DeactivateSequence(id int) {
 
 // DeactivateGroup deactivates all sequences in a group.
 func (e *EngineState) DeactivateGroup(groupID int) {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	for _, seq := range e.sequencers {
 		if seq.GetGroupID() == groupID {
 			seq.Deactivate()
@@ -213,6 +230,9 @@ func (e *EngineState) DeactivateGroup(groupID int) {
 
 // DeactivateAll deactivates all sequences.
 func (e *EngineState) DeactivateAll() {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	for _, seq := range e.sequencers {
 		seq.Deactivate()
 	}
@@ -220,6 +240,9 @@ func (e *EngineState) DeactivateAll() {
 
 // CleanupInactiveSequences removes inactive sequences from the list.
 func (e *EngineState) CleanupInactiveSequences() {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	active := make([]*Sequencer, 0, len(e.sequencers))
 	for _, seq := range e.sequencers {
 		if seq.IsActive() {
@@ -232,6 +255,9 @@ func (e *EngineState) CleanupInactiveSequences() {
 // RegisterEventHandler registers a new event handler.
 // Returns the handler ID.
 func (e *EngineState) RegisterEventHandler(eventType EventType, commands []interpreter.OpCode, mode TimingMode, parent *Sequencer, userID int) int {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	handler := &EventHandler{
 		ID:        e.nextHandlerID,
 		EventType: eventType,
@@ -250,6 +276,9 @@ func (e *EngineState) RegisterEventHandler(eventType EventType, commands []inter
 
 // GetEventHandlers returns all active event handlers for a given event type.
 func (e *EngineState) GetEventHandlers(eventType EventType) []*EventHandler {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	handlers := make([]*EventHandler, 0)
 	for _, handler := range e.eventHandlers {
 		if handler.Active && handler.EventType == eventType {
@@ -261,6 +290,9 @@ func (e *EngineState) GetEventHandlers(eventType EventType) []*EventHandler {
 
 // GetUserEventHandlers returns all active USER event handlers for a specific user ID.
 func (e *EngineState) GetUserEventHandlers(userID int) []*EventHandler {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	handlers := make([]*EventHandler, 0)
 	for _, handler := range e.eventHandlers {
 		if handler.Active && handler.EventType == EventUSER && handler.UserID == userID {
@@ -272,6 +304,9 @@ func (e *EngineState) GetUserEventHandlers(userID int) []*EventHandler {
 
 // DeactivateEventHandler deactivates an event handler by ID.
 func (e *EngineState) DeactivateEventHandler(id int) {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	for _, handler := range e.eventHandlers {
 		if handler.ID == id {
 			handler.Active = false
@@ -282,6 +317,9 @@ func (e *EngineState) DeactivateEventHandler(id int) {
 
 // CleanupInactiveEventHandlers removes inactive event handlers from the list.
 func (e *EngineState) CleanupInactiveEventHandlers() {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	active := make([]*EventHandler, 0, len(e.eventHandlers))
 	for _, handler := range e.eventHandlers {
 		if handler.Active {
@@ -293,6 +331,9 @@ func (e *EngineState) CleanupInactiveEventHandlers() {
 
 // RegisterFunction registers a user-defined function.
 func (e *EngineState) RegisterFunction(name string, parameters []string, body []interpreter.OpCode) {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	// Convert function name to lowercase for case-insensitive lookup
 	lowerName := strings.ToLower(name)
 
@@ -305,6 +346,9 @@ func (e *EngineState) RegisterFunction(name string, parameters []string, body []
 
 // GetFunction retrieves a user-defined function by name (case-insensitive).
 func (e *EngineState) GetFunction(name string) (*FunctionDefinition, bool) {
+	e.executionMutex.Lock()
+	defer e.executionMutex.Unlock()
+
 	lowerName := strings.ToLower(name)
 	fn, ok := e.functions[lowerName]
 	return fn, ok
@@ -332,6 +376,10 @@ func (e *EngineState) LoadPicture(filename string) (int, error) {
 	ebitenImg := ebiten.NewImageFromImage(img)
 	bounds := img.Bounds()
 
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Create picture
 	pic := &Picture{
 		ID:     e.nextPicID,
@@ -355,6 +403,10 @@ func (e *EngineState) LoadPicture(filename string) (int, error) {
 // CreatePicture creates an empty image buffer with the specified dimensions.
 // Returns the picture ID.
 func (e *EngineState) CreatePicture(width, height int) int {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Create empty Ebiten image
 	img := ebiten.NewImage(width, height)
 
@@ -381,6 +433,10 @@ func (e *EngineState) GetPicture(id int) *Picture {
 
 // DeletePicture removes a picture and releases its resources.
 func (e *EngineState) DeletePicture(id int) {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	delete(e.pictures, id)
 }
 
@@ -433,6 +489,10 @@ func (e *EngineState) EnsureRGBA(img image.Image) *image.RGBA {
 //
 // Returns an error if source or destination doesn't exist.
 func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, mode int) error {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Get source picture
 	srcPic := e.pictures[srcID]
 	if srcPic == nil {
@@ -529,6 +589,10 @@ func (e *EngineState) MovePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, ds
 //
 // Returns an error if source or destination doesn't exist.
 func (e *EngineState) MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH int) error {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Get source picture
 	srcPic := e.pictures[srcID]
 	if srcPic == nil {
@@ -600,6 +664,10 @@ func (e *EngineState) MoveSPicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, d
 //
 // Returns an error if source or destination doesn't exist.
 func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY int) error {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Get source picture
 	srcPic := e.pictures[srcID]
 	if srcPic == nil {
@@ -665,6 +733,10 @@ func (e *EngineState) ReversePicture(srcID, srcX, srcY, srcW, srcH, dstID, dstX,
 //	picX, picY: offset into the picture to display
 //	bgColor: background color (0xRRGGBB format)
 func (e *EngineState) OpenWindow(picID, x, y, width, height, picX, picY, bgColor int) int {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// If width and height are both 0, use picture dimensions
 	if width == 0 && height == 0 {
 		if pic := e.pictures[picID]; pic != nil {
@@ -731,6 +803,10 @@ func (e *EngineState) GetWindow(id int) *Window {
 //	width, height: new window dimensions (0 = keep current)
 //	picX, picY: new picture offset
 func (e *EngineState) MoveWindow(id, picID, x, y, width, height, picX, picY int) error {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	win := e.windows[id]
 	if win == nil {
 		return fmt.Errorf("window %d not found", id)
@@ -760,6 +836,10 @@ func (e *EngineState) MoveWindow(id, picID, x, y, width, height, picX, picY int)
 
 // CloseWindow closes a window and removes it.
 func (e *EngineState) CloseWindow(id int) {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	delete(e.windows, id)
 }
 
@@ -936,6 +1016,10 @@ func (e *EngineState) GetDraggedWindowID() int {
 //
 // Note: The cast is associated with the window that uses destPicID.
 func (e *EngineState) PutCast(destPicID, picID, x, y, srcX, srcY, width, height, transparentColor int) int {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	// Get source picture
 	srcPic := e.pictures[picID]
 	if srcPic == nil {
@@ -1097,6 +1181,10 @@ func (e *EngineState) GetCast(id int) *Cast {
 //	srcX, srcY: new source clipping position (optional, -1 = no change)
 //	width, height: new clipping dimensions (optional, -1 = no change)
 func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	cast := e.casts[id]
 	if cast == nil {
 		return fmt.Errorf("cast %d not found", id)
@@ -1150,8 +1238,13 @@ func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
 	// CRITICAL: Copy current Image content to BackBuffer FIRST
 	// This preserves any MovePic drawings that were done to the main Image
 	// Then we'll draw all casts on top of this content
+
+	// Clear BackBuffer to transparent black
 	destPic.BackBuffer.Clear()
+
+	// Copy current Image to BackBuffer
 	opts := &ebiten.DrawImageOptions{}
+	opts.CompositeMode = ebiten.CompositeModeSourceOver
 	destPic.BackBuffer.DrawImage(destPic.Image, opts)
 
 	// Redraw ALL casts that belong to this destination picture onto BackBuffer
@@ -1162,10 +1255,11 @@ func (e *EngineState) MoveCast(id, x, y, srcX, srcY, width, height int) error {
 		}
 	}
 
-	// Swap BackBuffer with main Image (double buffering)
-	temp := destPic.Image
-	destPic.Image = destPic.BackBuffer
-	destPic.BackBuffer = temp
+	// Copy BackBuffer to Image (don't swap - copy instead to avoid state accumulation)
+	destPic.Image.Clear()
+	opts2 := &ebiten.DrawImageOptions{}
+	opts2.CompositeMode = ebiten.CompositeModeSourceOver
+	destPic.Image.DrawImage(destPic.BackBuffer, opts2)
 
 	return nil
 }
@@ -1230,6 +1324,10 @@ func (e *EngineState) redrawAllCastsOnWindow(windowID int) {
 
 // DeleteCast removes a cast and releases its resources.
 func (e *EngineState) DeleteCast(id int) {
+	// Lock for graphics state modification
+	e.renderMutex.Lock()
+	defer e.renderMutex.Unlock()
+
 	delete(e.casts, id)
 }
 

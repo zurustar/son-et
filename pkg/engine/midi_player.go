@@ -296,8 +296,13 @@ func (mp *MIDIPlayer) IsPlaying() bool {
 	mp.mutex.Lock()
 	defer mp.mutex.Unlock()
 
-	// Check if we have a player and it's marked as playing
-	if !mp.isPlaying || mp.player == nil {
+	// If we're marked as finished or not playing, return false immediately
+	if mp.isFinished || !mp.isPlaying {
+		return false
+	}
+
+	// If we don't have a player, we're not playing
+	if mp.player == nil {
 		return false
 	}
 
@@ -421,8 +426,9 @@ func (ms *MIDIStream) Read(p []byte) (int, error) {
 
 		// Trigger MIDI_END event
 		ms.engine.TriggerEvent(EventMIDI_END, &EventData{})
-		// Stop sending ticks - MIDI playback is complete
-		return len(p), nil
+
+		// Return EOF to stop audio playback
+		return 0, io.EOF
 	}
 
 	// Convert MIDI ticks to FILLY ticks (32nd note resolution)

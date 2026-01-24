@@ -28,6 +28,7 @@ func TestKuma2Integration(t *testing.T) {
 	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
 	engine := NewEngine(nil, assetLoader, nil)
 	engine.SetHeadless(true)
+	engine.SetDebugLevel(2) // Enable debug logging
 	engine.Start()
 
 	// Load MIDI file into asset loader
@@ -114,15 +115,21 @@ func TestKuma2Integration(t *testing.T) {
 	// Calculate elapsed time
 	elapsed := eventTime.Sub(startTime).Seconds()
 
-	// Expected duration: ~19.20 seconds (based on MIDI file analysis with tempo changes)
-	// The MIDI file has a tempo change to 75 BPM at tick 1890.
-	// Allow tolerance for processing time and timing variations.
-	// The task specifies ~18-19 seconds, so we'll use a range of 17-21 seconds.
-	if elapsed < 17.0 || elapsed > 21.0 {
-		t.Errorf("MIDI playback duration incorrect: got %.2fs, expected ~18-19s", elapsed)
+	// Expected duration: ~18.02 seconds (based on MIDI file analysis with tempo changes)
+	// The MIDI file has:
+	// - Tempo 0: tick=0, BPM=120 (500000 microsPerBeat)
+	// - Tempo 1: tick=1890, BPM=75 (800000 microsPerBeat)
+	// - Total ticks: 11520, PPQ: 480
+	// Calculated duration:
+	//   Segment 1 (0-1890): 1890/480 * 500000/1000000 = 1.97s
+	//   Segment 2 (1890-11520): 9630/480 * 800000/1000000 = 16.05s
+	//   Total: 18.02s
+	// Allow tolerance for processing time and timing variations (±1 second).
+	if elapsed < 17.0 || elapsed > 19.0 {
+		t.Errorf("MIDI playback duration incorrect: got %.2fs, expected ~18.02s", elapsed)
 		t.Logf("NOTE: This failure may indicate that tempo changes are not being handled correctly in playback")
 	} else {
-		t.Logf("MIDI playback completed in %.2f seconds (expected ~19.20s)", elapsed)
+		t.Logf("MIDI playback completed in %.2f seconds (expected ~18.02s)", elapsed)
 	}
 
 	// Verify event was received
@@ -131,7 +138,8 @@ func TestKuma2Integration(t *testing.T) {
 	}
 
 	// Verify player is no longer playing
-	time.Sleep(100 * time.Millisecond)
+	// Wait a bit longer for the audio player to fully stop after EOF
+	time.Sleep(500 * time.Millisecond)
 	if mp.IsPlaying() {
 		t.Errorf("Player still marked as playing after MIDI_END")
 	}
