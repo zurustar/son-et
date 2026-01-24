@@ -31,19 +31,19 @@
 
 ## フェーズ2: タイトル管理
 
-- [ ] 6. pkg/title の実装
-  - [ ] 6.1 FillyTitle 構造体の定義
-  - [ ] 6.2 FillyTitleRegistry 構造体の定義
-  - [ ] 6.3 NewFillyTitleRegistry 関数の実装
-  - [ ] 6.4 LoadExternalTitle メソッドの実装
-  - [ ] 6.5 GetAvailableTitles メソッドの実装
-  - [ ] 6.6 SelectTitle メソッドの実装
-  - [ ] 6.7 タイトル選択ロジックのユニットテスト
+- [x] 6. pkg/title の実装
+  - [x] 6.1 FillyTitle 構造体の定義
+  - [x] 6.2 FillyTitleRegistry 構造体の定義
+  - [x] 6.3 NewFillyTitleRegistry 関数の実装
+  - [x] 6.4 LoadExternalTitle メソッドの実装
+  - [x] 6.5 GetAvailableTitles メソッドの実装
+  - [x] 6.6 SelectTitle メソッドの実装
+  - [x] 6.7 タイトル選択ロジックのユニットテスト
 
-- [ ] 7. pkg/app へのタイトル管理機能の統合
-  - [ ] 7.1 loadTitle メソッドの実装
-  - [ ] 7.2 selectTitle メソッドの実装（仮実装：最初のタイトルを返す）
-  - [ ] 7.3 タイトル読み込みの統合テスト
+- [x] 7. pkg/app へのタイトル管理機能の統合
+  - [x] 7.1 loadTitle メソッドの実装
+  - [x] 7.2 selectTitle メソッドの実装（仮実装：最初のタイトルを返す）
+  - [x] 7.3 タイトル読み込みの統合テスト
 
 ## フェーズ3: スクリプト読み込み
 

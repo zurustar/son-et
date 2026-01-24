@@ -50,3 +50,6 @@ process_snapshot_*.txt
 
 # Build output directory
 bin/
+
+# Zip files
+*.zip
