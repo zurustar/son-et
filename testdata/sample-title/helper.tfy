@@ -1,0 +1,10 @@
+// Helper functions for FILLY script
+// This file is in UTF-8 encoding
+
+function greet(name) {
+    print("Hello, " + name + "!");
+}
+
+function add(a, b) {
+    return a + b;
+}

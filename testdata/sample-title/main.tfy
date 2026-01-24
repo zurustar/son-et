@@ -1,0 +1,5 @@
+// This is a sample FILLY script in Shift-JIS
+// Japanese characters: ‚±‚ñ‚É‚¿‚Í¢ŠE
+main() {
+    print("Hello from FILLY!");
+}

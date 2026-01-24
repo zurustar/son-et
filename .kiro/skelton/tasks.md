@@ -47,25 +47,25 @@
 
 ## フェーズ3: スクリプト読み込み
 
-- [ ] 8. pkg/script の実装
-  - [ ] 8.1 Script 構造体の定義
-  - [ ] 8.2 Loader 構造体の定義
-  - [ ] 8.3 NewLoader 関数の実装
-  - [ ] 8.4 findScriptFiles メソッドの実装（case-insensitive）
-  - [ ] 8.5 loadScript メソッドの実装
-  - [ ] 8.6 convertShiftJISToUTF8 関数の実装
-  - [ ] 8.7 LoadAllScripts メソッドの実装
-  - [ ] 8.8 スクリプト読み込みのユニットテスト
+- [x] 8. pkg/script の実装
+  - [x] 8.1 Script 構造体の定義
+  - [x] 8.2 Loader 構造体の定義
+  - [x] 8.3 NewLoader 関数の実装
+  - [x] 8.4 findScriptFiles メソッドの実装（case-insensitive）
+  - [x] 8.5 loadScript メソッドの実装
+  - [x] 8.6 convertShiftJISToUTF8 関数の実装
+  - [x] 8.7 LoadAllScripts メソッドの実装
+  - [x] 8.8 スクリプト読み込みのユニットテスト
 
-- [ ] 9. テストデータの作成
-  - [ ] 9.1 サンプルFILLYタイトルディレクトリの作成
-  - [ ] 9.2 Shift-JISエンコーディングのテストスクリプトファイルの作成
-  - [ ] 9.3 UTF-8エンコーディングのテストスクリプトファイルの作成
+- [x] 9. テストデータの作成
+  - [x] 9.1 サンプルFILLYタイトルディレクトリの作成
+  - [x] 9.2 Shift-JISエンコーディングのテストスクリプトファイルの作成
+  - [x] 9.3 UTF-8エンコーディングのテストスクリプトファイルの作成
 
-- [ ] 10. pkg/app へのスクリプト読み込み機能の統合
-  - [ ] 10.1 loadScripts メソッドの実装
-  - [ ] 10.2 スクリプト読み込み結果のログ出力
-  - [ ] 10.3 スクリプト読み込みの統合テスト
+- [x] 10. pkg/app へのスクリプト読み込み機能の統合
+  - [x] 10.1 loadScripts メソッドの実装
+  - [x] 10.2 スクリプト読み込み結果のログ出力
+  - [x] 10.3 スクリプト読み込みの統合テスト
 
 ## フェーズ4: GUI
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/zurustar/son-et/pkg/cli"
 	"github.com/zurustar/son-et/pkg/logger"
+	"github.com/zurustar/son-et/pkg/script"
 	"github.com/zurustar/son-et/pkg/title"
 )
 
@@ -52,7 +53,18 @@ func (app *Application) Run(args []string) error {
 
 	app.log.Info("Title selected", "name", selectedTitle.Name, "path", selectedTitle.Path)
 
-	// TODO: 4. スクリプトファイルの読み込み
+	// 4. スクリプトファイルの読み込み
+	scripts, err := app.loadScripts(selectedTitle.Path)
+	if err != nil {
+		return fmt.Errorf("failed to load scripts: %w", err)
+	}
+
+	app.log.Info("Scripts loaded", "count", len(scripts))
+	for _, s := range scripts {
+		app.log.Info("Script file", "name", s.FileName, "size", s.Size)
+		app.log.Debug("Script content preview", "name", s.FileName, "preview", truncate(s.Content, 100))
+	}
+
 	// TODO: 5. 仮想デスクトップの実行
 
 	app.log.Info("Application terminated normally")
@@ -115,4 +127,22 @@ func (app *Application) selectTitle(titles []title.FillyTitle) (*title.FillyTitl
 
 	app.log.Info("Multiple titles available, selecting first one (temporary implementation)", "count", len(titles))
 	return &titles[0], nil
+}
+
+// loadScripts スクリプトファイルを読み込む
+func (app *Application) loadScripts(titlePath string) ([]script.Script, error) {
+	loader := script.NewLoader(titlePath)
+	scripts, err := loader.LoadAllScripts()
+	if err != nil {
+		return nil, err
+	}
+	return scripts, nil
+}
+
+// truncate 文字列を指定した長さで切り詰める
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
