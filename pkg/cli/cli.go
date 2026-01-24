@@ -18,6 +18,9 @@ type Config struct {
 
 // ParseArgs コマンドライン引数を解析してConfigを返す
 func ParseArgs(args []string) (*Config, error) {
+	// 引数を並べ替え：フラグを前に、位置引数を後ろに
+	reorderedArgs := reorderArgs(args)
+
 	fs := flag.NewFlagSet("son-et", flag.ContinueOnError)
 
 	config := &Config{}
@@ -31,7 +34,7 @@ func ParseArgs(args []string) (*Config, error) {
 	fs.BoolVar(&config.ShowHelp, "help", false, "ヘルプを表示")
 	fs.BoolVar(&config.ShowHelp, "h", false, "ヘルプを表示（短縮形）")
 
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderedArgs); err != nil {
 		return nil, err
 	}
 
@@ -58,6 +61,37 @@ func ParseArgs(args []string) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+// reorderArgs 引数を並べ替えて、フラグを前に、位置引数を後ろに配置する
+func reorderArgs(args []string) []string {
+	var flags []string
+	var positional []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		// フラグかどうかを判定（-または--で始まる）
+		if len(arg) > 0 && arg[0] == '-' {
+			flags = append(flags, arg)
+
+			// 次の引数が値である可能性をチェック
+			// （-t 5 のような場合）
+			if i+1 < len(args) && len(args[i+1]) > 0 && args[i+1][0] != '-' {
+				// ブール型フラグでない場合は次の引数も追加
+				if arg != "-h" && arg != "--help" && arg != "--headless" {
+					i++
+					flags = append(flags, args[i])
+				}
+			}
+		} else {
+			// 位置引数
+			positional = append(positional, arg)
+		}
+	}
+
+	// フラグを前に、位置引数を後ろに配置
+	return append(flags, positional...)
 }
 
 // PrintHelp ヘルプメッセージを表示

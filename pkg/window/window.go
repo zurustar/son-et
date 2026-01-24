@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/zurustar/son-et/pkg/title"
+	"golang.org/x/image/font/basicfont"
 )
 
 var (
@@ -22,6 +24,8 @@ var (
 	textColor = color.White
 	// 選択中のテキスト色（黄色）
 	selectedTextColor = color.RGBA{0xFF, 0xFF, 0x00, 0xFF}
+	// デフォルトフォント
+	defaultFace = text.NewGoXFace(basicfont.Face7x13)
 )
 
 // Mode はウィンドウの表示モードを表す
@@ -72,28 +76,28 @@ func (g *Game) Update() error {
 
 // updateSelection タイトル選択画面の更新
 func (g *Game) updateSelection() error {
-	// 上矢印キー
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	// 上矢印キー（1回だけ反応）
+	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
 		if g.selectedIndex > 0 {
 			g.selectedIndex--
 		}
 	}
 
-	// 下矢印キー
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	// 下矢印キー（1回だけ反応）
+	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
 		if g.selectedIndex < len(g.titles)-1 {
 			g.selectedIndex++
 		}
 	}
 
-	// Enterキー
-	if ebiten.IsKeyPressed(ebiten.KeyEnter) {
+	// Enterキー（1回だけ反応）
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		g.selectedTitle = &g.titles[g.selectedIndex]
 		return ebiten.Termination
 	}
 
-	// Escキー
-	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+	// Escキー（1回だけ反応）
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
 
@@ -102,8 +106,8 @@ func (g *Game) updateSelection() error {
 
 // updateDesktop 仮想デスクトップの更新
 func (g *Game) updateDesktop() error {
-	// Escキーで終了
-	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+	// Escキーで終了（1回だけ反応）
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
 
@@ -130,10 +134,7 @@ func (g *Game) drawSelection(screen *ebiten.Image) {
 	titleOp := &text.DrawOptions{}
 	titleOp.GeoM.Translate(50, 50)
 	titleOp.ColorScale.ScaleWithColor(textColor)
-	text.Draw(screen, titleText, &text.GoTextFace{
-		Source: nil, // デフォルトフォント
-		Size:   24,
-	}, titleOp)
+	text.Draw(screen, titleText, defaultFace, titleOp)
 
 	// タイトル一覧を表示
 	for i, t := range g.titles {
@@ -153,10 +154,7 @@ func (g *Game) drawSelection(screen *ebiten.Image) {
 		} else {
 			op.ColorScale.ScaleWithColor(textColor)
 		}
-		text.Draw(screen, titleName, &text.GoTextFace{
-			Source: nil,
-			Size:   20,
-		}, op)
+		text.Draw(screen, titleName, defaultFace, op)
 	}
 
 	// 操作説明を表示
@@ -164,10 +162,7 @@ func (g *Game) drawSelection(screen *ebiten.Image) {
 	helpOp := &text.DrawOptions{}
 	helpOp.GeoM.Translate(50, 650)
 	helpOp.ColorScale.ScaleWithColor(textColor)
-	text.Draw(screen, helpText, &text.GoTextFace{
-		Source: nil,
-		Size:   16,
-	}, helpOp)
+	text.Draw(screen, helpText, defaultFace, helpOp)
 }
 
 // drawDesktop 仮想デスクトップの描画

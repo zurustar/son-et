@@ -121,6 +121,28 @@ func TestParseArgs_ValidArgs(t *testing.T) {
 				ShowHelp:  false,
 			},
 		},
+		{
+			name: "位置引数の後にフラグ（順序に関係なく動作）",
+			args: []string{"-log-level", "debug", "./samples/kuma2", "--timeout", "5"},
+			expected: Config{
+				TitlePath: "./samples/kuma2",
+				Timeout:   5 * time.Second,
+				LogLevel:  "debug",
+				Headless:  false,
+				ShowHelp:  false,
+			},
+		},
+		{
+			name: "位置引数が最初（順序に関係なく動作）",
+			args: []string{"/path/to/title", "--timeout", "10", "--headless"},
+			expected: Config{
+				TitlePath: "/path/to/title",
+				Timeout:   10 * time.Second,
+				LogLevel:  "info",
+				Headless:  true,
+				ShowHelp:  false,
+			},
+		},
 	}
 
 	for _, tt := range tests {

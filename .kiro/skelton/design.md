@@ -216,11 +216,22 @@ func Run(game *Game) error
 
 #### 2.5.6 ヘッドレスモード対応
 ```go
-// RunHeadless ヘッドレスモードで実行
-func RunHeadless(titles []title.Title, timeout time.Duration) (*title.Title, error)
+// RunHeadless ヘッドレスモードでタイトル選択を実行
+func RunHeadless(titles []title.FillyTitle, timeout time.Duration, reader io.Reader, writer io.Writer) (*title.FillyTitle, error)
 ```
-- 標準入出力でタイトル選択（複数の場合）
-- タイムアウト処理のみ実行
+
+**設計原則**:
+- GUIウィンドウを一切作成しない
+- 標準入出力のみを使用して対話する
+- `window.Run()`関数は呼び出さない
+- Ebitenゲームエンジンを初期化しない
+
+**実装詳細**:
+- タイトルが1つの場合は自動選択
+- 複数のタイトルがある場合は標準入出力で選択
+- タイムアウト処理はコンテキストを使用
+- 無効な入力に対してはエラーメッセージを表示して再プロンプト
+- 'q'または'Q'入力で終了
 
 ## 3. メイン処理フロー
 
@@ -336,28 +347,33 @@ func (app *Application) loadTitle() (*title.FillyTitle, error) {
 }
 
 func (app *Application) selectTitle(titles []title.FillyTitle) (*title.FillyTitle, error) {
-    if app.config.Headless {
-        return window.RunHeadless(titles, app.config.Timeout)
+    if len(titles) == 0 {
+        return nil, fmt.Errorf("no titles available for selection")
     }
     
-    game := window.NewGame(window.ModeSelection, titles, app.config.Timeout)
-    if err := window.Run(game); err != nil {
-        return nil, err
+    app.log.Info("Multiple titles available, showing selection screen", "count", len(titles))
+    
+    // ヘッドレスモードの場合は標準入出力で選択
+    if app.config.Headless {
+        return window.RunHeadless(titles, app.config.Timeout, os.Stdin, os.Stdout)
     }
-    return game.GetSelectedTitle(), nil
+    
+    // GUIモードの場合はウィンドウで選択
+    return window.Run(window.ModeSelection, titles, app.config.Timeout)
 }
 
 func (app *Application) runDesktop() error {
-    if !app.config.Headless {
-        game := window.NewGame(window.ModeDesktop, nil, app.config.Timeout)
-        return window.Run(game)
+    app.log.Info("Starting virtual desktop")
+    
+    // ヘッドレスモードの場合は何もしない（将来的にスクリプト実行）
+    if app.config.Headless {
+        app.log.Info("Headless mode: skipping desktop display")
+        return nil
     }
     
-    // ヘッドレスモードではタイムアウトまで待機
-    if app.config.Timeout > 0 {
-        time.Sleep(app.config.Timeout)
-    }
-    return nil
+    // GUIモードの場合は仮想デスクトップを表示
+    _, err := window.Run(window.ModeDesktop, nil, app.config.Timeout)
+    return err
 }
 ```
 
@@ -495,12 +511,43 @@ timeout == 0 → program runs until user termination
 ```
 
 ### 8.5 ヘッドレスモードの正当性
-**プロパティ 5.1**: ヘッドレスモードでは、GUIウィンドウが表示されない
+
+**プロパティ 5.1**: ヘッドレスモードでは、GUIウィンドウが一切作成されない
 ```
-headless == true → no Ebitengine window is created
+∀ execution where headless == true:
+    no GUI_Window instance is created
+    AND no Ebiten window creation function is called
 ```
 
-**プロパティ 5.2**: ヘッドレスモードでも、すべての非GUI機能は動作する
+**プロパティ 5.2**: ヘッドレスモードでタイトル選択が不要な場合、Virtual_Desktopを開かずに処理を続行する
+```
+headless == true AND needsSelection == false
+    → runDesktop() returns immediately without creating window
+```
+
+**プロパティ 5.3**: ヘッドレスモードでタイトル選択が必要な場合、標準入出力を使用する
+```
+headless == true AND needsSelection == true
+    → window.RunHeadless() is called
+    AND window.Run() is NOT called
+```
+
+**プロパティ 5.4**: runDesktop()はヘッドレスモードでウィンドウを作成しない
+```
+headless == true AND runDesktop() is called
+    → function returns immediately
+    AND no window is created
+    AND action is logged
+```
+
+**プロパティ 5.5**: window.Run()とwindow.RunHeadless()は相互排他的に呼び出される
+```
+∀ execution:
+    (window.Run() is called XOR window.RunHeadless() is called)
+    OR (neither is called)
+```
+
+**プロパティ 5.6**: ヘッドレスモードでも、すべての非GUI機能は正常に動作する
 ```
 headless == true → script loading, logging, timeout work correctly
 ```

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/zurustar/son-et/pkg/cli"
 	"github.com/zurustar/son-et/pkg/logger"
@@ -144,9 +145,17 @@ func (app *Application) selectTitle(titles []title.FillyTitle) (*title.FillyTitl
 func (app *Application) runDesktop() error {
 	app.log.Info("Starting virtual desktop")
 
-	// ヘッドレスモードの場合は何もしない（将来的にスクリプト実行）
+	// ヘッドレスモードの場合
 	if app.config.Headless {
 		app.log.Info("Headless mode: skipping desktop display")
+
+		// タイムアウトが指定されている場合は、その時間だけ待機
+		if app.config.Timeout > 0 {
+			app.log.Info("Waiting for timeout", "duration", app.config.Timeout)
+			time.Sleep(app.config.Timeout)
+			app.log.Info("Timeout reached, terminating")
+		}
+
 		return nil
 	}
 

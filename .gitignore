@@ -51,6 +51,14 @@ process_snapshot_*.txt
 # Build output directory
 bin/
 
+# Embedded titles (except .gitkeep and README.md)
+cmd/son-et/titles/*
+!cmd/son-et/titles/.gitkeep
+!cmd/son-et/titles/README.md
+
+# Build script backup directories
+.titles_backup_*
+
 # Zip files
 *.zip
 

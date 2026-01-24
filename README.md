@@ -31,6 +31,44 @@ go install ./cmd/son-et
 
 ## 使い方
 
+### 基本的な使い方
+
+```bash
+# 外部タイトルを実行
+son-et /path/to/title
+
+# タイムアウトを指定（10秒後に自動終了）
+son-et --timeout 10 /path/to/title
+
+# ヘッドレスモードで実行（GUIなし）
+son-et --headless /path/to/title
+
+# ログレベルを指定
+son-et --log-level debug /path/to/title
+
+# 複数のオプションを組み合わせ（順序は自由）
+son-et /path/to/title --timeout 5 --headless --log-level debug
+```
+
+### コマンドラインオプション
+
+- `-t, --timeout <seconds>`: 指定秒数後にプログラムを終了（デフォルト: 無制限）
+- `-l, --log-level <level>`: ログレベル: debug, info, warn, error（デフォルト: info）
+- `--headless`: ヘッドレスモード（GUIなし）
+- `-h, --help`: ヘルプを表示
+
+**注意**: オプションは位置引数（タイトルパス）の前後どちらに指定しても動作します。
+
+### ビルド手順
+
+```bash
+# ソースコードからビルド
+go build -o son-et cmd/son-et/main.go
+
+# 実行
+./son-et /path/to/title
+```
+
 ### 開発時（Direct Mode）
 
 プロジェクトディレクトリを指定して直接実行します：
