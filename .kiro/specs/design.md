@@ -246,6 +246,300 @@ Script Goroutine:
 
 ---
 
+## Part 1.5: Concurrency and Threading Model
+
+This section describes the threading architecture and synchronization mechanisms that ensure thread-safe execution.
+
+### Threading Architecture Overview
+
+son-etエンジンは、Ebitenゲームループとの統合において、スレッド安全性を確保するための特別な設計を採用しています。
+
+### The Ebiten Constraint
+
+**Critical Constraint**: Ebiten's `Image` type is **NOT thread-safe**. Concurrent access from multiple goroutines will corrupt internal state, causing rendering artifacts or crashes.
+
+### Thread Structure
+
+The engine uses three types of goroutines:
+
+```
+┌─────────────────────────────────────┐
+│ Main Thread (Ebiten Game Loop)     │
+├─────────────────────────────────────┤
+│ Update()                            │
+│  ├─ Process pending MIDI ticks     │
+│  ├─ UpdateMIDISequences()          │
+│  │   └─ MovePic, TextWrite, etc.   │
+│  └─ UpdateVM()                     │
+│                                     │
+│ Draw()                              │
+│  └─ RenderFrame()                  │
+│      └─ Image.SubImage(), etc.     │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│ MIDI Thread (Audio Callback)       │
+├─────────────────────────────────────┤
+│ MIDIStream.Read()                   │
+│  ├─ Render audio samples           │
+│  ├─ Calculate current tick         │
+│  └─ Accumulate ticks               │
+│     (NO image operations)           │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│ WAV Threads (One per playback)     │
+├─────────────────────────────────────┤
+│ Audio playback only                 │
+│ (No engine state access)            │
+└─────────────────────────────────────┘
+```
+
+### The MIDI Tick Accumulation Pattern
+
+**Problem**: MIDI callbacks run on the audio thread and need to trigger script execution that modifies images.
+
+**Solution**: Accumulate ticks in the audio thread, process them on the main thread.
+
+**Implementation**:
+
+```go
+// In MIDI callback (audio thread)
+func (ms *MidiStream) Read(buf []byte) (int, error) {
+    // Calculate ticks from wall-clock time
+    currentTick := ms.calculateCurrentTick()
+    ticksAdvanced := currentTick - ms.lastTick
+    
+    // Accumulate ticks (thread-safe)
+    ms.engine.midiPlayer.midiTickMutex.Lock()
+    ms.engine.midiPlayer.pendingMIDITicks += ticksAdvanced
+    ms.engine.midiPlayer.midiTickMutex.Unlock()
+    
+    ms.lastTick = currentTick
+    
+    // Render audio samples
+    ms.sequencer.Render(left, right)
+    return n, nil
+}
+
+// In main thread (Update method)
+func (e *Engine) Update() error {
+    // Process accumulated MIDI ticks
+    if e.midiPlayer != nil {
+        e.midiPlayer.midiTickMutex.Lock()
+        pendingTicks := e.midiPlayer.pendingMIDITicks
+        e.midiPlayer.pendingMIDITicks = 0
+        e.midiPlayer.midiTickMutex.Unlock()
+
+        if pendingTicks > 0 {
+            e.UpdateMIDISequences(pendingTicks)
+        }
+    }
+    
+    // ... rest of update logic
+    return nil
+}
+```
+
+**Key Design Decisions**:
+- MIDI thread NEVER calls image operations directly
+- Ticks are accumulated atomically using a mutex
+- Main thread processes all accumulated ticks in batch
+- Image operations (MovePic, TextWrite, etc.) only execute on main thread
+
+### Synchronization Mechanisms
+
+**renderMutex**:
+Protects graphics state (pictures, windows, casts) from concurrent access:
+
+```go
+type EngineState struct {
+    renderMutex sync.RWMutex
+    pictures    map[int]*Picture
+    windows     map[int]*Window
+    casts       map[int]*Cast
+    // ...
+}
+
+// In RenderFrame (main thread)
+func (r *Renderer) RenderFrame(screen *ebiten.Image, state *EngineState) {
+    state.renderMutex.RLock()
+    defer state.renderMutex.RUnlock()
+    // ... read graphics state for rendering
+}
+
+// In MovePic (main thread, called from UpdateMIDISequences)
+func (e *Engine) MovePic(srcPicID, dstPicID int, ...) error {
+    e.state.renderMutex.Lock()
+    defer e.state.renderMutex.Unlock()
+    // ... modify graphics state
+}
+```
+
+**midiTickMutex**:
+Protects the `pendingMIDITicks` counter:
+
+```go
+type MIDIPlayer struct {
+    midiTickMutex    sync.Mutex
+    pendingMIDITicks int64
+    // ...
+}
+```
+
+**Atomic Operations**:
+Used for simple flags that don't require mutex protection:
+
+```go
+type Engine struct {
+    programTerminated atomic.Bool
+    // ...
+}
+
+// Can be safely accessed from any thread
+if e.programTerminated.Load() {
+    return ErrTerminated
+}
+```
+
+### Thread Safety Rules
+
+**Rule 1: All Image Operations on Main Thread**
+Any function that modifies `ebiten.Image` MUST be called from the main thread (Update method).
+
+**Functions that require main thread**:
+- `MovePic` - draws one image onto another
+- `TextWrite` - renders text onto an image
+- `DrawLine`, `DrawCircle`, `DrawRect` - drawing primitives
+- `PutCast`, `MoveCast` - sprite operations
+- `LoadPicture` - creates new images
+
+**Rule 2: Lock Before Accessing Graphics State**
+Any function that reads or writes graphics state MUST acquire `renderMutex`:
+
+```go
+func (e *Engine) NewDrawingFunction(picID int, ...) error {
+    // ALWAYS acquire lock first
+    e.state.renderMutex.Lock()
+    defer e.state.renderMutex.Unlock()
+
+    pic := e.state.GetPicture(picID)
+    // ... modify image ...
+    
+    return nil
+}
+```
+
+**Rule 3: Never Call Image Operations from MIDI Thread**
+MIDI callbacks must ONLY accumulate ticks, never call engine methods that modify images.
+
+**Rule 4: Minimize Lock Duration**
+Hold locks for the shortest time possible to reduce contention:
+
+```go
+// GOOD: Lock only during state access
+e.state.renderMutex.Lock()
+pic := e.state.GetPicture(picID)
+e.state.renderMutex.Unlock()
+
+// Process data without lock
+processedData := expensiveOperation(pic)
+
+e.state.renderMutex.Lock()
+e.state.UpdatePicture(picID, processedData)
+e.state.renderMutex.Unlock()
+
+// BAD: Lock held during expensive operation
+e.state.renderMutex.Lock()
+pic := e.state.GetPicture(picID)
+processedData := expensiveOperation(pic)  // Lock held too long!
+e.state.UpdatePicture(picID, processedData)
+e.state.renderMutex.Unlock()
+```
+
+### Why This Architecture Works
+
+**Prevents Rendering Corruption**:
+- All image operations execute on main thread
+- No concurrent access to `ebiten.Image` internals
+- Rendering and modification are properly serialized
+
+**Maintains Timing Accuracy**:
+- MIDI ticks calculated from wall-clock time (no drift)
+- Tick accumulation ensures no ticks are lost
+- Sequential processing maintains animation frame order
+
+**Minimizes Lock Contention**:
+- MIDI thread only holds lock briefly to update counter
+- Main thread processes ticks in batch
+- Rendering uses read lock (allows concurrent reads)
+
+### Historical Context: The gomidi Failure
+
+During development, we attempted to use separate goroutines for MIDI message scheduling and audio rendering. This approach failed catastrophically:
+
+**Problem**: Notes were dropping during playback (音符が抜けている)
+- MIDI messages scheduled in separate goroutine
+- Audio samples generated in audio thread
+- Asynchronous execution caused timing drift
+- Result: Missing notes, broken melodies
+
+**Solution**: Return to synchronous processing
+- Use `MidiFileSequencer` for unified playback + synthesis
+- MIDI messages processed atomically with audio rendering
+- Perfect synchronization between events and audio
+
+**Lesson**: For MIDI playback, message processing MUST be synchronous with audio rendering. Any asynchronous approach introduces timing drift.
+
+### Guidelines for Adding New Features
+
+When implementing new drawing or graphics functions:
+
+1. **Ensure main thread execution**: Function must be called from `Update()` or a method called by `Update()`
+2. **Acquire renderMutex**: Always lock before accessing graphics state
+3. **Never call from MIDI thread**: MIDI callbacks must only accumulate ticks
+4. **Test for corruption**: Run with MIDI playback to verify no rendering artifacts
+
+**Example Template**:
+
+```go
+func (e *Engine) NewGraphicsFunction(picID int, ...) error {
+    // 1. Acquire lock
+    e.state.renderMutex.Lock()
+    defer e.state.renderMutex.Unlock()
+
+    // 2. Access graphics state
+    pic := e.state.GetPicture(picID)
+    if pic == nil {
+        return fmt.Errorf("picture %d not found", picID)
+    }
+
+    // 3. Modify image (safe because we're on main thread with lock)
+    // ... image operations ...
+    
+    return nil
+}
+```
+
+### Performance Characteristics
+
+**Lock Contention**:
+- Minimal: MIDI thread holds lock for ~1μs per tick
+- Main thread processes ticks in batch (one lock acquisition per frame)
+- Rendering uses read lock (allows concurrent reads if needed)
+
+**Tick Processing Latency**:
+- Ticks processed within one frame (16.67ms at 60 FPS)
+- Acceptable for music synchronization (humans perceive <50ms as simultaneous)
+- Sequential tick delivery prevents animation frame skipping
+
+**Memory Overhead**:
+- `pendingMIDITicks`: 8 bytes (int64)
+- Mutexes: ~8 bytes each
+- Negligible compared to image data
+
+---
+
 ## Part 2: System Architecture
 
 This section describes the high-level architecture and component boundaries.
