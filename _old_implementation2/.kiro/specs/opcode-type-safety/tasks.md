@@ -146,71 +146,71 @@ This implementation plan converts the OpCode system from using generic `Args []a
     - Remove all type assertions from these methods
     - _Requirements: 5.5_
 
-  - [~] 6.5 Update function and timing execution
+  - [ ] 6.5 Update function and timing execution
     - Modify `executeCall()` to accept `CallOp` and use fields directly
     - Modify `executeWait()` to accept `WaitOp` and use fields directly
     - Modify `executeSetStep()` to accept `SetStepOp` and use fields directly
     - Remove all type assertions from these methods
     - _Requirements: 6.3, 7.4_
 
-  - [~] 6.6 Update event handler and array execution
+  - [ ] 6.6 Update event handler and array execution
     - Modify `executeRegisterEventHandler()` to accept `RegisterEventHandlerOp` and use fields directly
     - Update array operation execution to work with typed operations
     - Remove all type assertions from these methods
     - _Requirements: 8.3, 9.4_
 
-  - [~] 6.7 Write property test for behavioral equivalence
+  - [ ] 6.7 Write property test for behavioral equivalence
     - **Property 5: Behavioral Equivalence**
     - **Validates: Requirements 10.1, 10.3**
 
-  - [~] 6.8 Write property test for error preservation
+  - [ ] 6.8 Write property test for error preservation
     - **Property 6: Error Preservation**
     - **Validates: Requirements 10.4**
 
-- [~] 7. Checkpoint - Verify VM execution works
+- [ ] 7. Checkpoint - Verify VM execution works
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 8. Update serializer to handle typed operations
-  - [~] 8.1 Update serializeOpCode to handle typed operations
+  - [ ] 8.1 Update serializeOpCode to handle typed operations
     - Add type switch to handle each operation type
     - Generate appropriate Go code for each typed struct
     - Update Value serialization to handle all variants
     - _Requirements: 10.1_
 
-  - [~] 8.2 Update multi-title serialization
+  - [ ] 8.2 Update multi-title serialization
     - Update multi-title code generation to work with typed operations
     - Ensure all title functions serialize correctly
     - _Requirements: 10.1_
 
 - [ ] 9. Update tests to use new types
-  - [~] 9.1 Update opcode_test.go
+  - [ ] 9.1 Update opcode_test.go
     - Modify tests to construct typed operations
     - Update assertions to check typed fields
     - Remove tests that check old Args field
     - _Requirements: 10.1_
 
-  - [~] 9.2 Update codegen tests
+  - [ ] 9.2 Update codegen tests
     - Update all code generation tests to expect typed operations
     - Verify generated operations have correct types and fields
     - _Requirements: 10.1_
 
-  - [~] 9.3 Update serializer tests
+  - [ ] 9.3 Update serializer tests
     - Update serialization tests to work with typed operations
     - Verify serialized code compiles and runs correctly
     - _Requirements: 10.1_
 
 - [ ] 10. Remove old OpCode struct and cleanup
-  - [~] 10.1 Remove old OpCode struct definition
+  - [ ] 10.1 Remove old OpCode struct definition
     - Delete the old `OpCode` struct with `Cmd` and `Args` fields
     - Ensure OpCode interface is the only OpCode type
     - _Requirements: 1.1_
 
-  - [~] 10.2 Clean up any remaining references
+  - [ ] 10.2 Clean up any remaining references
     - Search for any remaining uses of old OpCode struct
     - Update or remove as appropriate
     - _Requirements: 10.1_
 
-- [~] 11. Final checkpoint - Run full test suite
+- [ ] 11. Final checkpoint - Run full test suite
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
