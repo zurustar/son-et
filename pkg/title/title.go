@@ -90,12 +90,13 @@ func (r *FillyTitleRegistry) LoadExternalTitle(path string) error {
 func (r *FillyTitleRegistry) GetAvailableTitles() []FillyTitle {
 	var titles []FillyTitle
 
-	// 外部タイトルが指定されている場合はそれを優先
+	// 外部タイトルが指定されている場合はそれのみを返す
 	if r.externalTitle != nil {
 		titles = append(titles, *r.externalTitle)
+		return titles
 	}
 
-	// embedされたタイトルを追加
+	// 外部タイトルがない場合はembedされたタイトルを返す
 	titles = append(titles, r.embeddedTitles...)
 
 	return titles
