@@ -28,6 +28,7 @@ func TestYSaruIntegration(t *testing.T) {
 	assetLoader := &MockAssetLoader{Files: make(map[string][]byte)}
 	engine := NewEngine(nil, assetLoader, nil)
 	engine.SetHeadless(true)
+	engine.SetDebugLevel(2) // Enable debug logging
 	engine.Start()
 
 	// Load MIDI file into asset loader
@@ -131,7 +132,8 @@ func TestYSaruIntegration(t *testing.T) {
 	}
 
 	// Verify player is no longer playing
-	time.Sleep(100 * time.Millisecond)
+	// Wait a bit longer for the audio player to fully stop after EOF
+	time.Sleep(500 * time.Millisecond)
 	if mp.IsPlaying() {
 		t.Errorf("Player still marked as playing after MIDI_END")
 	}
