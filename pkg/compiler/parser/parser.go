@@ -916,7 +916,7 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 			// Check if this is a function call (identifier followed by LPAREN)
 			// If so, this must be a function call with complex arguments, not a declaration
 			if p.peekTokenIs(token.LPAREN) {
-				return p.parseFunctionCallFallback(name)
+				return p.parseFunctionCallFallback(name, params)
 			}
 
 			params = append(params, ident)
@@ -945,7 +945,7 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 
 					// Check if this is a function call (identifier followed by LPAREN)
 					if p.peekTokenIs(token.LPAREN) {
-						return p.parseFunctionCallFallback(name)
+						return p.parseFunctionCallFallback(name, params)
 					}
 
 					params = append(params, ident)
@@ -959,12 +959,12 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 					// Not a simple identifier - this must be a function call with complex arguments
 					// Reparse as expression list
 					p.errors = []string{} // Clear any errors from parameter parsing
-					return p.parseFunctionCallFallback(name)
+					return p.parseFunctionCallFallback(name, params)
 				}
 			}
 		} else {
 			// Not a simple identifier - this must be a function call with complex arguments
-			return p.parseFunctionCallFallback(name)
+			return p.parseFunctionCallFallback(name, params)
 		}
 	}
 
@@ -998,24 +998,25 @@ func (p *Parser) parseFunctionOrCall() ast.Statement {
 
 // parseFunctionCallFallback handles function calls with complex arguments
 // We've already parsed some tokens, so we need to build the expression list from what we have
-func (p *Parser) parseFunctionCallFallback(name *ast.Identifier) ast.Statement {
-	// We've already consumed LPAREN and possibly the first token
-	// Parse the current token as an expression
-	args := []ast.Expression{}
+func (p *Parser) parseFunctionCallFallback(name *ast.Identifier, alreadyParsed []*ast.Identifier) ast.Statement {
+	// Convert already parsed identifiers to expressions first
+	args := convertIdentifiersToExpressions(alreadyParsed)
 
-	// Parse current token as expression
-	expr := p.parseExpression(LOWEST)
-	if expr != nil {
-		args = append(args, expr)
-	}
-
-	// Parse remaining arguments
-	for p.peekTokenIs(token.COMMA) {
-		p.nextToken() // consume comma
-		p.nextToken() // move to next argument
+	// Parse current token as expression only if we're not at RPAREN
+	if !p.curTokenIs(token.RPAREN) {
 		expr := p.parseExpression(LOWEST)
 		if expr != nil {
 			args = append(args, expr)
+		}
+
+		// Parse remaining arguments
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken() // consume comma
+			p.nextToken() // move to next argument
+			expr := p.parseExpression(LOWEST)
+			if expr != nil {
+				args = append(args, expr)
+			}
 		}
 	}
 
