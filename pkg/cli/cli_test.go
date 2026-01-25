@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -234,6 +235,157 @@ func TestParseArgs_InvalidArgs(t *testing.T) {
 			_, err := ParseArgs(tt.args)
 			if err == nil {
 				t.Error("expected error, got nil")
+			}
+		})
+	}
+}
+
+func TestParseArgs_EnvironmentVariables(t *testing.T) {
+	// Save original environment variables
+	origHeadless := os.Getenv("HEADLESS")
+	origTimeout := os.Getenv("TIMEOUT")
+	origLogLevel := os.Getenv("LOG_LEVEL")
+
+	// Restore environment variables after test
+	defer func() {
+		os.Setenv("HEADLESS", origHeadless)
+		os.Setenv("TIMEOUT", origTimeout)
+		os.Setenv("LOG_LEVEL", origLogLevel)
+	}()
+
+	tests := []struct {
+		name     string
+		args     []string
+		envVars  map[string]string
+		expected Config
+	}{
+		{
+			name: "HEADLESS=1 enables headless mode",
+			args: []string{},
+			envVars: map[string]string{
+				"HEADLESS": "1",
+			},
+			expected: Config{
+				Headless: true,
+				LogLevel: "info",
+			},
+		},
+		{
+			name: "HEADLESS=true enables headless mode",
+			args: []string{},
+			envVars: map[string]string{
+				"HEADLESS": "true",
+			},
+			expected: Config{
+				Headless: true,
+				LogLevel: "info",
+			},
+		},
+		{
+			name: "HEADLESS=TRUE enables headless mode (case insensitive)",
+			args: []string{},
+			envVars: map[string]string{
+				"HEADLESS": "TRUE",
+			},
+			expected: Config{
+				Headless: true,
+				LogLevel: "info",
+			},
+		},
+		{
+			name: "TIMEOUT sets timeout",
+			args: []string{},
+			envVars: map[string]string{
+				"TIMEOUT": "30",
+			},
+			expected: Config{
+				Timeout:  30 * time.Second,
+				LogLevel: "info",
+			},
+		},
+		{
+			name: "LOG_LEVEL sets log level",
+			args: []string{},
+			envVars: map[string]string{
+				"LOG_LEVEL": "debug",
+			},
+			expected: Config{
+				LogLevel: "debug",
+			},
+		},
+		{
+			name: "command line flag overrides HEADLESS env var",
+			args: []string{"--headless"},
+			envVars: map[string]string{
+				"HEADLESS": "0",
+			},
+			expected: Config{
+				Headless: true,
+				LogLevel: "info",
+			},
+		},
+		{
+			name: "command line flag overrides TIMEOUT env var",
+			args: []string{"--timeout", "10"},
+			envVars: map[string]string{
+				"TIMEOUT": "30",
+			},
+			expected: Config{
+				Timeout:  10 * time.Second,
+				LogLevel: "info",
+			},
+		},
+		{
+			name: "command line flag overrides LOG_LEVEL env var",
+			args: []string{"--log-level", "error"},
+			envVars: map[string]string{
+				"LOG_LEVEL": "debug",
+			},
+			expected: Config{
+				LogLevel: "error",
+			},
+		},
+		{
+			name: "multiple env vars",
+			args: []string{},
+			envVars: map[string]string{
+				"HEADLESS":  "1",
+				"TIMEOUT":   "60",
+				"LOG_LEVEL": "warn",
+			},
+			expected: Config{
+				Headless: true,
+				Timeout:  60 * time.Second,
+				LogLevel: "warn",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear environment variables
+			os.Unsetenv("HEADLESS")
+			os.Unsetenv("TIMEOUT")
+			os.Unsetenv("LOG_LEVEL")
+
+			// Set test environment variables
+			for k, v := range tt.envVars {
+				os.Setenv(k, v)
+			}
+
+			config, err := ParseArgs(tt.args)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if config.Headless != tt.expected.Headless {
+				t.Errorf("Headless = %v, want %v", config.Headless, tt.expected.Headless)
+			}
+			if config.Timeout != tt.expected.Timeout {
+				t.Errorf("Timeout = %v, want %v", config.Timeout, tt.expected.Timeout)
+			}
+			if config.LogLevel != tt.expected.LogLevel {
+				t.Errorf("LogLevel = %q, want %q", config.LogLevel, tt.expected.LogLevel)
 			}
 		})
 	}

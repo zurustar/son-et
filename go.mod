@@ -6,6 +6,8 @@ toolchain go1.24.12
 
 require (
 	github.com/hajimehoshi/ebiten/v2 v2.9.7
+	github.com/leanovate/gopter v0.2.11
+	github.com/sinshu/go-meltysynth v0.0.0-20230205031334-05d311382fc4
 	golang.org/x/image v0.31.0
 	golang.org/x/text v0.33.0
 )
@@ -13,6 +15,7 @@ require (
 require (
 	github.com/ebitengine/gomobile v0.0.0-20250923094054-ea854a63cce1 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
+	github.com/ebitengine/oto/v3 v3.4.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/go-text/typesetting v0.3.0 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect

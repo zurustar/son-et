@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +21,9 @@ type Config struct {
 }
 
 // ParseArgs コマンドライン引数を解析してConfigを返す
+// Requirement 12.7: System supports enabling headless mode via command line flag.
+// Requirement 12.8: System supports enabling headless mode via environment variable.
+// Requirement 13.5: System supports timeout specification via command line flag.
 func ParseArgs(args []string) (*Config, error) {
 	// 引数を並べ替え：フラグを前に、位置引数を後ろに
 	reorderedArgs := reorderArgs(args)
@@ -39,6 +43,30 @@ func ParseArgs(args []string) (*Config, error) {
 
 	if err := fs.Parse(reorderedArgs); err != nil {
 		return nil, err
+	}
+
+	// 環境変数からの設定（コマンドラインフラグが優先）
+	// Requirement 12.8: System supports enabling headless mode via environment variable.
+	if !config.Headless {
+		if headlessEnv := os.Getenv("HEADLESS"); headlessEnv != "" {
+			config.Headless = headlessEnv == "1" || strings.ToLower(headlessEnv) == "true"
+		}
+	}
+
+	// 環境変数からタイムアウトを取得（コマンドラインフラグが優先）
+	if timeoutSec == 0 {
+		if timeoutEnv := os.Getenv("TIMEOUT"); timeoutEnv != "" {
+			if t, err := strconv.Atoi(timeoutEnv); err == nil && t > 0 {
+				timeoutSec = t
+			}
+		}
+	}
+
+	// 環境変数からログレベルを取得（コマンドラインフラグが優先）
+	if config.LogLevel == "info" {
+		if logLevelEnv := os.Getenv("LOG_LEVEL"); logLevelEnv != "" {
+			config.LogLevel = strings.ToLower(logLevelEnv)
+		}
 	}
 
 	// タイムアウトの検証
@@ -123,11 +151,17 @@ Options:
   --headless                  ヘッドレスモード（GUIなし）
   -h, --help                  このヘルプを表示
 
+Environment Variables:
+  HEADLESS=1                  ヘッドレスモードを有効化
+  TIMEOUT=<seconds>           タイムアウト時間（秒）
+  LOG_LEVEL=<level>           ログレベル
+
 Examples:
   son-et /path/to/title           ディレクトリを指定（main関数を自動検出）
   son-et /path/to/title/MAIN.TFY  エントリーファイルを明示的に指定
   son-et --timeout 10             10秒後に自動終了
   son-et --headless               ヘッドレスモードで実行
   son-et --log-level debug        デバッグログを有効化
+  HEADLESS=1 son-et /path/to/title  環境変数でヘッドレスモード
 `)
 }

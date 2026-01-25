@@ -5,23 +5,27 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
+	"path/filepath"
 
 	"github.com/zurustar/son-et/pkg/cli"
 	"github.com/zurustar/son-et/pkg/compiler"
 	"github.com/zurustar/son-et/pkg/logger"
 	"github.com/zurustar/son-et/pkg/script"
 	"github.com/zurustar/son-et/pkg/title"
+	"github.com/zurustar/son-et/pkg/vm"
+	"github.com/zurustar/son-et/pkg/vm/audio"
 	"github.com/zurustar/son-et/pkg/window"
 )
 
 // Application はアプリケーションのメインロジックを管理する
 type Application struct {
-	config   *cli.Config
-	log      *slog.Logger
-	titleReg *title.FillyTitleRegistry
-	embedFS  embed.FS
-	opcodes  []compiler.OpCode // コンパイル済みOpCode
+	config        *cli.Config
+	log           *slog.Logger
+	titleReg      *title.FillyTitleRegistry
+	embedFS       embed.FS
+	opcodes       []compiler.OpCode // コンパイル済みOpCode
+	selectedTitle *title.FillyTitle // 選択されたタイトル
+	soundFontPath string            // SoundFontファイルのパス
 }
 
 // New Applicationを作成
@@ -57,6 +61,7 @@ func (app *Application) Run(args []string) error {
 	}
 
 	app.log.Info("Title selected", "name", selectedTitle.Name, "path", selectedTitle.Path, "entryFile", selectedTitle.EntryFile)
+	app.selectedTitle = selectedTitle
 
 	// 4. スクリプトファイルの読み込み
 	scripts, err := app.loadScripts(selectedTitle.Path)
@@ -155,26 +160,92 @@ func (app *Application) selectTitle(titles []title.FillyTitle) (*title.FillyTitl
 }
 
 // runDesktop 仮想デスクトップを実行
+// Requirement 13.1: Application integrates VM after compilation.
+// Requirement 13.2: Application passes compiled OpCode to VM.
+// Requirement 13.3: Application starts VM execution.
 func (app *Application) runDesktop() error {
 	app.log.Info("Starting virtual desktop")
 
-	// ヘッドレスモードの場合
+	// ヘッドレスモードの場合はVMを実行
 	if app.config.Headless {
-		app.log.Info("Headless mode: skipping desktop display")
-
-		// タイムアウトが指定されている場合は、その時間だけ待機
-		if app.config.Timeout > 0 {
-			app.log.Info("Waiting for timeout", "duration", app.config.Timeout)
-			time.Sleep(app.config.Timeout)
-			app.log.Info("Timeout reached, terminating")
-		}
-
-		return nil
+		app.log.Info("Headless mode: running VM without GUI")
+		return app.runVM()
 	}
 
 	// GUIモードの場合は仮想デスクトップを表示
+	// TODO: GUIモードでもVMを統合する（描画系機能実装後）
 	_, err := window.Run(window.ModeDesktop, nil, app.config.Timeout)
 	return err
+}
+
+// runVM VMを実行
+// Requirement 13.1: Application integrates VM after compilation.
+// Requirement 13.2: Application passes compiled OpCode to VM.
+// Requirement 13.3: Application starts VM execution.
+func (app *Application) runVM() error {
+	app.log.Info("Creating VM", "opcode_count", len(app.opcodes))
+
+	// VMオプションを設定
+	opts := []vm.Option{
+		vm.WithHeadless(app.config.Headless),
+		vm.WithLogger(app.log),
+	}
+
+	// タイムアウトが指定されている場合
+	if app.config.Timeout > 0 {
+		opts = append(opts, vm.WithTimeout(app.config.Timeout))
+	}
+
+	// SoundFontパスを設定（ルートディレクトリのGeneralUser-GS.sf2を使用）
+	if app.soundFontPath == "" {
+		// デフォルトのSoundFontパスを探す
+		possiblePaths := []string{
+			"GeneralUser-GS.sf2",
+			filepath.Join(app.selectedTitle.Path, "GeneralUser-GS.sf2"),
+		}
+		for _, p := range possiblePaths {
+			if _, err := os.Stat(p); err == nil {
+				app.soundFontPath = p
+				break
+			}
+		}
+	}
+
+	if app.soundFontPath != "" {
+		opts = append(opts, vm.WithSoundFont(app.soundFontPath))
+		app.log.Info("SoundFont configured", "path", app.soundFontPath)
+	}
+
+	// VMを作成
+	vmInstance := vm.New(app.opcodes, opts...)
+
+	// オーディオシステムを初期化（SoundFontが設定されている場合）
+	if app.soundFontPath != "" {
+		audioSys, err := audio.NewAudioSystem(app.soundFontPath, vmInstance.GetEventQueue())
+		if err != nil {
+			app.log.Warn("Failed to initialize audio system", "error", err)
+			// オーディオシステムの初期化に失敗しても続行
+		} else {
+			vmInstance.SetAudioSystem(audioSys)
+			app.log.Info("Audio system initialized")
+
+			// クリーンアップを設定
+			defer func() {
+				vmInstance.ShutdownAudio()
+				app.log.Info("Audio system shut down")
+			}()
+		}
+	}
+
+	// VMを実行
+	app.log.Info("Starting VM execution")
+	if err := vmInstance.Run(); err != nil {
+		app.log.Error("VM execution failed", "error", err)
+		return fmt.Errorf("VM execution failed: %w", err)
+	}
+
+	app.log.Info("VM execution completed")
+	return nil
 }
 
 // loadScripts スクリプトファイルを読み込む
