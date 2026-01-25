@@ -82,6 +82,11 @@ const (
     TOKEN_FLOAT      // 浮動小数点リテラル
     TOKEN_STRING     // 文字列リテラル
 
+    // プリプロセッサディレクティブ
+    TOKEN_DIRECTIVE  // #info, #include など
+    TOKEN_INFO       // #info
+    TOKEN_INCLUDE    // #include
+
     // 演算子
     TOKEN_PLUS       // +
     TOKEN_MINUS      // -
@@ -108,6 +113,7 @@ const (
     TOKEN_RBRACKET   // ]
     TOKEN_COMMA      // ,
     TOKEN_SEMICOLON  // ;
+    TOKEN_COLON      // : (for case labels)
 
     // キーワード
     TOKEN_INT_TYPE   // int
@@ -236,6 +242,26 @@ type VarDeclaration struct {
     Names    []string   // 変数名のリスト
     IsArray  []bool     // 各変数が配列かどうか
     Sizes    []Expression // 配列サイズ（指定がある場合）
+}
+
+// プリプロセッサディレクティブ: #info
+type InfoDirective struct {
+    Token   Token
+    Key     string // INAM, ISBJ, IART, etc.
+    Value   string // ディレクティブの値
+}
+
+// プリプロセッサディレクティブ: #include
+type IncludeDirective struct {
+    Token    Token
+    FileName string // インクルードするファイル名
+}
+
+// 配列参照（関数引数として配列全体を渡す）
+// 例: func(arr[])
+type ArrayReference struct {
+    Token Token
+    Name  string // 配列名
 }
 
 // 関数定義
@@ -764,6 +790,133 @@ step文内の連続するカンマは、その数に等しいWaitカウントを
 ### P6: エラー位置の正確性
 
 すべてのコンパイルエラーは、正確な行番号と列番号を含む。
+
+---
+
+## Part 6: アプリケーション統合
+
+### app.goでのコンパイラ呼び出し
+
+```go
+// pkg/app/app.go
+
+func (app *Application) Run(args []string) error {
+    // ... 既存の処理 ...
+
+    // 4. スクリプトファイルの読み込み
+    scripts, err := app.loadScripts(selectedTitle.Path)
+    if err != nil {
+        return fmt.Errorf("failed to load scripts: %w", err)
+    }
+
+    // 5. スクリプトのコンパイル（新規追加）
+    opcodes, err := app.compileScripts(scripts)
+    if err != nil {
+        return fmt.Errorf("failed to compile scripts: %w", err)
+    }
+
+    app.log.Info("Scripts compiled", "opcode_count", len(opcodes))
+
+    // 6. 仮想デスクトップの実行
+    // ...
+}
+
+// compileScripts スクリプトをコンパイルしてOpCodeを生成
+func (app *Application) compileScripts(scripts []script.Script) ([]compiler.OpCode, error) {
+    // mainエントリーポイントを探す
+    mainScript, err := findMainScript(scripts)
+    if err != nil {
+        return nil, err
+    }
+
+    // コンパイル実行
+    opcodes, errs := compiler.Compile(mainScript.Content)
+    if len(errs) > 0 {
+        for _, e := range errs {
+            app.log.Error("Compile error", "error", e)
+        }
+        return nil, fmt.Errorf("compilation failed with %d errors", len(errs))
+    }
+
+    return opcodes, nil
+}
+```
+
+### mainエントリーポイントの検出
+
+```go
+// pkg/script/script.go に追加
+
+// FindMainScript main関数を含むスクリプトを探す
+func FindMainScript(scripts []Script) (*Script, error) {
+    var mainScripts []*Script
+    
+    for i := range scripts {
+        if containsMainFunction(scripts[i].Content) {
+            mainScripts = append(mainScripts, &scripts[i])
+        }
+    }
+    
+    if len(mainScripts) == 0 {
+        return nil, fmt.Errorf("no main function found in any script file")
+    }
+    
+    if len(mainScripts) > 1 {
+        names := make([]string, len(mainScripts))
+        for i, s := range mainScripts {
+            names[i] = s.FileName
+        }
+        return nil, fmt.Errorf("multiple main functions found in: %v", names)
+    }
+    
+    return mainScripts[0], nil
+}
+
+// containsMainFunction main関数が含まれているかチェック
+// 簡易的な正規表現マッチングで判定
+func containsMainFunction(content string) bool {
+    // main() または main(params) の形式を検出
+    // 大文字小文字を区別しない
+    pattern := regexp.MustCompile(`(?i)\bmain\s*\([^)]*\)\s*\{`)
+    return pattern.MatchString(content)
+}
+```
+
+### 依存関係の解決（#include対応）
+
+```go
+// pkg/compiler/preprocessor.go
+
+type Preprocessor struct {
+    basePath string
+    loaded   map[string]bool // 循環参照検出用
+}
+
+func NewPreprocessor(basePath string) *Preprocessor {
+    return &Preprocessor{
+        basePath: basePath,
+        loaded:   make(map[string]bool),
+    }
+}
+
+// Process #includeディレクティブを処理してソースを結合
+func (p *Preprocessor) Process(source string, filename string) (string, error) {
+    if p.loaded[filename] {
+        return "", fmt.Errorf("circular include detected: %s", filename)
+    }
+    p.loaded[filename] = true
+    
+    // #include "filename" を検出して置換
+    pattern := regexp.MustCompile(`#include\s+"([^"]+)"`)
+    
+    result := pattern.ReplaceAllStringFunc(source, func(match string) string {
+        // インクルードファイルを読み込んで再帰処理
+        // ...
+    })
+    
+    return result, nil
+}
+```
 
 ---
 

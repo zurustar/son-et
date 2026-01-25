@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zurustar/son-et/pkg/cli"
+	"github.com/zurustar/son-et/pkg/compiler"
 	"github.com/zurustar/son-et/pkg/logger"
 	"github.com/zurustar/son-et/pkg/script"
 	"github.com/zurustar/son-et/pkg/title"
@@ -20,6 +21,7 @@ type Application struct {
 	log      *slog.Logger
 	titleReg *title.FillyTitleRegistry
 	embedFS  embed.FS
+	opcodes  []compiler.OpCode // コンパイル済みOpCode
 }
 
 // New Applicationを作成
@@ -54,7 +56,7 @@ func (app *Application) Run(args []string) error {
 		return fmt.Errorf("failed to load title: %w", err)
 	}
 
-	app.log.Info("Title selected", "name", selectedTitle.Name, "path", selectedTitle.Path)
+	app.log.Info("Title selected", "name", selectedTitle.Name, "path", selectedTitle.Path, "entryFile", selectedTitle.EntryFile)
 
 	// 4. スクリプトファイルの読み込み
 	scripts, err := app.loadScripts(selectedTitle.Path)
@@ -68,7 +70,17 @@ func (app *Application) Run(args []string) error {
 		app.log.Debug("Script content preview", "name", s.FileName, "preview", truncate(s.Content, 100))
 	}
 
-	// 5. 仮想デスクトップの実行
+	// 5. スクリプトのコンパイル
+	opcodes, err := app.compileScripts(scripts, selectedTitle)
+	if err != nil {
+		return fmt.Errorf("failed to compile scripts: %w", err)
+	}
+	app.opcodes = opcodes
+
+	app.log.Info("Scripts compiled successfully", "opcode_count", len(opcodes))
+	app.log.Debug("OpCodes generated", "opcodes", formatOpCodesPreview(opcodes, 10))
+
+	// 6. 仮想デスクトップの実行
 	if err := app.runDesktop(); err != nil {
 		return fmt.Errorf("failed to run desktop: %w", err)
 	}
@@ -102,7 +114,8 @@ func (app *Application) loadTitle() (*title.FillyTitle, error) {
 
 	// 外部タイトルの読み込み（指定されている場合）
 	if app.config.TitlePath != "" {
-		if err := app.titleReg.LoadExternalTitle(app.config.TitlePath); err != nil {
+		// EntryFileが指定されている場合はそれを使用
+		if err := app.titleReg.LoadExternalTitleWithEntry(app.config.TitlePath, app.config.EntryFile); err != nil {
 			return nil, fmt.Errorf("failed to load external title: %w", err)
 		}
 	}
@@ -174,10 +187,81 @@ func (app *Application) loadScripts(titlePath string) ([]script.Script, error) {
 	return scripts, nil
 }
 
+// compileScripts スクリプトをコンパイルしてOpCodeを生成
+// Requirement 13.1: Application calls compiler after loading scripts to generate OpCode.
+// Requirement 13.3: When compilation fails, display error message and terminate application.
+// Requirement 13.4: When multiple script files exist, identify file containing main function as entry point.
+func (app *Application) compileScripts(scripts []script.Script, selectedTitle *title.FillyTitle) ([]compiler.OpCode, error) {
+	// エントリーポイントが明示的に指定されている場合
+	if selectedTitle.EntryFile != "" {
+		app.log.Info("Using explicit entry point with preprocessor", "file", selectedTitle.EntryFile)
+
+		// プリプロセッサを使用してエントリーポイントからコンパイル
+		// Requirement 16.1: Preprocessor starts processing from entry point file.
+		opcodes, result, err := compiler.CompileWithPreprocessor(selectedTitle.Path, selectedTitle.EntryFile)
+		if err != nil {
+			app.log.Error("Compilation with preprocessor failed", "file", selectedTitle.EntryFile, "error", err)
+			return nil, err
+		}
+
+		app.log.Info("Preprocessor completed", "included_files", result.IncludedFiles)
+		return opcodes, nil
+	}
+
+	// mainエントリーポイントを探してコンパイル
+	// Requirement 14.1: System scans all TFY files to identify the file containing main function.
+	mainInfo, err := compiler.FindMainScript(scripts)
+	if err != nil {
+		// Requirement 13.5: When main function is not found, display error message.
+		app.log.Error("Failed to find main entry point", "error", err)
+		return nil, err
+	}
+
+	app.log.Info("Main entry point found, using preprocessor", "file", mainInfo.FileName)
+
+	// プリプロセッサを使用してmainエントリーポイントからコンパイル
+	opcodes, result, err := compiler.CompileWithPreprocessor(selectedTitle.Path, mainInfo.FileName)
+	if err != nil {
+		// Requirement 13.3: When compilation fails, display error message.
+		app.log.Error("Compilation with preprocessor failed", "error", err)
+		return nil, err
+	}
+
+	app.log.Info("Preprocessor completed", "included_files", result.IncludedFiles)
+	return opcodes, nil
+}
+
 // truncate 文字列を指定した長さで切り詰める
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// formatOpCodesPreview OpCodeのプレビューを生成（デバッグ用）
+// Requirement 13.2: When compilation succeeds, output generated OpCode to log (debug level).
+func formatOpCodesPreview(opcodes []compiler.OpCode, maxCount int) string {
+	if len(opcodes) == 0 {
+		return "[]"
+	}
+
+	count := len(opcodes)
+	if count > maxCount {
+		count = maxCount
+	}
+
+	var result string
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			result += ", "
+		}
+		result += fmt.Sprintf("{Cmd: %s}", opcodes[i].Cmd)
+	}
+
+	if len(opcodes) > maxCount {
+		result += fmt.Sprintf(", ... (%d more)", len(opcodes)-maxCount)
+	}
+
+	return "[" + result + "]"
 }
