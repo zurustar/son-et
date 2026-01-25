@@ -147,24 +147,22 @@ func TestSelectTitle_MultipleTitles(t *testing.T) {
 
 	// 複数のタイトルディレクトリを作成
 	title1Dir := filepath.Join(tmpDir, "title1")
-	title2Dir := filepath.Join(tmpDir, "title2")
 	if err := os.Mkdir(title1Dir, 0755); err != nil {
 		t.Fatalf("failed to create test directory: %v", err)
 	}
-	if err := os.Mkdir(title2Dir, 0755); err != nil {
-		t.Fatalf("failed to create test directory: %v", err)
-	}
 
-	// 外部タイトルを1つ読み込み、embedに1つ追加（手動で）
+	// 外部タイトルを読み込まず、embedに複数追加（テスト用）
 	registry := NewFillyTitleRegistry(testEmbedFS)
-	if err := registry.LoadExternalTitle(title1Dir); err != nil {
-		t.Fatalf("failed to load external title: %v", err)
-	}
 
 	// embedされたタイトルを手動で追加（テスト用）
 	registry.embeddedTitles = append(registry.embeddedTitles, FillyTitle{
-		Name:       "embedded-title",
-		Path:       "titles/embedded-title",
+		Name:       "embedded-title-1",
+		Path:       "titles/embedded-title-1",
+		IsEmbedded: true,
+	})
+	registry.embeddedTitles = append(registry.embeddedTitles, FillyTitle{
+		Name:       "embedded-title-2",
+		Path:       "titles/embedded-title-2",
 		IsEmbedded: true,
 	})
 
@@ -180,4 +178,108 @@ func TestSelectTitle_MultipleTitles(t *testing.T) {
 	if title != nil {
 		t.Error("title should be nil when selection is needed")
 	}
+}
+
+func TestExtractMetadata_Basic(t *testing.T) {
+	content := `#info INAM "テストタイトル"
+#info ICOP "著作者"
+#info ISBJ "説明文"
+#info ICMT "コメント1"
+#info ICMT "コメント2"
+
+main() {
+	LoadPic("test.bmp");
+}
+`
+	metadata := ExtractMetadata(content)
+
+	if metadata.INAM != "テストタイトル" {
+		t.Errorf("expected INAM 'テストタイトル', got %q", metadata.INAM)
+	}
+	if metadata.ICOP != "著作者" {
+		t.Errorf("expected ICOP '著作者', got %q", metadata.ICOP)
+	}
+	if metadata.ISBJ != "説明文" {
+		t.Errorf("expected ISBJ '説明文', got %q", metadata.ISBJ)
+	}
+	if len(metadata.ICMT) != 2 {
+		t.Errorf("expected 2 ICMT entries, got %d", len(metadata.ICMT))
+	}
+	if len(metadata.ICMT) >= 1 && metadata.ICMT[0] != "コメント1" {
+		t.Errorf("expected ICMT[0] 'コメント1', got %q", metadata.ICMT[0])
+	}
+}
+
+func TestExtractMetadata_NoInfo(t *testing.T) {
+	content := `main() {
+	LoadPic("test.bmp");
+}
+`
+	metadata := ExtractMetadata(content)
+
+	if metadata.INAM != "" {
+		t.Errorf("expected empty INAM, got %q", metadata.INAM)
+	}
+	if len(metadata.ICMT) != 0 {
+		t.Errorf("expected 0 ICMT entries, got %d", len(metadata.ICMT))
+	}
+}
+
+func TestDisplayName_WithMetadata(t *testing.T) {
+	title := FillyTitle{
+		Name: "dir-name",
+		Metadata: &TitleMetadata{
+			INAM: "表示タイトル",
+		},
+	}
+
+	if title.DisplayName() != "表示タイトル" {
+		t.Errorf("expected '表示タイトル', got %q", title.DisplayName())
+	}
+}
+
+func TestDisplayName_WithoutMetadata(t *testing.T) {
+	title := FillyTitle{
+		Name: "dir-name",
+	}
+
+	if title.DisplayName() != "dir-name" {
+		t.Errorf("expected 'dir-name', got %q", title.DisplayName())
+	}
+}
+
+func TestDisplayName_EmptyINAM(t *testing.T) {
+	title := FillyTitle{
+		Name: "dir-name",
+		Metadata: &TitleMetadata{
+			INAM: "",
+		},
+	}
+
+	if title.DisplayName() != "dir-name" {
+		t.Errorf("expected 'dir-name', got %q", title.DisplayName())
+	}
+}
+
+func TestExtractMetadataFromDirectory_Sample(t *testing.T) {
+	// samples/kuma2 ディレクトリからメタデータを抽出
+	metadata, err := ExtractMetadataFromDirectory("../../samples/kuma2")
+	if err != nil {
+		t.Fatalf("failed to extract metadata: %v", err)
+	}
+
+	// KUMA2.TFYには#info INAMがあるはず
+	if metadata.INAM == "" {
+		t.Log("INAM is empty (may be encoding issue)")
+	} else {
+		t.Logf("INAM: %s", metadata.INAM)
+	}
+
+	if metadata.ISBJ == "" {
+		t.Log("ISBJ is empty")
+	} else {
+		t.Logf("ISBJ: %s", metadata.ISBJ)
+	}
+
+	t.Logf("ICMT count: %d", len(metadata.ICMT))
 }

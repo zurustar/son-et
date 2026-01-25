@@ -143,6 +143,42 @@ func TestParseArgs_ValidArgs(t *testing.T) {
 				ShowHelp:  false,
 			},
 		},
+		{
+			name: "TFYファイルパス指定",
+			args: []string{"/path/to/title/MAIN.TFY"},
+			expected: Config{
+				TitlePath: "/path/to/title",
+				EntryFile: "MAIN.TFY",
+				Timeout:   0,
+				LogLevel:  "info",
+				Headless:  false,
+				ShowHelp:  false,
+			},
+		},
+		{
+			name: "TFYファイルパス指定（小文字）",
+			args: []string{"samples/kuma2/kuma2.tfy"},
+			expected: Config{
+				TitlePath: "samples/kuma2",
+				EntryFile: "kuma2.tfy",
+				Timeout:   0,
+				LogLevel:  "info",
+				Headless:  false,
+				ShowHelp:  false,
+			},
+		},
+		{
+			name: "TFYファイルパス指定とオプション",
+			args: []string{"--headless", "samples/sab2/TOKYO.TFY", "--timeout", "5"},
+			expected: Config{
+				TitlePath: "samples/sab2",
+				EntryFile: "TOKYO.TFY",
+				Timeout:   5 * time.Second,
+				LogLevel:  "info",
+				Headless:  true,
+				ShowHelp:  false,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -154,6 +190,9 @@ func TestParseArgs_ValidArgs(t *testing.T) {
 
 			if config.TitlePath != tt.expected.TitlePath {
 				t.Errorf("TitlePath = %q, want %q", config.TitlePath, tt.expected.TitlePath)
+			}
+			if config.EntryFile != tt.expected.EntryFile {
+				t.Errorf("EntryFile = %q, want %q", config.EntryFile, tt.expected.EntryFile)
 			}
 			if config.Timeout != tt.expected.Timeout {
 				t.Errorf("Timeout = %v, want %v", config.Timeout, tt.expected.Timeout)

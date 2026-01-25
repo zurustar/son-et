@@ -4,12 +4,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
 // Config はコマンドライン引数から解析された設定を保持する
 type Config struct {
-	TitlePath string        // FILLYタイトルのパス（コマンドライン引数から）
+	TitlePath string        // FILLYタイトルのパス（ディレクトリ）
+	EntryFile string        // エントリーポイントファイル名（TFYファイル指定時）
 	Timeout   time.Duration // タイムアウト時間（0は無制限）
 	LogLevel  string        // ログレベル（debug, info, warn, error）
 	Headless  bool          // ヘッドレスモード
@@ -57,7 +60,15 @@ func ParseArgs(args []string) (*Config, error) {
 
 	// 位置引数（FILLYタイトルのパス）
 	if fs.NArg() > 0 {
-		config.TitlePath = fs.Arg(0)
+		path := fs.Arg(0)
+
+		// TFYファイルが指定された場合、ディレクトリとエントリーファイルに分離
+		if strings.HasSuffix(strings.ToLower(path), ".tfy") {
+			config.TitlePath = filepath.Dir(path)
+			config.EntryFile = filepath.Base(path)
+		} else {
+			config.TitlePath = path
+		}
 	}
 
 	return config, nil
@@ -102,7 +113,9 @@ Usage:
   son-et [options] [title-path]
 
 Arguments:
-  title-path    FILLYタイトルのディレクトリパス（省略可）
+  title-path    FILLYタイトルのディレクトリパス、またはエントリーTFYファイルのパス（省略可）
+                ディレクトリを指定した場合、main関数を含むファイルを自動検出
+                TFYファイルを指定した場合、そのファイルをエントリーポイントとして使用
 
 Options:
   -t, --timeout <seconds>     指定秒数後にプログラムを終了（デフォルト: 無制限）
@@ -111,9 +124,10 @@ Options:
   -h, --help                  このヘルプを表示
 
 Examples:
-  son-et /path/to/title       外部タイトルを実行
-  son-et --timeout 10         10秒後に自動終了
-  son-et --headless           ヘッドレスモードで実行
-  son-et --log-level debug    デバッグログを有効化
+  son-et /path/to/title           ディレクトリを指定（main関数を自動検出）
+  son-et /path/to/title/MAIN.TFY  エントリーファイルを明示的に指定
+  son-et --timeout 10             10秒後に自動終了
+  son-et --headless               ヘッドレスモードで実行
+  son-et --log-level debug        デバッグログを有効化
 `)
 }
