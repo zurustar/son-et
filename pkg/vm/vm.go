@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ type VM struct {
 	headless      bool
 	timeout       time.Duration
 	soundFontPath string
+	titlePath     string // Base path for resolving relative file paths
 
 	// Context for cancellation
 	ctx    context.Context
@@ -151,6 +153,14 @@ func WithLogger(log *slog.Logger) Option {
 func WithSoundFont(path string) Option {
 	return func(vm *VM) {
 		vm.soundFontPath = path
+	}
+}
+
+// WithTitlePath sets the base path for resolving relative file paths.
+// This is used for loading audio and image files relative to the title directory.
+func WithTitlePath(path string) Option {
+	return func(vm *VM) {
+		vm.titlePath = path
 	}
 }
 
@@ -359,6 +369,99 @@ func (vm *VM) registerDefaultBuiltins() {
 
 		return nil, nil
 	})
+
+	// Dummy functions for unimplemented graphics features
+	// These will be properly implemented in a separate spec for graphics system
+
+	// LoadPic: Load a picture (dummy implementation)
+	vm.RegisterBuiltinFunction("LoadPic", func(v *VM, args []any) (any, error) {
+		v.log.Debug("LoadPic called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// CreatePic: Create a picture (dummy implementation)
+	vm.RegisterBuiltinFunction("CreatePic", func(v *VM, args []any) (any, error) {
+		v.log.Debug("CreatePic called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// MovePic: Move a picture (dummy implementation)
+	vm.RegisterBuiltinFunction("MovePic", func(v *VM, args []any) (any, error) {
+		v.log.Debug("MovePic called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// DelPic: Delete a picture (dummy implementation)
+	vm.RegisterBuiltinFunction("DelPic", func(v *VM, args []any) (any, error) {
+		v.log.Debug("DelPic called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// OpenWin: Open a window (dummy implementation)
+	vm.RegisterBuiltinFunction("OpenWin", func(v *VM, args []any) (any, error) {
+		v.log.Debug("OpenWin called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// CloseWin: Close a window (dummy implementation)
+	vm.RegisterBuiltinFunction("CloseWin", func(v *VM, args []any) (any, error) {
+		v.log.Debug("CloseWin called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// MoveWin: Move a window (dummy implementation)
+	vm.RegisterBuiltinFunction("MoveWin", func(v *VM, args []any) (any, error) {
+		v.log.Debug("MoveWin called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// PutCast: Put a cast (dummy implementation)
+	vm.RegisterBuiltinFunction("PutCast", func(v *VM, args []any) (any, error) {
+		v.log.Debug("PutCast called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// MoveCast: Move a cast (dummy implementation)
+	vm.RegisterBuiltinFunction("MoveCast", func(v *VM, args []any) (any, error) {
+		v.log.Debug("MoveCast called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// DelCast: Delete a cast (dummy implementation)
+	vm.RegisterBuiltinFunction("DelCast", func(v *VM, args []any) (any, error) {
+		v.log.Debug("DelCast called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// TextWrite: Write text (dummy implementation)
+	vm.RegisterBuiltinFunction("TextWrite", func(v *VM, args []any) (any, error) {
+		v.log.Debug("TextWrite called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// DrawRect: Draw a rectangle (dummy implementation)
+	vm.RegisterBuiltinFunction("DrawRect", func(v *VM, args []any) (any, error) {
+		v.log.Debug("DrawRect called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// DrawLine: Draw a line (dummy implementation)
+	vm.RegisterBuiltinFunction("DrawLine", func(v *VM, args []any) (any, error) {
+		v.log.Debug("DrawLine called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// FillRect: Fill a rectangle (dummy implementation)
+	vm.RegisterBuiltinFunction("FillRect", func(v *VM, args []any) (any, error) {
+		v.log.Debug("FillRect called (dummy implementation)", "args", args)
+		return nil, nil
+	})
+
+	// SetColor: Set color (dummy implementation)
+	vm.RegisterBuiltinFunction("SetColor", func(v *VM, args []any) (any, error) {
+		v.log.Debug("SetColor called (dummy implementation)", "args", args)
+		return nil, nil
+	})
 }
 
 // RegisterBuiltinFunction registers a built-in function with the given name.
@@ -489,6 +592,11 @@ func (vm *VM) runEventLoop() error {
 			return nil
 		default:
 		}
+
+		// Update audio system to generate MIDI_TIME and MIDI_END events
+		// Requirement 4.3: When MIDI is playing, system generates MIDI_TIME events synchronized to MIDI tempo.
+		// Requirement 4.5: When MIDI playback completes, system generates MIDI_END event.
+		vm.UpdateAudio()
 
 		// Process events from the queue
 		// Requirement 14.3: When events are available, system processes them in order.
@@ -1074,6 +1182,13 @@ func (vm *VM) executeRegisterEventHandler(opcode compiler.OpCode) (any, error) {
 
 	vm.log.Debug("Event handler registered", "id", id, "eventType", eventType, "opcodeCount", len(bodyOpcodes))
 
+	// Automatically start timer when TIME event handler is registered
+	// Requirement 2.2: When mes(TIME) handler is registered, system calls it on each timer tick.
+	if eventType == EventTIME {
+		vm.StartTimer()
+		vm.log.Debug("Timer started automatically for TIME event handler")
+	}
+
 	return id, nil
 }
 
@@ -1081,76 +1196,89 @@ func (vm *VM) executeWait(opcode compiler.OpCode) (any, error) {
 	// Requirement 6.2: When OpWait OpCode is executed, system pauses execution until next event.
 	// Requirement 6.3: When event occurs during step execution, system proceeds to next step.
 
-	// Get the wait count from arguments
-	waitCount := 1 // Default to 1 if not specified
+	// Get the comma count from arguments (number of commas in the step block)
+	commaCount := 1 // Default to 1 if not specified
 	if len(opcode.Args) >= 1 {
 		waitValue, err := vm.evaluateValue(opcode.Args[0])
 		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate wait count: %w", err)
+			return nil, fmt.Errorf("failed to evaluate comma count: %w", err)
 		}
 
 		if wc, ok := toInt64(waitValue); ok {
-			waitCount = int(wc)
+			commaCount = int(wc)
 		} else if f, fok := toFloat64(waitValue); fok {
-			waitCount = int(f)
+			commaCount = int(f)
 		}
 	}
 
 	// Requirement 6.10: When step(n) is called with n=0, system executes immediately without waiting.
 	// Requirement 17.4: When Wait(0) is called, system continues execution immediately.
 	// Requirement 17.5: When Wait(n) is called with n<0, system treats it as Wait(0).
-	if waitCount <= 0 {
-		vm.log.Debug("OpWait: wait count <= 0, continuing immediately", "waitCount", waitCount)
+	if commaCount <= 0 {
+		vm.log.Debug("OpWait: comma count <= 0, continuing immediately", "commaCount", commaCount)
 		return nil, nil
 	}
 
-	// If a handler is currently executing, set its WaitCounter
+	// If a handler is currently executing, calculate wait count based on step value
 	if vm.currentHandler != nil {
+		// StepCounter holds the step value (n from step(n))
+		// Each comma waits for stepValue TIME events
+		// Since TIME events are generated every 50ms, step(n) with one comma waits n × 50ms
+		// For example: step(65) with ,, means wait for 65 × 2 = 130 TIME events = 6500ms
+		stepValue := vm.currentHandler.StepCounter
+		if stepValue <= 0 {
+			stepValue = 1 // Default to 1 event per comma if not set
+		}
+
+		waitCount := commaCount * stepValue
 		vm.currentHandler.WaitCounter = waitCount
-		vm.log.Debug("OpWait: handler wait counter set", "handler", vm.currentHandler.ID, "waitCount", waitCount)
+		vm.log.Debug("OpWait: handler wait counter set", "handler", vm.currentHandler.ID, "commas", commaCount, "stepValue", stepValue, "totalWaitCount", waitCount)
 		// Return a wait marker to signal the handler should pause
 		return &waitMarker{WaitCount: waitCount}, nil
 	}
 
 	// If no handler is executing (e.g., in main code), we can't really wait
 	// Log a warning and continue
-	vm.log.Warn("OpWait called outside of event handler, ignoring", "waitCount", waitCount)
+	vm.log.Warn("OpWait called outside of event handler, ignoring", "commaCount", commaCount)
 	return nil, nil
 }
 
 func (vm *VM) executeSetStep(opcode compiler.OpCode) (any, error) {
 	// Requirement 6.1: When OpSetStep OpCode is executed, system initializes step counter with specified count.
+	// The step count represents the number of TIME events to wait per comma in step() blocks.
+	// Since TIME events are generated every 50ms, step(n) means each comma waits n × 50ms.
+	// For example, step(65) means each comma waits 65 × 50ms = 3250ms.
 	if len(opcode.Args) < 1 {
 		return nil, fmt.Errorf("OpSetStep requires 1 argument, got %d", len(opcode.Args))
 	}
 
-	// Evaluate the step count value
-	// The step count can be a literal int64, a Variable, or an expression (OpCode)
+	// Evaluate the step value (number of TIME events per comma)
 	stepValue, err := vm.evaluateValue(opcode.Args[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate step count: %w", err)
+		return nil, fmt.Errorf("failed to evaluate step value: %w", err)
 	}
 
-	// Convert to int
+	// Convert to int (number of TIME events)
 	stepCount, ok := toInt64(stepValue)
 	if !ok {
 		// Try to convert from float
 		if f, fok := toFloat64(stepValue); fok {
 			stepCount = int64(f)
 		} else {
-			vm.log.Warn("OpSetStep: invalid step count, using 0", "value", stepValue)
+			vm.log.Warn("OpSetStep: invalid step value, using 0", "value", stepValue)
 			stepCount = 0
 		}
 	}
 
-	// If a handler is currently executing, set its step counter
+	// If a handler is currently executing, set its step count
+	// StepCounter stores the number of TIME events to wait per comma
 	// Otherwise, store in the VM for later use
 	if vm.currentHandler != nil {
 		vm.currentHandler.StepCounter = int(stepCount)
-		vm.log.Debug("OpSetStep: handler step counter initialized", "handler", vm.currentHandler.ID, "stepCount", stepCount)
+		vm.log.Debug("OpSetStep: handler step count set", "handler", vm.currentHandler.ID, "eventsPerComma", stepCount)
 	} else {
 		vm.stepCounter = int(stepCount)
-		vm.log.Debug("OpSetStep: VM step counter initialized", "stepCount", stepCount)
+		vm.log.Debug("OpSetStep: VM step count set", "eventsPerComma", stepCount)
 	}
 
 	return nil, nil
@@ -1254,7 +1382,10 @@ func (vm *VM) PlayMIDI(filename string) error {
 	if vm.audioSystem == nil {
 		return fmt.Errorf("audio system not initialized")
 	}
-	return vm.audioSystem.PlayMIDI(filename)
+
+	// Resolve relative path using titlePath
+	fullPath := vm.resolveFilePath(filename)
+	return vm.audioSystem.PlayMIDI(fullPath)
 }
 
 // PlayWAVE plays a WAV file through the audio system.
@@ -1264,7 +1395,27 @@ func (vm *VM) PlayWAVE(filename string) error {
 	if vm.audioSystem == nil {
 		return fmt.Errorf("audio system not initialized")
 	}
-	return vm.audioSystem.PlayWAVE(filename)
+
+	// Resolve relative path using titlePath
+	fullPath := vm.resolveFilePath(filename)
+	return vm.audioSystem.PlayWAVE(fullPath)
+}
+
+// resolveFilePath resolves a relative file path using the title path.
+// If the path is already absolute, it is returned as-is.
+func (vm *VM) resolveFilePath(filename string) string {
+	// If path is absolute, return as-is
+	if filepath.IsAbs(filename) {
+		return filename
+	}
+
+	// If titlePath is set, join with it
+	if vm.titlePath != "" {
+		return filepath.Join(vm.titlePath, filename)
+	}
+
+	// Otherwise, return as-is (relative to current directory)
+	return filename
 }
 
 // StartTimer starts the timer for TIME event generation.

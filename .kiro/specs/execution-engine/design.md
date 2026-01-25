@@ -193,6 +193,10 @@ type EventHandler struct {
     Active    bool
     
     // ステップ実行用
+    // StepCounterはstep(n)のnを保持する
+    // これはカンマ1つあたりに待機するイベント数を表す
+    // mes(TIME)内: カンマ1つ = n × 50ms（n回のTIMEイベント）
+    // mes(MIDI_TIME)内: カンマ1つ = n回のMIDI_TIMEイベント
     StepCounter int
     WaitCounter int
 }
@@ -349,14 +353,15 @@ func NewAudioSystem(soundFontPath string, eventSystem *EventSystem) (*AudioSyste
 func (as *AudioSystem) PlayMIDI(filename string) error
 func (as *AudioSystem) PlayWAVE(filename string) error
 func (as *AudioSystem) SetMuted(muted bool)
-func (as *AudioSystem) Update() // Called from game loop
+func (as *AudioSystem) Update() // Called from game loop and VM event loop
 func (as *AudioSystem) Shutdown()
 ```
 
 **重要: Update()の呼び出し**
 
-MIDI_TIMEイベントの生成は、Ebitengineのゲームループ内で`Update()`を呼び出すことで行います:
+MIDI_TIMEイベントの生成は、`Update()`を定期的に呼び出すことで行います。以下の2つの場所で呼び出す必要があります:
 
+1. **Ebitengineのゲームループ内**（GUIモード）:
 ```go
 func (g *Game) Update() error {
     // オーディオシステムの更新（MIDI_TIMEイベント生成）
@@ -367,6 +372,21 @@ func (g *Game) Update() error {
     
     // ...
     return nil
+}
+```
+
+2. **VMのイベントループ内**（ヘッドレスモードを含む）:
+```go
+func (vm *VM) runEventLoop() error {
+    for {
+        // オーディオシステムの更新（MIDI_TIMEイベント生成）
+        vm.UpdateAudio()
+        
+        // イベント処理
+        vm.eventDispatcher.ProcessOne()
+        
+        // ...
+    }
 }
 ```
 

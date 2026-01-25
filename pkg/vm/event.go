@@ -238,7 +238,9 @@ type EventHandler struct {
 	// Handlers can be deactivated by del_me or del_us.
 	Active bool
 
-	// StepCounter tracks the current step in step() blocks.
+	// StepCounter holds the step value from step(n).
+	// This represents the number of TIME events to wait per comma.
+	// Since TIME events are generated every 50ms, step(n) means each comma waits n × 50ms.
 	// Requirement 6.1: When OpSetStep is executed, system initializes step counter.
 	StepCounter int
 

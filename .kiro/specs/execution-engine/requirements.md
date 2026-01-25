@@ -105,16 +105,18 @@
 
 #### 受け入れ基準
 
-6.1. WHEN OpSetStep OpCodeが実行されたとき、THE System SHALL 指定されたカウントでステップカウンタを初期化する
+6.1. WHEN OpSetStep OpCodeが実行されたとき、THE System SHALL 指定されたカウントでステップカウンタを初期化する（step(n)のnはカンマ1つあたりに待機するイベント数を表す）
 6.2. WHEN OpWait OpCodeが実行されたとき、THE System SHALL 次のイベントが発生するまで実行を一時停止する
 6.3. WHEN ステップ実行中にイベントが発生したとき、THE System SHALL 次のステップに進む
 6.4. WHEN ステップに複数のコマンドが含まれるとき、THE System SHALL 待機する前にすべてのコマンドを実行する
 6.5. WHEN ステップが空（カンマのみ）のとき、THE System SHALL コマンドを実行せずに次のイベントを待つ
-6.6. WHEN 連続するカンマが現れたとき、THE System SHALL 複数のイベントを待つ
+6.6. WHEN 連続するカンマが現れたとき、THE System SHALL 複数のイベントを待つ（カンマ数 × step(n)のn回のイベント）
 6.7. WHEN end_stepが呼ばれたとき、THE System SHALL ステップブロックの実行を終了する
 6.8. WHEN すべてのステップが完了したとき、THE System SHALL 自動的にステップブロックを終了する
 6.9. WHEN step()がブロックなしで使用されたとき、THE System SHALL 指定された数のイベントを待つ
 6.10. WHEN step(n)がn=0で呼ばれたとき、THE System SHALL 待機せずに即座に実行する
+6.11. WHEN mes(TIME)内でstep(n)が使用されたとき、THE System SHALL カンマ1つにつきn回のTIMEイベント（n × 50ms）を待機する
+6.12. WHEN mes(MIDI_TIME)内でstep(n)が使用されたとき、THE System SHALL カンマ1つにつきn回のMIDI_TIMEイベントを待機する
 
 ### 要件7: マウスイベント
 
