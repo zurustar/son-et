@@ -55,6 +55,9 @@ type VM struct {
 	// Audio system interface (to avoid import cycle)
 	audioSystem AudioSystemInterface
 
+	// Graphics system interface (to avoid import cycle)
+	graphicsSystem GraphicsSystemInterface
+
 	// Step execution state (for step() blocks outside handlers)
 	// Requirement 6.1: When OpSetStep is executed, system initializes step counter.
 	stepCounter int
@@ -89,6 +92,43 @@ type AudioSystemInterface interface {
 	StopTimer()
 	IsMIDIPlaying() bool
 	IsTimerRunning() bool
+}
+
+// GraphicsSystemInterface defines the interface for graphics system operations.
+// This interface is used to avoid import cycles between vm and graphics packages.
+type GraphicsSystemInterface interface {
+	// Picture management
+	LoadPic(filename string) (int, error)
+	CreatePic(width, height int) (int, error)
+	DelPic(id int) error
+	PicWidth(id int) int
+	PicHeight(id int) int
+
+	// Window management
+	OpenWin(picID int, opts ...any) (int, error)
+	MoveWin(id int, opts ...any) error
+	CloseWin(id int) error
+	CloseWinAll()
+	CapTitle(id int, title string) error
+	GetPicNo(id int) (int, error)
+
+	// Cast management (placeholder for future implementation)
+	PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int, error)
+	MoveCast(id int, opts ...any) error
+	DelCast(id int) error
+
+	// Text rendering (placeholder for future implementation)
+	TextWrite(picID, x, y int, text string) error
+	SetFont(name string, size int, opts ...any) error
+	SetTextColor(c any) error
+	SetBgColor(c any) error
+	SetBackMode(mode int) error
+
+	// Drawing primitives (placeholder for future implementation)
+	DrawLine(picID, x1, y1, x2, y2 int) error
+	DrawRect(picID, x1, y1, x2, y2, fillMode int) error
+	FillRect(picID, x1, y1, x2, y2 int, c any) error
+	SetPaintColor(c any) error
 }
 
 // FunctionDef represents a user-defined function.
@@ -332,7 +372,7 @@ func (vm *VM) registerDefaultBuiltins() {
 		// Requirement 17.6: System maintains separate wait counter for each handler.
 		if v.currentHandler != nil {
 			v.currentHandler.WaitCounter = waitCount
-			v.log.Debug("Wait: handler wait counter set", "handler", v.currentHandler.ID, "waitCount", waitCount)
+			// ログは削除（頻繁すぎるため）
 			// Return a wait marker to signal the handler should pause
 			return &waitMarker{WaitCount: waitCount}, nil
 		}
@@ -373,93 +413,198 @@ func (vm *VM) registerDefaultBuiltins() {
 	// Dummy functions for unimplemented graphics features
 	// These will be properly implemented in a separate spec for graphics system
 
-	// LoadPic: Load a picture (dummy implementation)
+	// LoadPic: Load a picture
 	vm.RegisterBuiltinFunction("LoadPic", func(v *VM, args []any) (any, error) {
-		v.log.Debug("LoadPic called (dummy implementation)", "args", args)
-		return nil, nil
+		if v.graphicsSystem == nil {
+			v.log.Debug("LoadPic called but graphics system not initialized", "args", args)
+			return -1, nil
+		}
+		if len(args) < 1 {
+			v.log.Error("LoadPic requires filename argument")
+			return -1, nil
+		}
+		filename, ok := args[0].(string)
+		if !ok {
+			v.log.Error("LoadPic filename must be string", "got", fmt.Sprintf("%T", args[0]))
+			return -1, nil
+		}
+		picID, err := v.graphicsSystem.LoadPic(filename)
+		if err != nil {
+			v.log.Error("LoadPic failed", "filename", filename, "error", err)
+			return -1, nil
+		}
+		v.log.Debug("LoadPic called", "filename", filename, "picID", picID)
+		return picID, nil
 	})
 
-	// CreatePic: Create a picture (dummy implementation)
+	// CreatePic: Create a picture
 	vm.RegisterBuiltinFunction("CreatePic", func(v *VM, args []any) (any, error) {
-		v.log.Debug("CreatePic called (dummy implementation)", "args", args)
-		return nil, nil
+		if v.graphicsSystem == nil {
+			v.log.Debug("CreatePic called but graphics system not initialized", "args", args)
+			return -1, nil
+		}
+		if len(args) < 2 {
+			v.log.Error("CreatePic requires width and height arguments")
+			return -1, nil
+		}
+		width, wok := toInt64(args[0])
+		height, hok := toInt64(args[1])
+		if !wok || !hok {
+			v.log.Error("CreatePic width and height must be integers")
+			return -1, nil
+		}
+		picID, err := v.graphicsSystem.CreatePic(int(width), int(height))
+		if err != nil {
+			v.log.Error("CreatePic failed", "width", width, "height", height, "error", err)
+			return -1, nil
+		}
+		v.log.Debug("CreatePic called", "width", width, "height", height, "picID", picID)
+		return picID, nil
 	})
 
-	// MovePic: Move a picture (dummy implementation)
+	// MovePic: Move a picture (placeholder - will be implemented in transfer phase)
 	vm.RegisterBuiltinFunction("MovePic", func(v *VM, args []any) (any, error) {
-		v.log.Debug("MovePic called (dummy implementation)", "args", args)
+		v.log.Debug("MovePic called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// DelPic: Delete a picture (dummy implementation)
+	// DelPic: Delete a picture
 	vm.RegisterBuiltinFunction("DelPic", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DelPic called (dummy implementation)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("DelPic called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			v.log.Error("DelPic requires picture ID argument")
+			return nil, nil
+		}
+		picID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("DelPic picture ID must be integer")
+			return nil, nil
+		}
+		if err := v.graphicsSystem.DelPic(int(picID)); err != nil {
+			v.log.Error("DelPic failed", "picID", picID, "error", err)
+		}
+		v.log.Debug("DelPic called", "picID", picID)
 		return nil, nil
 	})
 
-	// OpenWin: Open a window (dummy implementation)
+	// OpenWin: Open a window
 	vm.RegisterBuiltinFunction("OpenWin", func(v *VM, args []any) (any, error) {
-		v.log.Debug("OpenWin called (dummy implementation)", "args", args)
-		return nil, nil
+		if v.graphicsSystem == nil {
+			v.log.Debug("OpenWin called but graphics system not initialized", "args", args)
+			return -1, nil
+		}
+		if len(args) < 1 {
+			v.log.Error("OpenWin requires at least picture ID argument")
+			return -1, nil
+		}
+		picID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("OpenWin picture ID must be integer")
+			return -1, nil
+		}
+		// Pass remaining args as options (will be handled by GraphicsSystem)
+		winID, err := v.graphicsSystem.OpenWin(int(picID), args[1:]...)
+		if err != nil {
+			v.log.Error("OpenWin failed", "picID", picID, "error", err)
+			return -1, nil
+		}
+		v.log.Debug("OpenWin called", "picID", picID, "winID", winID)
+		return winID, nil
 	})
 
-	// CloseWin: Close a window (dummy implementation)
+	// CloseWin: Close a window
 	vm.RegisterBuiltinFunction("CloseWin", func(v *VM, args []any) (any, error) {
-		v.log.Debug("CloseWin called (dummy implementation)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("CloseWin called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			v.log.Error("CloseWin requires window ID argument")
+			return nil, nil
+		}
+		winID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("CloseWin window ID must be integer")
+			return nil, nil
+		}
+		if err := v.graphicsSystem.CloseWin(int(winID)); err != nil {
+			v.log.Error("CloseWin failed", "winID", winID, "error", err)
+		}
+		v.log.Debug("CloseWin called", "winID", winID)
 		return nil, nil
 	})
 
-	// MoveWin: Move a window (dummy implementation)
+	// MoveWin: Move a window
 	vm.RegisterBuiltinFunction("MoveWin", func(v *VM, args []any) (any, error) {
-		v.log.Debug("MoveWin called (dummy implementation)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("MoveWin called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			v.log.Error("MoveWin requires at least window ID argument")
+			return nil, nil
+		}
+		winID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("MoveWin window ID must be integer")
+			return nil, nil
+		}
+		// Pass remaining args as options
+		if err := v.graphicsSystem.MoveWin(int(winID), args[1:]...); err != nil {
+			v.log.Error("MoveWin failed", "winID", winID, "error", err)
+		}
+		v.log.Debug("MoveWin called", "winID", winID)
 		return nil, nil
 	})
 
-	// PutCast: Put a cast (dummy implementation)
+	// PutCast: Put a cast (placeholder)
 	vm.RegisterBuiltinFunction("PutCast", func(v *VM, args []any) (any, error) {
-		v.log.Debug("PutCast called (dummy implementation)", "args", args)
-		return nil, nil
+		v.log.Debug("PutCast called (not yet implemented)", "args", args)
+		return -1, nil
 	})
 
-	// MoveCast: Move a cast (dummy implementation)
+	// MoveCast: Move a cast (placeholder)
 	vm.RegisterBuiltinFunction("MoveCast", func(v *VM, args []any) (any, error) {
-		v.log.Debug("MoveCast called (dummy implementation)", "args", args)
+		v.log.Debug("MoveCast called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// DelCast: Delete a cast (dummy implementation)
+	// DelCast: Delete a cast (placeholder)
 	vm.RegisterBuiltinFunction("DelCast", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DelCast called (dummy implementation)", "args", args)
+		v.log.Debug("DelCast called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// TextWrite: Write text (dummy implementation)
+	// TextWrite: Write text (placeholder)
 	vm.RegisterBuiltinFunction("TextWrite", func(v *VM, args []any) (any, error) {
-		v.log.Debug("TextWrite called (dummy implementation)", "args", args)
+		v.log.Debug("TextWrite called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// DrawRect: Draw a rectangle (dummy implementation)
+	// DrawRect: Draw a rectangle (placeholder)
 	vm.RegisterBuiltinFunction("DrawRect", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DrawRect called (dummy implementation)", "args", args)
+		v.log.Debug("DrawRect called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// DrawLine: Draw a line (dummy implementation)
+	// DrawLine: Draw a line (placeholder)
 	vm.RegisterBuiltinFunction("DrawLine", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DrawLine called (dummy implementation)", "args", args)
+		v.log.Debug("DrawLine called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// FillRect: Fill a rectangle (dummy implementation)
+	// FillRect: Fill a rectangle (placeholder)
 	vm.RegisterBuiltinFunction("FillRect", func(v *VM, args []any) (any, error) {
-		v.log.Debug("FillRect called (dummy implementation)", "args", args)
+		v.log.Debug("FillRect called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 
-	// SetColor: Set color (dummy implementation)
+	// SetColor: Set color (placeholder)
 	vm.RegisterBuiltinFunction("SetColor", func(v *VM, args []any) (any, error) {
-		v.log.Debug("SetColor called (dummy implementation)", "args", args)
+		v.log.Debug("SetColor called (not yet implemented)", "args", args)
 		return nil, nil
 	})
 }
@@ -1232,7 +1377,7 @@ func (vm *VM) executeWait(opcode compiler.OpCode) (any, error) {
 
 		waitCount := commaCount * stepValue
 		vm.currentHandler.WaitCounter = waitCount
-		vm.log.Debug("OpWait: handler wait counter set", "handler", vm.currentHandler.ID, "commas", commaCount, "stepValue", stepValue, "totalWaitCount", waitCount)
+		// ログは削除（頻繁すぎるため）
 		// Return a wait marker to signal the handler should pause
 		return &waitMarker{WaitCount: waitCount}, nil
 	}
@@ -1352,6 +1497,22 @@ func (vm *VM) SetAudioSystem(audioSys AudioSystemInterface) {
 // Returns nil if the audio system has not been initialized.
 func (vm *VM) GetAudioSystem() AudioSystemInterface {
 	return vm.audioSystem
+}
+
+// SetGraphicsSystem sets the graphics system.
+// This allows external initialization of the graphics system to avoid import cycles.
+//
+// Parameters:
+//   - graphicsSys: The graphics system implementing GraphicsSystemInterface
+func (vm *VM) SetGraphicsSystem(graphicsSys GraphicsSystemInterface) {
+	vm.graphicsSystem = graphicsSys
+	vm.log.Info("Graphics system set")
+}
+
+// GetGraphicsSystem returns the graphics system.
+// Returns nil if the graphics system has not been initialized.
+func (vm *VM) GetGraphicsSystem() GraphicsSystemInterface {
+	return vm.graphicsSystem
 }
 
 // UpdateAudio updates the audio system.

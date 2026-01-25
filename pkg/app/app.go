@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/zurustar/son-et/pkg/cli"
 	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/graphics"
 	"github.com/zurustar/son-et/pkg/logger"
 	"github.com/zurustar/son-et/pkg/script"
 	"github.com/zurustar/son-et/pkg/title"
@@ -172,34 +174,111 @@ func (app *Application) runDesktop() error {
 		return app.runVM()
 	}
 
-	// GUIモードの場合もVMを実行
-	// TODO: 将来的にはEbitengineのゲームループに統合する
-	app.log.Info("GUI mode: running VM with window")
+	// GUIモードの場合はEbitengineのゲームループでVMとGraphicsSystemを統合
+	app.log.Info("GUI mode: running VM with Ebitengine")
+
+	// VMオプションを設定
+	opts := []vm.Option{
+		vm.WithHeadless(false),
+		vm.WithLogger(app.log),
+		vm.WithTitlePath(app.selectedTitle.Path),
+	}
+
+	// タイムアウトが指定されている場合
+	if app.config.Timeout > 0 {
+		opts = append(opts, vm.WithTimeout(app.config.Timeout))
+	}
+
+	// SoundFontパスを設定
+	if app.soundFontPath == "" {
+		possiblePaths := []string{
+			"GeneralUser-GS.sf2",
+			filepath.Join(app.selectedTitle.Path, "GeneralUser-GS.sf2"),
+		}
+		for _, p := range possiblePaths {
+			if _, err := os.Stat(p); err == nil {
+				app.soundFontPath = p
+				break
+			}
+		}
+	}
+
+	if app.soundFontPath != "" {
+		opts = append(opts, vm.WithSoundFont(app.soundFontPath))
+		app.log.Info("SoundFont configured", "path", app.soundFontPath)
+	}
+
+	// VMを作成
+	vmInstance := vm.New(app.opcodes, opts...)
+
+	// オーディオシステムを初期化
+	if app.soundFontPath != "" {
+		audioSys, err := audio.NewAudioSystem(app.soundFontPath, vmInstance.GetEventQueue())
+		if err != nil {
+			app.log.Warn("Failed to initialize audio system", "error", err)
+		} else {
+			vmInstance.SetAudioSystem(audioSys)
+			app.log.Info("Audio system initialized")
+
+			defer func() {
+				vmInstance.ShutdownAudio()
+				app.log.Info("Audio system shut down")
+			}()
+		}
+	}
+
+	// グラフィックスシステムを初期化
+	graphicsSys := graphics.NewGraphicsSystem(
+		app.selectedTitle.Path,
+		graphics.WithLogger(app.log),
+	)
+	vmInstance.SetGraphicsSystem(graphicsSys)
+	app.log.Info("Graphics system initialized")
+
+	defer func() {
+		graphicsSys.Shutdown()
+		app.log.Info("Graphics system shut down")
+	}()
+
+	// Ebitengineのゲームを作成
+	game := window.NewGame(window.ModeDesktop, nil, app.config.Timeout)
+	game.SetGraphicsSystem(graphicsSys)
+	game.SetVMRunner(vmInstance)
 
 	// VMを別ゴルーチンで実行
 	vmErrCh := make(chan error, 1)
 	go func() {
-		vmErrCh <- app.runVM()
+		app.log.Info("Starting VM execution in background")
+		vmErrCh <- vmInstance.Run()
 	}()
 
-	// ウィンドウを表示
-	_, windowErr := window.Run(window.ModeDesktop, nil, app.config.Timeout)
+	// Ebitengineのゲームループを実行
+	app.log.Info("Starting Ebitengine game loop")
+	// skelton要件 3.2: ウィンドウサイズは 1280x720 ピクセル
+	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowTitle("FILLY - son-et")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
+
+	if err := ebiten.RunGame(game); err != nil {
+		app.log.Error("Ebitengine game loop failed", "error", err)
+		vmInstance.Stop()
+		return fmt.Errorf("game loop failed: %w", err)
+	}
 
 	// VMの終了を待つ
-	// ウィンドウが閉じられたらVMも停止する
-	// TODO: VMからウィンドウを制御できるようにする
-
-	// どちらかのエラーを返す
-	if windowErr != nil {
-		return windowErr
-	}
-
 	select {
 	case vmErr := <-vmErrCh:
-		return vmErr
+		if vmErr != nil {
+			app.log.Error("VM execution failed", "error", vmErr)
+			return vmErr
+		}
 	default:
-		return nil
+		// VMがまだ実行中の場合は停止
+		vmInstance.Stop()
 	}
+
+	app.log.Info("Desktop execution completed")
+	return nil
 }
 
 // runVM VMを実行
@@ -261,6 +340,20 @@ func (app *Application) runVM() error {
 			}()
 		}
 	}
+
+	// グラフィックスシステムを初期化
+	graphicsSys := graphics.NewGraphicsSystem(
+		app.selectedTitle.Path,
+		graphics.WithLogger(app.log),
+	)
+	vmInstance.SetGraphicsSystem(graphicsSys)
+	app.log.Info("Graphics system initialized")
+
+	// クリーンアップを設定
+	defer func() {
+		graphicsSys.Shutdown()
+		app.log.Info("Graphics system shut down")
+	}()
 
 	// VMを実行
 	app.log.Info("Starting VM execution")

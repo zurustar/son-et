@@ -294,7 +294,7 @@ func (eh *EventHandler) Execute(event *Event) error {
 	// Requirement 6.3: When event occurs during step execution, system proceeds to next step.
 	if eh.WaitCounter > 0 {
 		eh.WaitCounter--
-		eh.VM.log.Debug("Handler wait counter decremented", "handler", eh.ID, "waitCounter", eh.WaitCounter)
+		// ログは削除（頻繁すぎるため）
 
 		// If still waiting, don't execute any OpCodes
 		if eh.WaitCounter > 0 {
@@ -549,9 +549,7 @@ func NewEventDispatcher(queue *EventQueue, registry *HandlerRegistry, vm *VM) *E
 // Requirement 1.4: When event is dispatched, system calls all handlers registered for that event type.
 // Requirement 1.5: When multiple handlers are registered for same event type, system executes them in registration order.
 func (ed *EventDispatcher) Dispatch(event *Event) error {
-	if ed.vm != nil {
-		ed.vm.log.Debug("Dispatching event", "type", event.Type)
-	}
+	// ログは削除（頻繁すぎるため）
 
 	// Get all handlers for this event type
 	handlers := ed.registry.GetHandlers(event.Type)

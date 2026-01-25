@@ -2,58 +2,58 @@
 
 ## フェーズ1: 基盤
 
-- [ ] 1. GraphicsSystem構造体の実装
-  - [ ] 1.1 `pkg/graphics/graphics.go` を作成し、GraphicsSystem構造体を定義する
-  - [ ] 1.2 NewGraphicsSystem()コンストラクタを実装する
-  - [ ] 1.3 Update()メソッドを実装する（コマンドキュー処理用）
-  - [ ] 1.4 Draw()メソッドを実装する（描画処理用）
-  - [ ] 1.5 Shutdown()メソッドを実装する
+- [x] 1. GraphicsSystem構造体の実装
+  - [x] 1.1 `pkg/graphics/graphics.go` を作成し、GraphicsSystem構造体を定義する
+  - [x] 1.2 NewGraphicsSystem()コンストラクタを実装する
+  - [x] 1.3 Update()メソッドを実装する（コマンドキュー処理用）
+  - [x] 1.4 Draw()メソッドを実装する（描画処理用）
+  - [x] 1.5 Shutdown()メソッドを実装する
 
-- [ ] 2. CommandQueueの実装
-  - [ ] 2.1 `pkg/graphics/queue.go` を作成し、CommandQueue構造体を定義する
-  - [ ] 2.2 Push()メソッドを実装する（スレッドセーフ）
-  - [ ] 2.3 PopAll()メソッドを実装する
-  - [ ] 2.4 CommandType定数を定義する
-  - [ ] 2.5 プロパティテスト: コマンド実行順序（FIFO）の検証 **Validates: 要件 7.4**
-  - [ ] 2.6 プロパティテスト: スレッドセーフ性の検証 **Validates: 要件 7.1**
+- [x] 2. CommandQueueの実装
+  - [x] 2.1 `pkg/graphics/queue.go` を作成し、CommandQueue構造体を定義する
+  - [x] 2.2 Push()メソッドを実装する（スレッドセーフ）
+  - [x] 2.3 PopAll()メソッドを実装する
+  - [x] 2.4 CommandType定数を定義する
+  - [x] 2.5 プロパティテスト: コマンド実行順序（FIFO）の検証 **Validates: 要件 7.4**
+  - [x] 2.6 プロパティテスト: スレッドセーフ性の検証 **Validates: 要件 7.1**
 
-- [ ] 3. 色変換ユーティリティの実装
-  - [ ] 3.1 `pkg/graphics/color.go` を作成する
-  - [ ] 3.2 ColorFromInt()を実装する（0xRRGGBB → color.Color）
-  - [ ] 3.3 ColorToInt()を実装する（color.Color → 0xRRGGBB）
-  - [ ] 3.4 ユニットテスト: 色変換の往復テスト
+- [x] 3. 色変換ユーティリティの実装
+  - [x] 3.1 `pkg/graphics/color.go` を作成する
+  - [x] 3.2 ColorFromInt()を実装する（0xRRGGBB → color.Color）
+  - [x] 3.3 ColorToInt()を実装する（color.Color → 0xRRGGBB）
+  - [x] 3.4 ユニットテスト: 色変換の往復テスト
 
 ## フェーズ2: ピクチャーシステム
 
-- [ ] 4. PictureManagerの実装
-  - [ ] 4.1 `pkg/graphics/picture.go` を作成し、Picture構造体を定義する
-  - [ ] 4.2 PictureManager構造体を定義する
-  - [ ] 4.3 NewPictureManager()コンストラクタを実装する
-  - [ ] 4.4 LoadPic()を実装する（BMP/PNG読み込み、大文字小文字非依存検索）
-  - [ ] 4.5 CreatePic()を実装する（空のピクチャー生成）
-  - [ ] 4.6 CreatePicFrom()を実装する（既存ピクチャーからコピー生成）
-  - [ ] 4.7 DelPic()を実装する（ピクチャー削除）
-  - [ ] 4.8 GetPic()を実装する
-  - [ ] 4.9 PicWidth()、PicHeight()を実装する
-  - [ ] 4.10 プロパティテスト: ピクチャーIDの一意性 **Validates: 要件 1.2**
-  - [ ] 4.11 プロパティテスト: ピクチャーサイズの正確性 **Validates: 要件 1.7, 1.8**
-  - [ ] 4.12 プロパティテスト: 削除後のアクセスエラー **Validates: 要件 1.9**
-  - [ ] 4.13 プロパティテスト: リソース制限（最大256） **Validates: 要件 9.5**
+- [x] 4. PictureManagerの実装
+  - [x] 4.1 `pkg/graphics/picture.go` を作成し、Picture構造体を定義する
+  - [x] 4.2 PictureManager構造体を定義する
+  - [x] 4.3 NewPictureManager()コンストラクタを実装する
+  - [x] 4.4 LoadPic()を実装する（BMP/PNG読み込み、大文字小文字非依存検索）
+  - [x] 4.5 CreatePic()を実装する（空のピクチャー生成）
+  - [x] 4.6 CreatePicFrom()を実装する（既存ピクチャーからコピー生成）
+  - [x] 4.7 DelPic()を実装する（ピクチャー削除）
+  - [x] 4.8 GetPic()を実装する
+  - [x] 4.9 PicWidth()、PicHeight()を実装する
+  - [x] 4.10 プロパティテスト: ピクチャーIDの一意性 **Validates: 要件 1.2**
+  - [x] 4.11 プロパティテスト: ピクチャーサイズの正確性 **Validates: 要件 1.7, 1.8**
+  - [x] 4.12 プロパティテスト: 削除後のアクセスエラー **Validates: 要件 1.9**
+  - [x] 4.13 プロパティテスト: リソース制限（最大256） **Validates: 要件 9.5**
 
 ## フェーズ3: ウィンドウシステム
 
-- [ ] 5. WindowManagerの実装
-  - [ ] 5.1 `pkg/graphics/window.go` を作成し、Window構造体を定義する
-  - [ ] 5.2 WindowManager構造体を定義する
-  - [ ] 5.3 NewWindowManager()コンストラクタを実装する
-  - [ ] 5.4 OpenWin()を実装する（ウィンドウ作成）
-  - [ ] 5.5 MoveWin()を実装する（ウィンドウ移動・変更）
-  - [ ] 5.6 CloseWin()を実装する（ウィンドウ削除）
-  - [ ] 5.7 CloseWinAll()を実装する
-  - [ ] 5.8 GetWin()を実装する
-  - [ ] 5.9 GetWindowsOrdered()を実装する（Z順序でソート）
-  - [ ] 5.10 プロパティテスト: ウィンドウZ順序 **Validates: 要件 3.11**
-  - [ ] 5.11 プロパティテスト: リソース制限（最大64） **Validates: 要件 9.6**
+- [x] 5. WindowManagerの実装
+  - [x] 5.1 `pkg/graphics/window.go` を作成し、Window構造体を定義する
+  - [x] 5.2 WindowManager構造体を定義する
+  - [x] 5.3 NewWindowManager()コンストラクタを実装する
+  - [x] 5.4 OpenWin()を実装する（ウィンドウ作成）
+  - [x] 5.5 MoveWin()を実装する（ウィンドウ移動・変更）
+  - [x] 5.6 CloseWin()を実装する（ウィンドウ削除）
+  - [x] 5.7 CloseWinAll()を実装する
+  - [x] 5.8 GetWin()を実装する
+  - [x] 5.9 GetWindowsOrdered()を実装する（Z順序でソート）
+  - [x] 5.10 プロパティテスト: ウィンドウZ順序 **Validates: 要件 3.11**
+  - [x] 5.11 プロパティテスト: リソース制限（最大64） **Validates: 要件 9.6**
 
 ## フェーズ4: キャストシステム
 

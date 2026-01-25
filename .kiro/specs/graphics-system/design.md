@@ -154,6 +154,47 @@ func (gs *GraphicsSystem) Draw(screen *ebiten.Image)  // 描画
 func (gs *GraphicsSystem) Shutdown()
 ```
 
+#### Draw関数の実装
+
+Draw関数は以下の順序で描画を行います：
+
+1. **背景色**: `pkg/window/window.go`で既に設定されているため、GraphicsSystemでは塗りつぶさない
+2. **ウィンドウ**: Z順序でソートされたウィンドウを順次描画
+   - 各ウィンドウに対して`drawWindowDecoration()`を呼び出し
+   - ウィンドウ装飾（枠、タイトルバー）とコンテンツを描画
+3. **キャスト**: 各ウィンドウに属するキャストを描画
+
+```go
+func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
+    gs.mu.RLock()
+    defer gs.mu.RUnlock()
+
+    // 背景色は window.go の drawDesktop() で既に設定されている
+
+    // ウィンドウをZ順序で取得
+    windows := gs.windows.GetWindowsOrdered()
+
+    // 各ウィンドウを描画
+    for _, win := range windows {
+        if !win.Visible {
+            continue
+        }
+
+        // ピクチャーを取得
+        pic, err := gs.pictures.GetPic(win.PicID)
+        if err != nil {
+            continue
+        }
+
+        // ウィンドウ装飾を描画（Windows 3.1風）
+        gs.drawWindowDecoration(screen, win, pic)
+
+        // キャストを描画
+        // ...
+    }
+}
+```
+
 ### 2. Picture Manager (pkg/graphics/picture.go)
 
 #### 構造体
@@ -320,6 +361,43 @@ func WithPicOffset(picX, picY int) WinOption
 func WithBgColor(c color.Color) WinOption
 func WithPicID(picID int) WinOption
 ```
+
+#### ウィンドウ装飾
+
+仮想ウィンドウはWindows 3.1風の装飾で描画されます：
+
+```go
+const (
+    BorderThickness = 4  // 外枠の幅
+    TitleBarHeight  = 20 // タイトルバーの高さ
+)
+
+// ウィンドウ装飾の色
+var (
+    titleBarColor  = color.RGBA{0, 0, 128, 255}     // 濃い青
+    borderColor    = color.RGBA{192, 192, 192, 255} // グレー
+    highlightColor = color.RGBA{255, 255, 255, 255} // 白（立体効果のハイライト）
+    shadowColor    = color.RGBA{0, 0, 0, 255}       // 黒（立体効果の影）
+)
+```
+
+**装飾の構成**:
+1. **外枠**: グレーの背景に3D効果（上と左に白いハイライト、下と右に黒い影）
+2. **タイトルバー**: 濃い青（#000080）の矩形、高さ20ピクセル
+3. **コンテンツ領域**: ピクチャーが表示される領域
+
+**座標計算**:
+- ウィンドウ全体のサイズ = コンテンツ幅 + BorderThickness × 2
+- ウィンドウ全体の高さ = コンテンツ高さ + BorderThickness × 2 + TitleBarHeight
+- コンテンツ領域の開始位置 = (win.X + BorderThickness, win.Y + BorderThickness + TitleBarHeight)
+
+**描画順序**:
+1. グレーの背景を全体に描画
+2. 3D枠線効果を描画（vector.StrokeLineを使用）
+3. タイトルバーを描画
+4. コンテンツ領域にピクチャーを描画
+
+**実装参考**: `_old_implementation2/pkg/engine/renderer.go`のrenderWindow関数
 
 ### 5. Cast Manager (pkg/graphics/cast.go)
 
@@ -573,8 +651,8 @@ var TransparentColor = color.RGBA{0, 0, 0, 0xFF}
 ### 座標系
 
 ```go
-// 仮想デスクトップ座標（640x480）
-// 左上が(0, 0)、右下が(639, 479)
+// 仮想デスクトップ座標（1280x720）
+// 左上が(0, 0)、右下が(1279, 719)
 
 // 実際のウィンドウ座標への変換
 func (gs *GraphicsSystem) VirtualToScreen(vx, vy int, screenW, screenH int) (int, int) {
@@ -748,6 +826,7 @@ func (gs *GraphicsSystem) ScreenToVirtual(sx, sy int, screenW, screenH int) (int
 ### 外部ライブラリ
 
 - **github.com/hajimehoshi/ebiten/v2**: 描画エンジン
+- **github.com/hajimehoshi/ebiten/v2/vector**: ベクター描画（ウィンドウ装飾用）
 - **github.com/hajimehoshi/ebiten/v2/text/v2**: テキスト描画
 - **golang.org/x/image/font**: フォント処理
 - **golang.org/x/image/bmp**: BMP読み込み

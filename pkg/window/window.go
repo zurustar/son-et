@@ -44,6 +44,23 @@ type Game struct {
 	selectedTitle *title.FillyTitle  // 選択されたタイトル
 	timeout       time.Duration      // タイムアウト時間
 	startTime     time.Time          // 開始時刻
+
+	// Graphics system integration
+	graphicsSystem GraphicsSystemInterface
+	vmRunner       VMRunnerInterface
+}
+
+// GraphicsSystemInterface defines the interface for graphics operations
+type GraphicsSystemInterface interface {
+	Update() error
+	Draw(screen *ebiten.Image)
+	Shutdown()
+}
+
+// VMRunnerInterface defines the interface for VM operations
+type VMRunnerInterface interface {
+	IsRunning() bool
+	Stop()
 }
 
 // NewGame Gameを作成
@@ -55,6 +72,16 @@ func NewGame(mode Mode, titles []title.FillyTitle, timeout time.Duration) *Game 
 		timeout:       timeout,
 		startTime:     time.Now(),
 	}
+}
+
+// SetGraphicsSystem sets the graphics system for desktop mode
+func (g *Game) SetGraphicsSystem(gs GraphicsSystemInterface) {
+	g.graphicsSystem = gs
+}
+
+// SetVMRunner sets the VM runner for desktop mode
+func (g *Game) SetVMRunner(vm VMRunnerInterface) {
+	g.vmRunner = vm
 }
 
 // Update ゲームロジックの更新（Ebitengineが毎フレーム呼び出す）
@@ -111,12 +138,24 @@ func (g *Game) updateDesktop() error {
 		return ebiten.Termination
 	}
 
+	// VMが停止していたら終了
+	if g.vmRunner != nil && !g.vmRunner.IsRunning() {
+		return ebiten.Termination
+	}
+
+	// GraphicsSystemの更新
+	if g.graphicsSystem != nil {
+		if err := g.graphicsSystem.Update(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // Draw 画面描画（Ebitengineが毎フレーム呼び出す）
 func (g *Game) Draw(screen *ebiten.Image) {
-	// 背景色で塗りつぶし
+	// skelton要件 3.2: 背景色は #0087C8
 	screen.Fill(backgroundColor)
 
 	switch g.mode {
@@ -167,12 +206,16 @@ func (g *Game) drawSelection(screen *ebiten.Image) {
 
 // drawDesktop 仮想デスクトップの描画
 func (g *Game) drawDesktop(screen *ebiten.Image) {
-	// 背景色 #0087C8 は既に Draw メソッドで塗りつぶされている
-	// 現時点では追加の描画は不要（将来的にスクリプト実行結果を描画）
+	// GraphicsSystemで描画（背景色の上に描画される）
+	if g.graphicsSystem != nil {
+		g.graphicsSystem.Draw(screen)
+	}
+	// GraphicsSystemが設定されていない場合は、背景色のみ表示される
 }
 
 // Layout 画面サイズを返す
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	// skelton要件 3.2: ウィンドウサイズは 1280x720 ピクセル
 	return 1280, 720
 }
 
