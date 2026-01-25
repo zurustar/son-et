@@ -172,10 +172,34 @@ func (app *Application) runDesktop() error {
 		return app.runVM()
 	}
 
-	// GUIモードの場合は仮想デスクトップを表示
-	// TODO: GUIモードでもVMを統合する（描画系機能実装後）
-	_, err := window.Run(window.ModeDesktop, nil, app.config.Timeout)
-	return err
+	// GUIモードの場合もVMを実行
+	// TODO: 将来的にはEbitengineのゲームループに統合する
+	app.log.Info("GUI mode: running VM with window")
+
+	// VMを別ゴルーチンで実行
+	vmErrCh := make(chan error, 1)
+	go func() {
+		vmErrCh <- app.runVM()
+	}()
+
+	// ウィンドウを表示
+	_, windowErr := window.Run(window.ModeDesktop, nil, app.config.Timeout)
+
+	// VMの終了を待つ
+	// ウィンドウが閉じられたらVMも停止する
+	// TODO: VMからウィンドウを制御できるようにする
+
+	// どちらかのエラーを返す
+	if windowErr != nil {
+		return windowErr
+	}
+
+	select {
+	case vmErr := <-vmErrCh:
+		return vmErr
+	default:
+		return nil
+	}
 }
 
 // runVM VMを実行
@@ -189,6 +213,7 @@ func (app *Application) runVM() error {
 	opts := []vm.Option{
 		vm.WithHeadless(app.config.Headless),
 		vm.WithLogger(app.log),
+		vm.WithTitlePath(app.selectedTitle.Path),
 	}
 
 	// タイムアウトが指定されている場合

@@ -329,8 +329,14 @@ func (mp *MIDIPlayer) Play(filename string) error {
 	// Stop any current playback (will be enhanced in task 5.7)
 	mp.stopInternal()
 
+	// Find file with case-insensitive search (Windows 3.1 compatibility)
+	actualPath, err := FindFileInsensitive(filename)
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrMIDIFileNotFound, filename)
+	}
+
 	// Load MIDI file
-	midiData, err := os.ReadFile(filename)
+	midiData, err := os.ReadFile(actualPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("%w: %s", ErrMIDIFileNotFound, filename)

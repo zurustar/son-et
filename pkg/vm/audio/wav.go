@@ -89,9 +89,15 @@ func (wp *WAVPlayer) Play(filename string) error {
 	// Clean up finished players before adding new ones
 	wp.cleanupFinishedPlayers()
 
+	// Find file with case-insensitive search (Windows 3.1 compatibility)
+	actualPath, err := FindFileInsensitive(filename)
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrWAVFileNotFound, filename)
+	}
+
 	// Load WAV file
 	// Requirement 5.4: When WAV file is not found, system logs error and continues execution.
-	data, err := os.ReadFile(filename)
+	data, err := os.ReadFile(actualPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("%w: %s", ErrWAVFileNotFound, filename)
