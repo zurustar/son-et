@@ -374,3 +374,260 @@ func TestIDReuse(t *testing.T) {
 		t.Errorf("Expected 1 picture after delete and create, got %d", len(pm.pictures))
 	}
 }
+
+// TestCreatePicWithSize tests the CreatePicWithSize method
+// 要件 2.1, 2.2, 2.3, 2.4
+func TestCreatePicWithSize(t *testing.T) {
+	pm := NewPictureManager("")
+
+	// Create source picture
+	srcID, err := pm.CreatePic(100, 100)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// Create new picture with specified size (要件 2.1)
+	newID, err := pm.CreatePicWithSize(srcID, 200, 150)
+	if err != nil {
+		t.Fatalf("CreatePicWithSize failed: %v", err)
+	}
+
+	// Verify new picture exists and has correct dimensions
+	newPic, err := pm.GetPic(newID)
+	if err != nil {
+		t.Fatalf("GetPic failed: %v", err)
+	}
+
+	if newPic.Width != 200 {
+		t.Errorf("Expected width 200, got %d", newPic.Width)
+	}
+
+	if newPic.Height != 150 {
+		t.Errorf("Expected height 150, got %d", newPic.Height)
+	}
+
+	// IDs should be different
+	if newID == srcID {
+		t.Error("New picture should have different ID from source")
+	}
+}
+
+// TestCreatePicWithSizeEmptyPicture tests that the created picture is empty (要件 2.2)
+// Note: We verify emptiness by checking OriginalImage (RGBA) instead of ebiten.Image
+// because ebiten.Image.At() cannot be called before the game starts
+func TestCreatePicWithSizeEmptyPicture(t *testing.T) {
+	pm := NewPictureManager("")
+
+	// Create source picture and fill it with red
+	srcID, err := pm.CreatePic(100, 100)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	srcPic, _ := pm.GetPic(srcID)
+	// Fill the original image with red to verify it's not copied
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			srcPic.OriginalImage.Set(x, y, color.RGBA{255, 0, 0, 255})
+		}
+	}
+
+	// Create new picture with specified size
+	newID, err := pm.CreatePicWithSize(srcID, 50, 50)
+	if err != nil {
+		t.Fatalf("CreatePicWithSize failed: %v", err)
+	}
+
+	// Verify new picture's OriginalImage is empty (transparent)
+	newPic, _ := pm.GetPic(newID)
+	// Check a pixel in OriginalImage - should be transparent (0, 0, 0, 0)
+	r, g, b, a := newPic.OriginalImage.At(0, 0).RGBA()
+	if r != 0 || g != 0 || b != 0 || a != 0 {
+		t.Errorf("Expected empty (transparent) picture, got RGBA(%d, %d, %d, %d)", r, g, b, a)
+	}
+
+	// Also verify the new picture has different dimensions from source
+	if newPic.Width == srcPic.Width && newPic.Height == srcPic.Height {
+		t.Error("New picture should have different dimensions from source")
+	}
+}
+
+// TestCreatePicWithSizeNonExistentSource tests error handling for non-existent source (要件 2.3)
+func TestCreatePicWithSizeNonExistentSource(t *testing.T) {
+	pm := NewPictureManager("")
+
+	// Try to create from non-existent source picture
+	id, err := pm.CreatePicWithSize(999, 100, 100)
+	if err == nil {
+		t.Error("Expected error when creating from non-existent source, got nil")
+	}
+
+	if id != -1 {
+		t.Errorf("Expected ID -1 for failed creation, got %d", id)
+	}
+}
+
+// TestCreatePicWithSizeInvalidWidth tests error handling for invalid width (要件 2.4)
+func TestCreatePicWithSizeInvalidWidth(t *testing.T) {
+	pm := NewPictureManager("")
+
+	// Create source picture
+	srcID, err := pm.CreatePic(100, 100)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// Try to create with zero width
+	id, err := pm.CreatePicWithSize(srcID, 0, 100)
+	if err == nil {
+		t.Error("Expected error when creating with zero width, got nil")
+	}
+	if id != -1 {
+		t.Errorf("Expected ID -1 for failed creation, got %d", id)
+	}
+
+	// Try to create with negative width
+	id, err = pm.CreatePicWithSize(srcID, -10, 100)
+	if err == nil {
+		t.Error("Expected error when creating with negative width, got nil")
+	}
+	if id != -1 {
+		t.Errorf("Expected ID -1 for failed creation, got %d", id)
+	}
+}
+
+// TestCreatePicWithSizeInvalidHeight tests error handling for invalid height (要件 2.4)
+func TestCreatePicWithSizeInvalidHeight(t *testing.T) {
+	pm := NewPictureManager("")
+
+	// Create source picture
+	srcID, err := pm.CreatePic(100, 100)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// Try to create with zero height
+	id, err := pm.CreatePicWithSize(srcID, 100, 0)
+	if err == nil {
+		t.Error("Expected error when creating with zero height, got nil")
+	}
+	if id != -1 {
+		t.Errorf("Expected ID -1 for failed creation, got %d", id)
+	}
+
+	// Try to create with negative height
+	id, err = pm.CreatePicWithSize(srcID, 100, -10)
+	if err == nil {
+		t.Error("Expected error when creating with negative height, got nil")
+	}
+	if id != -1 {
+		t.Errorf("Expected ID -1 for failed creation, got %d", id)
+	}
+}
+
+// TestCreatePicWithSizeResourceLimit tests resource limit handling
+func TestCreatePicWithSizeResourceLimit(t *testing.T) {
+	pm := NewPictureManager("")
+	pm.maxID = 2 // Set low limit for testing
+
+	// Create source picture (uses 1 slot)
+	srcID, err := pm.CreatePic(10, 10)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// Create one more picture (uses 2nd slot)
+	_, err = pm.CreatePicWithSize(srcID, 20, 20)
+	if err != nil {
+		t.Fatalf("CreatePicWithSize failed: %v", err)
+	}
+
+	// Try to create one more (should fail due to limit)
+	id, err := pm.CreatePicWithSize(srcID, 30, 30)
+	if err == nil {
+		t.Error("Expected error when exceeding resource limit, got nil")
+	}
+	if id != -1 {
+		t.Errorf("Expected ID -1 when exceeding limit, got %d", id)
+	}
+}
+
+// TestLoadPicRLE8 tests loading RLE8 compressed BMP files
+// 要件 1.10.1: RLE圧縮されたBMP形式（RLE8、RLE4）をサポートする
+func TestLoadPicRLE8(t *testing.T) {
+	// サンプルファイルのパスを取得
+	robotDir := filepath.Join("..", "..", "samples", "robot")
+
+	// ディレクトリが存在するか確認
+	if _, err := os.Stat(robotDir); os.IsNotExist(err) {
+		t.Skipf("Robot sample directory not found: %s", robotDir)
+	}
+
+	pm := NewPictureManager(robotDir)
+
+	// ROBOT001.BMPを読み込む（RLE8圧縮）
+	id, err := pm.LoadPic("ROBOT001.BMP")
+	if err != nil {
+		t.Fatalf("LoadPic failed for RLE8 BMP: %v", err)
+	}
+
+	// ピクチャーが正しく読み込まれたことを確認
+	pic, err := pm.GetPic(id)
+	if err != nil {
+		t.Fatalf("GetPic failed: %v", err)
+	}
+
+	// 画像サイズを確認（ROBOT001.BMPは680x218）
+	if pic.Width != 680 {
+		t.Errorf("Expected width 680, got %d", pic.Width)
+	}
+
+	if pic.Height != 218 {
+		t.Errorf("Expected height 218, got %d", pic.Height)
+	}
+
+	t.Logf("Successfully loaded RLE8 BMP: %dx%d", pic.Width, pic.Height)
+}
+
+// TestLoadPicRLE8AllRobotFiles tests loading all ROBOT*.BMP files
+func TestLoadPicRLE8AllRobotFiles(t *testing.T) {
+	robotDir := filepath.Join("..", "..", "samples", "robot")
+
+	// ディレクトリが存在するか確認
+	if _, err := os.Stat(robotDir); os.IsNotExist(err) {
+		t.Skipf("Robot sample directory not found: %s", robotDir)
+	}
+
+	// ROBOT*.BMPファイルを検索
+	matches, err := filepath.Glob(filepath.Join(robotDir, "ROBOT*.BMP"))
+	if err != nil {
+		t.Fatalf("Failed to glob files: %v", err)
+	}
+
+	if len(matches) == 0 {
+		t.Skip("No ROBOT*.BMP files found")
+	}
+
+	pm := NewPictureManager(robotDir)
+
+	for _, path := range matches {
+		filename := filepath.Base(path)
+		t.Run(filename, func(t *testing.T) {
+			id, err := pm.LoadPic(filename)
+			if err != nil {
+				t.Fatalf("LoadPic failed for %s: %v", filename, err)
+			}
+
+			pic, err := pm.GetPic(id)
+			if err != nil {
+				t.Fatalf("GetPic failed: %v", err)
+			}
+
+			if pic.Width <= 0 || pic.Height <= 0 {
+				t.Errorf("Invalid image size: %dx%d", pic.Width, pic.Height)
+			}
+
+			t.Logf("Loaded %s: %dx%d", filename, pic.Width, pic.Height)
+		})
+	}
+}

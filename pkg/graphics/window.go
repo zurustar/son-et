@@ -240,3 +240,39 @@ func (wm *WindowManager) GetPicNo(id int) (int, error) {
 
 	return win.PicID, nil
 }
+
+// CapTitleAll は全てのウィンドウのキャプションを設定する
+// title: 設定するキャプション
+// ウィンドウが存在しない場合は何もしない（エラーなし）
+// 受け入れ基準 3.1, 3.2
+func (wm *WindowManager) CapTitleAll(title string) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	// 全てのウィンドウのキャプションを設定
+	for _, win := range wm.windows {
+		win.Caption = title
+	}
+}
+
+// GetWinByPicID はピクチャーIDに関連付けられたウィンドウIDを返す
+// 複数のウィンドウが同じピクチャーを使用している場合、最後に開かれたウィンドウを返す
+func (wm *WindowManager) GetWinByPicID(picID int) (int, error) {
+	wm.mu.RLock()
+	defer wm.mu.RUnlock()
+
+	var foundWin *Window
+	for _, win := range wm.windows {
+		if win.PicID == picID {
+			if foundWin == nil || win.ZOrder > foundWin.ZOrder {
+				foundWin = win
+			}
+		}
+	}
+
+	if foundWin == nil {
+		return -1, fmt.Errorf("no window found for picture: %d", picID)
+	}
+
+	return foundWin.ID, nil
+}

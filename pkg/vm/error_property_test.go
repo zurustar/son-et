@@ -184,9 +184,9 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 		gen.AlphaString().SuchThat(func(s string) bool { return len(s) > 0 && len(s) < 50 }),
 	))
 
-	// Property: Unknown function call returns zero and execution continues
-	// Requirement 11.6: When function is not found, system logs error and continues execution.
-	properties.Property("unknown function call returns zero and execution continues", prop.ForAll(
+	// Property: Unknown function call returns error
+	// 未定義関数が呼ばれた場合はエラーで終了する
+	properties.Property("unknown function call returns error", prop.ForAll(
 		func(funcName string) bool {
 			if funcName == "" {
 				funcName = "unknownFunc"
@@ -202,16 +202,9 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 				Args: []any{funcName},
 			}
 
-			result, err := vm.Execute(callOp)
-			if err != nil {
-				return false // Should not return error
-			}
-
-			// Result should be zero
-			if i, ok := toInt64(result); ok {
-				return i == 0
-			}
-			return result == nil
+			_, err := vm.Execute(callOp)
+			// Should return error for undefined function
+			return err != nil
 		},
 		gen.AlphaString().SuchThat(func(s string) bool { return len(s) > 0 && len(s) < 50 }),
 	))

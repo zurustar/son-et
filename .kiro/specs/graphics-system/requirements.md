@@ -56,8 +56,12 @@ Ebitengineの描画APIはメインスレッドでのみ呼び出し可能です�
 1.8. WHEN PicHeight(pic_no)が呼ばれたとき、THE System SHALL 指定されたピクチャーの高さを返す
 1.9. WHEN 存在しないピクチャーIDが指定されたとき、THE System SHALL エラーをログに記録し、0を返す
 1.10. THE System SHALL BMP形式（24ビット、8ビット）の画像ファイルをサポートする
+1.10.1. THE System SHALL RLE圧縮されたBMP形式（RLE8、RLE4）をサポートする
+1.10.2. THE System SHALL 非圧縮BMP形式をサポートする
 1.11. THE System SHALL PNG形式の画像ファイルもサポートする（拡張機能）
 1.12. WHEN ファイル名の大文字小文字が異なるとき、THE System SHALL 大文字小文字を区別せずにファイルを検索する（Windows互換性）
+1.13. WHEN LoadPicまたはCreatePicが呼ばれたとき、THE System SHALL 元の背景画像（OriginalImage）をRGBA形式で保存する（テキスト描画用）
+1.14. WHEN CreatePicFromが呼ばれたとき、THE System SHALL ソースピクチャーのOriginalImageもコピーする
 
 ### 要件2: ピクチャー転送
 
@@ -128,6 +132,8 @@ Ebitengineの描画APIはメインスレッドでのみ呼び出し可能です�
 5.8. WHEN 指定されたフォントが見つからないとき、THE System SHALL デフォルトフォントを使用する
 5.9. THE System SHALL フォントサイズをピクセル単位で指定できる
 5.10. THE System SHALL 太字（weight >= 700）とイタリックをサポートする
+5.11. WHEN 同じ位置に異なる色でテキストを描画したとき、THE System SHALL 前のテキストのアンチエイリアス部分（影）を残さずに上書きする
+5.12. THE System SHALL テキスト描画時に元の背景画像（OriginalImage）を基準にレイヤー方式で描画する
 
 ### 要件6: 描画プリミティブ
 
@@ -167,7 +173,7 @@ Ebitengineの描画APIはメインスレッドでのみ呼び出し可能です�
 
 #### 受け入れ基準
 
-8.1. THE System SHALL デフォルトで1280x720ピクセルの描画領域を提供する（skelton要件に合わせる）
+8.1. THE System SHALL デフォルトで1024x768ピクセルの描画領域を提供する（skelton要件に合わせる）
 8.2. THE System SHALL WinInfo(0)で描画領域の幅を返す
 8.3. THE System SHALL WinInfo(1)で描画領域の高さを返す
 8.4. THE System SHALL 描画領域を実際のウィンドウサイズに合わせてスケーリングする

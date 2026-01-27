@@ -12,12 +12,16 @@ package vm
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"log/slog"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/graphics"
 	"github.com/zurustar/son-et/pkg/logger"
 )
 
@@ -100,9 +104,18 @@ type GraphicsSystemInterface interface {
 	// Picture management
 	LoadPic(filename string) (int, error)
 	CreatePic(width, height int) (int, error)
+	CreatePicFrom(srcID int) (int, error)
+	CreatePicWithSize(srcID, width, height int) (int, error)
 	DelPic(id int) error
 	PicWidth(id int) int
 	PicHeight(id int) int
+
+	// Picture transfer
+	MovePic(srcID, srcX, srcY, width, height, dstID, dstX, dstY, mode int) error
+	MovePicWithSpeed(srcID, srcX, srcY, width, height, dstID, dstX, dstY, mode, speed int) error
+	MoveSPic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH int) error
+	TransPic(srcID, srcX, srcY, width, height, dstID, dstX, dstY int, transColor any) error
+	ReversePic(srcID, srcX, srcY, width, height, dstID, dstX, dstY int) error
 
 	// Window management
 	OpenWin(picID int, opts ...any) (int, error)
@@ -110,25 +123,36 @@ type GraphicsSystemInterface interface {
 	CloseWin(id int) error
 	CloseWinAll()
 	CapTitle(id int, title string) error
+	CapTitleAll(title string)
 	GetPicNo(id int) (int, error)
+	GetWinByPicID(picID int) (int, error)
 
-	// Cast management (placeholder for future implementation)
+	// Cast management
 	PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int, error)
+	PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h int, transColor color.Color) (int, error)
 	MoveCast(id int, opts ...any) error
+	MoveCastWithOptions(id int, opts ...graphics.CastOption) error
 	DelCast(id int) error
 
-	// Text rendering (placeholder for future implementation)
+	// Text rendering
 	TextWrite(picID, x, y int, text string) error
 	SetFont(name string, size int, opts ...any) error
 	SetTextColor(c any) error
 	SetBgColor(c any) error
 	SetBackMode(mode int) error
 
-	// Drawing primitives (placeholder for future implementation)
+	// Drawing primitives
 	DrawLine(picID, x1, y1, x2, y2 int) error
 	DrawRect(picID, x1, y1, x2, y2, fillMode int) error
 	FillRect(picID, x1, y1, x2, y2 int, c any) error
+	DrawCircle(picID, x, y, radius, fillMode int) error
+	SetLineSize(size int)
 	SetPaintColor(c any) error
+	GetColor(picID, x, y int) (int, error)
+
+	// Virtual desktop info
+	GetVirtualWidth() int
+	GetVirtualHeight() int
 }
 
 // FunctionDef represents a user-defined function.
@@ -285,8 +309,7 @@ func (vm *VM) registerDefaultBuiltins() {
 	// Requirement 10.1: When PlayMIDI is called, system calls MIDI playback function.
 	vm.RegisterBuiltinFunction("PlayMIDI", func(v *VM, args []any) (any, error) {
 		if len(args) < 1 {
-			v.log.Error("PlayMIDI requires filename argument")
-			return nil, nil
+			return nil, fmt.Errorf("PlayMIDI requires filename argument")
 		}
 		filename, ok := args[0].(string)
 		if !ok {
@@ -306,8 +329,7 @@ func (vm *VM) registerDefaultBuiltins() {
 	// Requirement 10.2: When PlayWAVE is called, system calls WAV playback function.
 	vm.RegisterBuiltinFunction("PlayWAVE", func(v *VM, args []any) (any, error) {
 		if len(args) < 1 {
-			v.log.Error("PlayWAVE requires filename argument")
-			return nil, nil
+			return nil, fmt.Errorf("PlayWAVE requires filename argument")
 		}
 		filename, ok := args[0].(string)
 		if !ok {
@@ -420,7 +442,7 @@ func (vm *VM) registerDefaultBuiltins() {
 			return -1, nil
 		}
 		if len(args) < 1 {
-			v.log.Error("LoadPic requires filename argument")
+			return nil, fmt.Errorf("LoadPic requires filename argument")
 			return -1, nil
 		}
 		filename, ok := args[0].(string)
@@ -430,41 +452,138 @@ func (vm *VM) registerDefaultBuiltins() {
 		}
 		picID, err := v.graphicsSystem.LoadPic(filename)
 		if err != nil {
-			v.log.Error("LoadPic failed", "filename", filename, "error", err)
-			return -1, nil
+			return -1, fmt.Errorf("LoadPic failed")
 		}
 		v.log.Debug("LoadPic called", "filename", filename, "picID", picID)
 		return picID, nil
 	})
 
 	// CreatePic: Create a picture
+	// Supports three patterns:
+	// - CreatePic(srcPicID) - create from existing picture (same size)
+	// - CreatePic(width, height) - create with specified size
+	// - CreatePic(srcPicID, width, height) - create empty picture with specified size (source is for existence check only)
 	vm.RegisterBuiltinFunction("CreatePic", func(v *VM, args []any) (any, error) {
 		if v.graphicsSystem == nil {
 			v.log.Debug("CreatePic called but graphics system not initialized", "args", args)
 			return -1, nil
 		}
-		if len(args) < 2 {
-			v.log.Error("CreatePic requires width and height arguments")
+		if len(args) < 1 {
+			return nil, fmt.Errorf("CreatePic requires at least one argument")
 			return -1, nil
 		}
+
+		// Check if it's a single argument (create from existing picture)
+		if len(args) == 1 {
+			srcID, ok := toInt64(args[0])
+			if !ok {
+				return -1, fmt.Errorf("CreatePic source picture ID must be integer")
+			}
+			picID, err := v.graphicsSystem.CreatePicFrom(int(srcID))
+			if err != nil {
+				return -1, fmt.Errorf("CreatePic (from source) failed")
+			}
+			v.log.Debug("CreatePic called (from source)", "srcID", srcID, "picID", picID)
+			return picID, nil
+		}
+
+		// Three arguments: srcPicID, width, height
+		if len(args) == 3 {
+			srcID, sok := toInt64(args[0])
+			width, wok := toInt64(args[1])
+			height, hok := toInt64(args[2])
+			if !sok || !wok || !hok {
+				return -1, fmt.Errorf("CreatePic arguments must be integers")
+			}
+			picID, err := v.graphicsSystem.CreatePicWithSize(int(srcID), int(width), int(height))
+			if err != nil {
+				return -1, fmt.Errorf("CreatePic (with size) failed: %v", err)
+			}
+			v.log.Debug("CreatePic called (with size)", "srcID", srcID, "width", width, "height", height, "picID", picID)
+			return picID, nil
+		}
+
+		// Two arguments: width and height
 		width, wok := toInt64(args[0])
 		height, hok := toInt64(args[1])
 		if !wok || !hok {
-			v.log.Error("CreatePic width and height must be integers")
-			return -1, nil
+			return -1, fmt.Errorf("CreatePic width and height must be integers")
 		}
 		picID, err := v.graphicsSystem.CreatePic(int(width), int(height))
 		if err != nil {
-			v.log.Error("CreatePic failed", "width", width, "height", height, "error", err)
-			return -1, nil
+			return -1, fmt.Errorf("CreatePic failed")
 		}
 		v.log.Debug("CreatePic called", "width", width, "height", height, "picID", picID)
 		return picID, nil
 	})
 
-	// MovePic: Move a picture (placeholder - will be implemented in transfer phase)
+	// MovePic: Transfer picture region
+	// MovePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y) - mode defaults to 0
+	// MovePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y, mode)
+	// MovePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y, mode, speed)
+	// MovePic(src_pic, dst_pic) - copy entire picture (simplified form)
 	vm.RegisterBuiltinFunction("MovePic", func(v *VM, args []any) (any, error) {
-		v.log.Debug("MovePic called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("MovePic called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+
+		// Simplified form: MovePic(src_pic, dst_pic) - copy entire picture
+		if len(args) == 2 {
+			srcID, sok := toInt64(args[0])
+			dstID, dok := toInt64(args[1])
+			if !sok || !dok {
+				return nil, fmt.Errorf("MovePic: picture IDs must be integers")
+			}
+			// Get source picture dimensions
+			srcW := v.graphicsSystem.PicWidth(int(srcID))
+			srcH := v.graphicsSystem.PicHeight(int(srcID))
+			if err := v.graphicsSystem.MovePic(int(srcID), 0, 0, srcW, srcH, int(dstID), 0, 0, 0); err != nil {
+				v.log.Error("MovePic failed", "srcID", srcID, "dstID", dstID, "error", err)
+			}
+			return nil, nil
+		}
+
+		// Check for invalid argument counts (not 2, and less than 8)
+		if len(args) < 8 {
+			return nil, fmt.Errorf("MovePic: invalid argument count %d (expected 2, 8, 9, or 10)", len(args))
+		}
+
+		srcID, _ := toInt64(args[0])
+		srcX, _ := toInt64(args[1])
+		srcY, _ := toInt64(args[2])
+		width, _ := toInt64(args[3])
+		height, _ := toInt64(args[4])
+		dstID, _ := toInt64(args[5])
+		dstX, _ := toInt64(args[6])
+		dstY, _ := toInt64(args[7])
+
+		// mode is optional, defaults to 0 (normal copy)
+		var mode int64 = 0
+		if len(args) >= 9 {
+			mode, _ = toInt64(args[8])
+		}
+
+		// Optional speed argument
+		speed := 50 // default speed
+		if len(args) >= 10 {
+			if s, ok := toInt64(args[9]); ok {
+				speed = int(s)
+			}
+		}
+
+		var err error
+		if len(args) >= 10 {
+			err = v.graphicsSystem.MovePicWithSpeed(int(srcID), int(srcX), int(srcY), int(width), int(height),
+				int(dstID), int(dstX), int(dstY), int(mode), speed)
+		} else {
+			err = v.graphicsSystem.MovePic(int(srcID), int(srcX), int(srcY), int(width), int(height),
+				int(dstID), int(dstX), int(dstY), int(mode))
+		}
+
+		if err != nil {
+			v.log.Error("MovePic failed", "error", err)
+		}
 		return nil, nil
 	})
 
@@ -475,8 +594,7 @@ func (vm *VM) registerDefaultBuiltins() {
 			return nil, nil
 		}
 		if len(args) < 1 {
-			v.log.Error("DelPic requires picture ID argument")
-			return nil, nil
+			return nil, fmt.Errorf("DelPic requires picture ID argument")
 		}
 		picID, ok := toInt64(args[0])
 		if !ok {
@@ -490,6 +608,131 @@ func (vm *VM) registerDefaultBuiltins() {
 		return nil, nil
 	})
 
+	// PicWidth: Get picture width
+	vm.RegisterBuiltinFunction("PicWidth", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("PicWidth called but graphics system not initialized", "args", args)
+			return 0, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("PicWidth requires picture ID argument")
+			return 0, nil
+		}
+		picID, ok := toInt64(args[0])
+		if !ok {
+			return 0, fmt.Errorf("PicWidth picture ID must be integer")
+		}
+		width := v.graphicsSystem.PicWidth(int(picID))
+		v.log.Debug("PicWidth called", "picID", picID, "width", width)
+		return width, nil
+	})
+
+	// PicHeight: Get picture height
+	vm.RegisterBuiltinFunction("PicHeight", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("PicHeight called but graphics system not initialized", "args", args)
+			return 0, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("PicHeight requires picture ID argument")
+			return 0, nil
+		}
+		picID, ok := toInt64(args[0])
+		if !ok {
+			return 0, fmt.Errorf("PicHeight picture ID must be integer")
+		}
+		height := v.graphicsSystem.PicHeight(int(picID))
+		v.log.Debug("PicHeight called", "picID", picID, "height", height)
+		return height, nil
+	})
+
+	// MoveSPic: Scale and transfer picture
+	// MoveSPic(src_pic, src_x, src_y, src_w, src_h, dst_pic, dst_x, dst_y, dst_w, dst_h)
+	vm.RegisterBuiltinFunction("MoveSPic", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("MoveSPic called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 10 {
+			return nil, fmt.Errorf("MoveSPic requires 10 arguments")
+		}
+
+		srcID, _ := toInt64(args[0])
+		srcX, _ := toInt64(args[1])
+		srcY, _ := toInt64(args[2])
+		srcW, _ := toInt64(args[3])
+		srcH, _ := toInt64(args[4])
+		dstID, _ := toInt64(args[5])
+		dstX, _ := toInt64(args[6])
+		dstY, _ := toInt64(args[7])
+		dstW, _ := toInt64(args[8])
+		dstH, _ := toInt64(args[9])
+
+		if err := v.graphicsSystem.MoveSPic(int(srcID), int(srcX), int(srcY), int(srcW), int(srcH),
+			int(dstID), int(dstX), int(dstY), int(dstW), int(dstH)); err != nil {
+			v.log.Error("MoveSPic failed", "error", err)
+		}
+		v.log.Debug("MoveSPic called", "srcID", srcID, "dstID", dstID)
+		return nil, nil
+	})
+
+	// TransPic: Transfer with transparency
+	// TransPic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y, trans_color)
+	vm.RegisterBuiltinFunction("TransPic", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("TransPic called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 9 {
+			return nil, fmt.Errorf("TransPic requires 9 arguments")
+		}
+
+		srcID, _ := toInt64(args[0])
+		srcX, _ := toInt64(args[1])
+		srcY, _ := toInt64(args[2])
+		width, _ := toInt64(args[3])
+		height, _ := toInt64(args[4])
+		dstID, _ := toInt64(args[5])
+		dstX, _ := toInt64(args[6])
+		dstY, _ := toInt64(args[7])
+		transColor, _ := toInt64(args[8])
+
+		if err := v.graphicsSystem.TransPic(int(srcID), int(srcX), int(srcY), int(width), int(height),
+			int(dstID), int(dstX), int(dstY), int(transColor)); err != nil {
+			v.log.Error("TransPic failed", "error", err)
+		}
+		v.log.Debug("TransPic called", "srcID", srcID, "dstID", dstID)
+		return nil, nil
+	})
+
+	// ReversePic: Transfer with horizontal flip
+	// ReversePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y)
+	vm.RegisterBuiltinFunction("ReversePic", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("ReversePic called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 8 {
+			return nil, fmt.Errorf("ReversePic requires 8 arguments")
+		}
+
+		srcID, _ := toInt64(args[0])
+		srcX, _ := toInt64(args[1])
+		srcY, _ := toInt64(args[2])
+		width, _ := toInt64(args[3])
+		height, _ := toInt64(args[4])
+		dstID, _ := toInt64(args[5])
+		dstX, _ := toInt64(args[6])
+		dstY, _ := toInt64(args[7])
+
+		if err := v.graphicsSystem.ReversePic(int(srcID), int(srcX), int(srcY), int(width), int(height),
+			int(dstID), int(dstX), int(dstY)); err != nil {
+			v.log.Error("ReversePic failed", "error", err)
+		}
+		v.log.Debug("ReversePic called", "srcID", srcID, "dstID", dstID)
+		return nil, nil
+	})
+
 	// OpenWin: Open a window
 	vm.RegisterBuiltinFunction("OpenWin", func(v *VM, args []any) (any, error) {
 		if v.graphicsSystem == nil {
@@ -497,19 +740,17 @@ func (vm *VM) registerDefaultBuiltins() {
 			return -1, nil
 		}
 		if len(args) < 1 {
-			v.log.Error("OpenWin requires at least picture ID argument")
-			return -1, nil
+			return nil, fmt.Errorf("OpenWin requires at least picture ID argument")
 		}
 		picID, ok := toInt64(args[0])
 		if !ok {
-			v.log.Error("OpenWin picture ID must be integer")
-			return -1, nil
+			return -1, fmt.Errorf("OpenWin picture ID must be integer")
 		}
 		// Pass remaining args as options (will be handled by GraphicsSystem)
+		v.log.Debug("OpenWin args", "picID", picID, "opts", args[1:], "optsLen", len(args)-1)
 		winID, err := v.graphicsSystem.OpenWin(int(picID), args[1:]...)
 		if err != nil {
-			v.log.Error("OpenWin failed", "picID", picID, "error", err)
-			return -1, nil
+			return -1, fmt.Errorf("OpenWin failed")
 		}
 		v.log.Debug("OpenWin called", "picID", picID, "winID", winID)
 		return winID, nil
@@ -522,8 +763,7 @@ func (vm *VM) registerDefaultBuiltins() {
 			return nil, nil
 		}
 		if len(args) < 1 {
-			v.log.Error("CloseWin requires window ID argument")
-			return nil, nil
+			return nil, fmt.Errorf("CloseWin requires window ID argument")
 		}
 		winID, ok := toInt64(args[0])
 		if !ok {
@@ -544,8 +784,7 @@ func (vm *VM) registerDefaultBuiltins() {
 			return nil, nil
 		}
 		if len(args) < 1 {
-			v.log.Error("MoveWin requires at least window ID argument")
-			return nil, nil
+			return nil, fmt.Errorf("MoveWin requires at least window ID argument")
 		}
 		winID, ok := toInt64(args[0])
 		if !ok {
@@ -560,52 +799,760 @@ func (vm *VM) registerDefaultBuiltins() {
 		return nil, nil
 	})
 
-	// PutCast: Put a cast (placeholder)
+	// CloseWinAll: Close all windows
+	vm.RegisterBuiltinFunction("CloseWinAll", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("CloseWinAll called but graphics system not initialized")
+			return nil, nil
+		}
+		v.graphicsSystem.CloseWinAll()
+		v.log.Debug("CloseWinAll called")
+		return nil, nil
+	})
+
+	// CapTitle: Set window caption
+	// CapTitle(title) - set caption for ALL windows (受け入れ基準 3.1)
+	// CapTitle(win_no, title) - set caption for specific window (受け入れ基準 3.3)
+	// 存在しないウィンドウIDの場合はエラーを発生させない (受け入れ基準 3.4)
+	// 空文字列をタイトルとして受け入れる (受け入れ基準 3.5)
+	vm.RegisterBuiltinFunction("CapTitle", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("CapTitle called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("CapTitle requires at least 1 argument")
+		}
+
+		if len(args) == 1 {
+			// CapTitle(title) - set caption for ALL windows (受け入れ基準 3.1)
+			title, _ := args[0].(string)
+			v.graphicsSystem.CapTitleAll(title)
+			v.log.Debug("CapTitle called (all windows)", "title", title)
+		} else {
+			// CapTitle(win_no, title) - set caption for specific window (受け入れ基準 3.3)
+			winID, _ := toInt64(args[0])
+			title, _ := args[1].(string)
+			// エラーを無視する (受け入れ基準 3.4: 存在しないウィンドウIDでもエラーを発生させない)
+			_ = v.graphicsSystem.CapTitle(int(winID), title)
+			v.log.Debug("CapTitle called", "winID", winID, "title", title)
+		}
+		return nil, nil
+	})
+
+	// GetPicNo: Get picture number associated with a window
+	vm.RegisterBuiltinFunction("GetPicNo", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("GetPicNo called but graphics system not initialized", "args", args)
+			return -1, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("GetPicNo requires window ID argument")
+			return -1, nil
+		}
+		winID, ok := toInt64(args[0])
+		if !ok {
+			return -1, fmt.Errorf("GetPicNo window ID must be integer")
+		}
+		picID, err := v.graphicsSystem.GetPicNo(int(winID))
+		if err != nil {
+			return -1, fmt.Errorf("GetPicNo failed")
+		}
+		v.log.Debug("GetPicNo called", "winID", winID, "picID", picID)
+		return picID, nil
+	})
+
+	// PutCast: Put a cast on a window
+	// PutCast(win_no, pic_no, x, y, src_x, src_y, width, height) - 8 args
+	// PutCast(pic_no, base_pic, x, y) - 4 args: simplified form (no transparency)
+	// PutCast(pic_no, base_pic, x, y, transparentColor) - 5 args: with transparency
+	// PutCast(pic_no, base_pic, x, y, transparentColor, ?, ?, ?, width, height, srcX, srcY) - 12 args: full
 	vm.RegisterBuiltinFunction("PutCast", func(v *VM, args []any) (any, error) {
-		v.log.Debug("PutCast called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("PutCast called but graphics system not initialized", "args", args)
+			return -1, nil
+		}
+
+		// 12 args: PutCast(pic_no, base_pic, x, y, transparentColor, ?, ?, ?, width, height, srcX, srcY)
+		if len(args) >= 12 {
+			picID, _ := toInt64(args[0])
+			basePic, _ := toInt64(args[1])
+			x, _ := toInt64(args[2])
+			y, _ := toInt64(args[3])
+			transColorInt, _ := toInt64(args[4])
+			// args[5-7] = unknown (ignored)
+			width, _ := toInt64(args[8])
+			height, _ := toInt64(args[9])
+			srcX, _ := toInt64(args[10])
+			srcY, _ := toInt64(args[11])
+
+			// basePicはピクチャーIDなので、対応するウィンドウIDを逆引きする
+			winID, err := v.graphicsSystem.GetWinByPicID(int(basePic))
+			if err != nil {
+				v.log.Warn("PutCast: no window found for base_pic", "basePic", basePic, "error", err)
+				return -1, nil
+			}
+
+			// 透明色を設定
+			transColor := graphics.ColorFromInt(int(transColorInt))
+			castID, err := v.graphicsSystem.PutCastWithTransColor(winID, int(picID), int(x), int(y), int(srcX), int(srcY), int(width), int(height), transColor)
+			if err != nil {
+				v.log.Warn("PutCast failed", "error", err)
+				return -1, nil
+			}
+			v.log.Debug("PutCast called (12 args)", "picID", picID, "basePic", basePic, "winID", winID, "x", x, "y", y, "transColor", transColorInt, "castID", castID)
+			return castID, nil
+		}
+
+		// 5 args: PutCast(pic_no, base_pic, x, y, transparentColor)
+		if len(args) == 5 {
+			picID, _ := toInt64(args[0])
+			basePic, _ := toInt64(args[1])
+			x, _ := toInt64(args[2])
+			y, _ := toInt64(args[3])
+			transColorInt, _ := toInt64(args[4])
+			w := v.graphicsSystem.PicWidth(int(picID))
+			h := v.graphicsSystem.PicHeight(int(picID))
+
+			// basePicはピクチャーIDなので、対応するウィンドウIDを逆引きする
+			winID, err := v.graphicsSystem.GetWinByPicID(int(basePic))
+			if err != nil {
+				v.log.Warn("PutCast: no window found for base_pic", "basePic", basePic, "error", err)
+				return -1, nil
+			}
+
+			// 透明色を設定
+			transColor := graphics.ColorFromInt(int(transColorInt))
+			castID, err := v.graphicsSystem.PutCastWithTransColor(winID, int(picID), int(x), int(y), 0, 0, w, h, transColor)
+			if err != nil {
+				v.log.Warn("PutCast failed", "error", err)
+				return -1, nil
+			}
+			v.log.Debug("PutCast called (5 args)", "picID", picID, "basePic", basePic, "winID", winID, "transColor", transColorInt, "castID", castID)
+			return castID, nil
+		}
+
+		// 4 args: PutCast(pic_no, base_pic, x, y) - no transparency
+		// _old_implementation2の動作: キャストを作成し、かつbase_picにも画像を「焼き付ける」
+		// これにより：
+		// - キャストとして管理される（デバッグオーバーレイで表示される）
+		// - base_picにも描画されるので、後続のMovePicで上書きできる
+		// y_saruのシーン3では: PutCast(25,base_pic,0,0)で背景をキャストとして配置し、
+		// その後MovePic(18,...)で爆発画像をbase_picに描画している。
+		if len(args) == 4 {
+			picID, _ := toInt64(args[0])
+			basePic, _ := toInt64(args[1])
+			x, _ := toInt64(args[2])
+			y, _ := toInt64(args[3])
+			w := v.graphicsSystem.PicWidth(int(picID))
+			h := v.graphicsSystem.PicHeight(int(picID))
+
+			// basePicはピクチャーIDなので、対応するウィンドウIDを逆引きする
+			winID, err := v.graphicsSystem.GetWinByPicID(int(basePic))
+			if err != nil {
+				v.log.Warn("PutCast (4 args): no window found for base_pic", "basePic", basePic, "error", err)
+				return -1, nil
+			}
+
+			// 1. キャストを作成（透明色なし）
+			castID, err := v.graphicsSystem.PutCast(winID, int(picID), int(x), int(y), 0, 0, w, h)
+			if err != nil {
+				v.log.Warn("PutCast (4 args) failed", "error", err)
+				return -1, nil
+			}
+
+			// 2. base_picにも画像を転送（焼き付け）
+			// これにより後続のMovePicで描画された内容がキャストの下に隠れない
+			err = v.graphicsSystem.MovePic(int(picID), 0, 0, w, h, int(basePic), int(x), int(y), 0)
+			if err != nil {
+				v.log.Warn("PutCast (4 args): MovePic failed", "error", err)
+				// キャストは作成済みなのでエラーでも続行
+			}
+
+			v.log.Debug("PutCast called (4 args)", "picID", picID, "basePic", basePic, "winID", winID, "x", x, "y", y, "castID", castID)
+			return castID, nil
+		}
+
+		// 8 args: PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
+		if len(args) >= 8 {
+			winID, _ := toInt64(args[0])
+			picID, _ := toInt64(args[1])
+			x, _ := toInt64(args[2])
+			y, _ := toInt64(args[3])
+			srcX, _ := toInt64(args[4])
+			srcY, _ := toInt64(args[5])
+			width, _ := toInt64(args[6])
+			height, _ := toInt64(args[7])
+
+			castID, err := v.graphicsSystem.PutCast(int(winID), int(picID), int(x), int(y), int(srcX), int(srcY), int(width), int(height))
+			if err != nil {
+				v.log.Warn("PutCast failed", "error", err)
+				return -1, nil
+			}
+			v.log.Debug("PutCast called (8 args)", "winID", winID, "picID", picID, "castID", castID)
+			return castID, nil
+		}
+
+		v.log.Warn("PutCast: invalid number of arguments", "count", len(args))
 		return -1, nil
 	})
 
-	// MoveCast: Move a cast (placeholder)
+	// MoveCast: Move a cast
+	// MoveCast(cast_no, pic_no, x, y, ?, width, height, srcX, srcY) - 9 args (y_saru style)
+	// MoveCast(cast_no, x, y) - 3 args: move position only
+	// MoveCast(cast_no, x, y, src_x, src_y, width, height) - 7 args: move and change source
+	// MoveCast(cast_no, pic_no, x, y) - 4 args: change picture and position
 	vm.RegisterBuiltinFunction("MoveCast", func(v *VM, args []any) (any, error) {
-		v.log.Debug("MoveCast called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("MoveCast called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 3 {
+			v.log.Warn("MoveCast requires at least 3 arguments", "count", len(args))
+			return nil, nil
+		}
+
+		castID, _ := toInt64(args[0])
+
+		// 9 args: MoveCast(cast_no, pic_no, x, y, ?, width, height, srcX, srcY)
+		// This is the y_saru style
+		if len(args) >= 9 {
+			// args[1] = picID (ignored for now)
+			x, _ := toInt64(args[2])
+			y, _ := toInt64(args[3])
+			// args[4] = unknown/transparent color (ignored)
+			width, _ := toInt64(args[5])
+			height, _ := toInt64(args[6])
+			srcX, _ := toInt64(args[7])
+			srcY, _ := toInt64(args[8])
+
+			v.log.Debug("MoveCast called (9 args)", "castID", castID, "x", x, "y", y, "width", width, "height", height, "srcX", srcX, "srcY", srcY)
+
+			opts := []graphics.CastOption{
+				graphics.WithCastPosition(int(x), int(y)),
+				graphics.WithCastSource(int(srcX), int(srcY), int(width), int(height)),
+			}
+			if err := v.graphicsSystem.MoveCastWithOptions(int(castID), opts...); err != nil {
+				v.log.Warn("MoveCast failed", "castID", castID, "error", err)
+			}
+			return nil, nil
+		}
+
+		// 7 args: MoveCast(cast_no, x, y, src_x, src_y, width, height)
+		if len(args) == 7 {
+			x, _ := toInt64(args[1])
+			y, _ := toInt64(args[2])
+			srcX, _ := toInt64(args[3])
+			srcY, _ := toInt64(args[4])
+			width, _ := toInt64(args[5])
+			height, _ := toInt64(args[6])
+
+			opts := []graphics.CastOption{
+				graphics.WithCastPosition(int(x), int(y)),
+				graphics.WithCastSource(int(srcX), int(srcY), int(width), int(height)),
+			}
+			if err := v.graphicsSystem.MoveCastWithOptions(int(castID), opts...); err != nil {
+				v.log.Warn("MoveCast failed", "castID", castID, "error", err)
+			}
+			return nil, nil
+		}
+
+		// 4 args: MoveCast(cast_no, pic_no, x, y)
+		if len(args) == 4 {
+			picID, _ := toInt64(args[1])
+			x, _ := toInt64(args[2])
+			y, _ := toInt64(args[3])
+
+			opts := []graphics.CastOption{
+				graphics.WithCastPicID(int(picID)),
+				graphics.WithCastPosition(int(x), int(y)),
+			}
+			if err := v.graphicsSystem.MoveCastWithOptions(int(castID), opts...); err != nil {
+				v.log.Warn("MoveCast failed", "castID", castID, "error", err)
+			}
+			return nil, nil
+		}
+
+		// 3 args: MoveCast(cast_no, x, y)
+		if len(args) == 3 {
+			x, _ := toInt64(args[1])
+			y, _ := toInt64(args[2])
+
+			opts := []graphics.CastOption{
+				graphics.WithCastPosition(int(x), int(y)),
+			}
+			if err := v.graphicsSystem.MoveCastWithOptions(int(castID), opts...); err != nil {
+				v.log.Warn("MoveCast failed", "castID", castID, "error", err)
+			}
+			return nil, nil
+		}
+
+		// Fallback: use old method
+		if err := v.graphicsSystem.MoveCast(int(castID), args[1:]...); err != nil {
+			v.log.Warn("MoveCast failed", "castID", castID, "error", err)
+		}
 		return nil, nil
 	})
 
-	// DelCast: Delete a cast (placeholder)
+	// DelCast: Delete a cast
 	vm.RegisterBuiltinFunction("DelCast", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DelCast called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("DelCast called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("DelCast requires cast ID argument")
+		}
+
+		castID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("DelCast cast ID must be integer")
+			return nil, nil
+		}
+		if err := v.graphicsSystem.DelCast(int(castID)); err != nil {
+			v.log.Error("DelCast failed", "castID", castID, "error", err)
+		}
+		v.log.Debug("DelCast called", "castID", castID)
 		return nil, nil
 	})
 
-	// TextWrite: Write text (placeholder)
+	// TextWrite: Write text to a picture
+	// TextWrite(text, pic_no, x, y)
 	vm.RegisterBuiltinFunction("TextWrite", func(v *VM, args []any) (any, error) {
-		v.log.Debug("TextWrite called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("TextWrite called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 4 {
+			return nil, fmt.Errorf("TextWrite requires 4 arguments (text, pic_no, x, y)")
+			return nil, nil
+		}
+
+		text, ok := args[0].(string)
+		if !ok {
+			v.log.Error("TextWrite text must be string", "got", fmt.Sprintf("%T", args[0]))
+			return nil, nil
+		}
+		picID, _ := toInt64(args[1])
+		x, _ := toInt64(args[2])
+		y, _ := toInt64(args[3])
+
+		if err := v.graphicsSystem.TextWrite(int(picID), int(x), int(y), text); err != nil {
+			v.log.Error("TextWrite failed", "error", err)
+		}
+		v.log.Debug("TextWrite called", "text", text, "picID", picID, "x", x, "y", y)
 		return nil, nil
 	})
 
-	// DrawRect: Draw a rectangle (placeholder)
+	// SetFont: Set font for text rendering
+	// SetFont(size, name, charset, italic, underline, strikeout, weight)
+	vm.RegisterBuiltinFunction("SetFont", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("SetFont called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 2 {
+			return nil, fmt.Errorf("SetFont requires at least 2 arguments (size, name)")
+			return nil, nil
+		}
+
+		size, _ := toInt64(args[0])
+		name, _ := args[1].(string)
+
+		// Pass remaining args as options
+		if err := v.graphicsSystem.SetFont(name, int(size), args[2:]...); err != nil {
+			v.log.Error("SetFont failed", "error", err)
+		}
+		v.log.Debug("SetFont called", "size", size, "name", name)
+		return nil, nil
+	})
+
+	// TextColor: Set text color
+	// TextColor(r, g, b) or TextColor(color)
+	vm.RegisterBuiltinFunction("TextColor", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("TextColor called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("TextColor requires at least 1 argument")
+		}
+
+		var colorInt int
+		if len(args) >= 3 {
+			// RGB format
+			r, _ := toInt64(args[0])
+			g, _ := toInt64(args[1])
+			b, _ := toInt64(args[2])
+			colorInt = int(r)<<16 | int(g)<<8 | int(b)
+		} else {
+			// Single color value
+			colorInt64, _ := toInt64(args[0])
+			colorInt = int(colorInt64)
+		}
+
+		if err := v.graphicsSystem.SetTextColor(colorInt); err != nil {
+			v.log.Error("TextColor failed", "error", err)
+		}
+		v.log.Debug("TextColor called", "color", fmt.Sprintf("0x%06X", colorInt))
+		return nil, nil
+	})
+
+	// BgColor: Set background color for text
+	// BgColor(r, g, b) or BgColor(color)
+	vm.RegisterBuiltinFunction("BgColor", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("BgColor called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("BgColor requires at least 1 argument")
+		}
+
+		var colorInt int
+		if len(args) >= 3 {
+			// RGB format
+			r, _ := toInt64(args[0])
+			g, _ := toInt64(args[1])
+			b, _ := toInt64(args[2])
+			colorInt = int(r)<<16 | int(g)<<8 | int(b)
+		} else {
+			// Single color value
+			colorInt64, _ := toInt64(args[0])
+			colorInt = int(colorInt64)
+		}
+
+		if err := v.graphicsSystem.SetBgColor(colorInt); err != nil {
+			v.log.Error("BgColor failed", "error", err)
+		}
+		v.log.Debug("BgColor called", "color", fmt.Sprintf("0x%06X", colorInt))
+		return nil, nil
+	})
+
+	// BackMode: Set background mode for text
+	// BackMode(mode) - 0=transparent, 1=opaque
+	vm.RegisterBuiltinFunction("BackMode", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("BackMode called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("BackMode requires 1 argument")
+		}
+
+		mode, _ := toInt64(args[0])
+		if err := v.graphicsSystem.SetBackMode(int(mode)); err != nil {
+			v.log.Error("BackMode failed", "error", err)
+		}
+		v.log.Debug("BackMode called", "mode", mode)
+		return nil, nil
+	})
+
+	// WinInfo: Get virtual desktop information
+	// WinInfo(0) - returns width
+	// WinInfo(1) - returns height
+	vm.RegisterBuiltinFunction("WinInfo", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("WinInfo called but graphics system not initialized", "args", args)
+			// Return default values (skelton要件: 1024x768)
+			if len(args) >= 1 {
+				infoType, _ := toInt64(args[0])
+				if infoType == 0 {
+					return 1024, nil // default width
+				}
+				return 768, nil // default height
+			}
+			return 0, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("WinInfo requires 1 argument")
+			return 0, nil
+		}
+
+		infoType, _ := toInt64(args[0])
+		var result int
+		if infoType == 0 {
+			result = v.graphicsSystem.GetVirtualWidth()
+		} else {
+			result = v.graphicsSystem.GetVirtualHeight()
+		}
+		v.log.Debug("WinInfo called", "infoType", infoType, "result", result)
+		return result, nil
+	})
+
+	// Debug: Set debug level (placeholder - does nothing for now)
+	vm.RegisterBuiltinFunction("Debug", func(v *VM, args []any) (any, error) {
+		if len(args) >= 1 {
+			level, _ := toInt64(args[0])
+			v.log.Debug("Debug called", "level", level)
+		}
+		return nil, nil
+	})
+
+	// DrawRect: Draw a rectangle
+	// DrawRect(pic_no, x1, y1, x2, y2, fill_mode)
+	// DrawRect(pic_no, x1, y1, x2, y2, r, g, b) - with color (fill mode 0)
 	vm.RegisterBuiltinFunction("DrawRect", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DrawRect called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("DrawRect called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 6 {
+			return nil, fmt.Errorf("DrawRect requires at least 6 arguments")
+		}
+
+		picID, _ := toInt64(args[0])
+		x1, _ := toInt64(args[1])
+		y1, _ := toInt64(args[2])
+		x2, _ := toInt64(args[3])
+		y2, _ := toInt64(args[4])
+		fillMode, _ := toInt64(args[5])
+
+		// If 8 arguments, treat as DrawRect with color (r, g, b)
+		if len(args) >= 8 {
+			r, _ := toInt64(args[5])
+			g, _ := toInt64(args[6])
+			b, _ := toInt64(args[7])
+			colorInt := int(r)<<16 | int(g)<<8 | int(b)
+			if err := v.graphicsSystem.SetPaintColor(colorInt); err != nil {
+				v.log.Error("DrawRect SetPaintColor failed", "error", err)
+			}
+			fillMode = 0 // outline only when color is specified
+		}
+
+		if err := v.graphicsSystem.DrawRect(int(picID), int(x1), int(y1), int(x2), int(y2), int(fillMode)); err != nil {
+			v.log.Error("DrawRect failed", "error", err)
+		}
+		v.log.Debug("DrawRect called", "picID", picID, "x1", x1, "y1", y1, "x2", x2, "y2", y2, "fillMode", fillMode)
 		return nil, nil
 	})
 
-	// DrawLine: Draw a line (placeholder)
+	// DrawLine: Draw a line
+	// DrawLine(pic_no, x1, y1, x2, y2)
 	vm.RegisterBuiltinFunction("DrawLine", func(v *VM, args []any) (any, error) {
-		v.log.Debug("DrawLine called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("DrawLine called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 5 {
+			return nil, fmt.Errorf("DrawLine requires 5 arguments")
+		}
+
+		picID, _ := toInt64(args[0])
+		x1, _ := toInt64(args[1])
+		y1, _ := toInt64(args[2])
+		x2, _ := toInt64(args[3])
+		y2, _ := toInt64(args[4])
+
+		if err := v.graphicsSystem.DrawLine(int(picID), int(x1), int(y1), int(x2), int(y2)); err != nil {
+			v.log.Error("DrawLine failed", "error", err)
+		}
+		v.log.Debug("DrawLine called", "picID", picID, "x1", x1, "y1", y1, "x2", x2, "y2", y2)
 		return nil, nil
 	})
 
-	// FillRect: Fill a rectangle (placeholder)
+	// FillRect: Fill a rectangle with color
+	// FillRect(pic_no, x1, y1, x2, y2, color)
 	vm.RegisterBuiltinFunction("FillRect", func(v *VM, args []any) (any, error) {
-		v.log.Debug("FillRect called (not yet implemented)", "args", args)
+		if v.graphicsSystem == nil {
+			v.log.Debug("FillRect called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 6 {
+			return nil, fmt.Errorf("FillRect requires 6 arguments")
+		}
+
+		picID, _ := toInt64(args[0])
+		x1, _ := toInt64(args[1])
+		y1, _ := toInt64(args[2])
+		x2, _ := toInt64(args[3])
+		y2, _ := toInt64(args[4])
+		colorVal, _ := toInt64(args[5])
+
+		if err := v.graphicsSystem.FillRect(int(picID), int(x1), int(y1), int(x2), int(y2), int(colorVal)); err != nil {
+			v.log.Error("FillRect failed", "error", err)
+		}
+		v.log.Debug("FillRect called", "picID", picID, "x1", x1, "y1", y1, "x2", x2, "y2", y2)
 		return nil, nil
 	})
 
-	// SetColor: Set color (placeholder)
-	vm.RegisterBuiltinFunction("SetColor", func(v *VM, args []any) (any, error) {
-		v.log.Debug("SetColor called (not yet implemented)", "args", args)
+	// DrawCircle: Draw a circle
+	// DrawCircle(pic_no, x, y, radius, fill_mode)
+	vm.RegisterBuiltinFunction("DrawCircle", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("DrawCircle called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 5 {
+			return nil, fmt.Errorf("DrawCircle requires 5 arguments")
+		}
+
+		picID, _ := toInt64(args[0])
+		x, _ := toInt64(args[1])
+		y, _ := toInt64(args[2])
+		radius, _ := toInt64(args[3])
+		fillMode, _ := toInt64(args[4])
+
+		if err := v.graphicsSystem.DrawCircle(int(picID), int(x), int(y), int(radius), int(fillMode)); err != nil {
+			v.log.Error("DrawCircle failed", "error", err)
+		}
+		v.log.Debug("DrawCircle called", "picID", picID, "x", x, "y", y, "radius", radius, "fillMode", fillMode)
 		return nil, nil
+	})
+
+	// SetLineSize: Set line thickness
+	vm.RegisterBuiltinFunction("SetLineSize", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("SetLineSize called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("SetLineSize requires 1 argument")
+		}
+
+		size, _ := toInt64(args[0])
+		v.graphicsSystem.SetLineSize(int(size))
+		v.log.Debug("SetLineSize called", "size", size)
+		return nil, nil
+	})
+
+	// SetPaintColor: Set paint color
+	// SetPaintColor(color) or SetPaintColor(r, g, b)
+	vm.RegisterBuiltinFunction("SetPaintColor", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("SetPaintColor called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("SetPaintColor requires at least 1 argument")
+		}
+
+		var colorInt int
+		if len(args) >= 3 {
+			// RGB format
+			r, _ := toInt64(args[0])
+			g, _ := toInt64(args[1])
+			b, _ := toInt64(args[2])
+			colorInt = int(r)<<16 | int(g)<<8 | int(b)
+		} else {
+			// Single color value
+			colorInt64, _ := toInt64(args[0])
+			colorInt = int(colorInt64)
+		}
+
+		if err := v.graphicsSystem.SetPaintColor(colorInt); err != nil {
+			v.log.Error("SetPaintColor failed", "error", err)
+		}
+		v.log.Debug("SetPaintColor called", "color", fmt.Sprintf("0x%06X", colorInt))
+		return nil, nil
+	})
+
+	// GetColor: Get pixel color at coordinates
+	// GetColor(pic_no, x, y)
+	vm.RegisterBuiltinFunction("GetColor", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("GetColor called but graphics system not initialized", "args", args)
+			return 0, nil
+		}
+		if len(args) < 3 {
+			return nil, fmt.Errorf("GetColor requires 3 arguments")
+			return 0, nil
+		}
+
+		picID, _ := toInt64(args[0])
+		x, _ := toInt64(args[1])
+		y, _ := toInt64(args[2])
+
+		colorVal, err := v.graphicsSystem.GetColor(int(picID), int(x), int(y))
+		if err != nil {
+			return 0, fmt.Errorf("GetColor failed")
+		}
+		v.log.Debug("GetColor called", "picID", picID, "x", x, "y", y, "color", fmt.Sprintf("0x%06X", colorVal))
+		return colorVal, nil
+	})
+
+	// SetColor: Set color (alias for SetPaintColor)
+	vm.RegisterBuiltinFunction("SetColor", func(v *VM, args []any) (any, error) {
+		if v.graphicsSystem == nil {
+			v.log.Debug("SetColor called but graphics system not initialized", "args", args)
+			return nil, nil
+		}
+		if len(args) < 1 {
+			return nil, fmt.Errorf("SetColor requires at least 1 argument")
+		}
+
+		var colorInt int
+		if len(args) >= 3 {
+			// RGB format
+			r, _ := toInt64(args[0])
+			g, _ := toInt64(args[1])
+			b, _ := toInt64(args[2])
+			colorInt = int(r)<<16 | int(g)<<8 | int(b)
+		} else {
+			// Single color value
+			colorInt64, _ := toInt64(args[0])
+			colorInt = int(colorInt64)
+		}
+
+		if err := v.graphicsSystem.SetPaintColor(colorInt); err != nil {
+			v.log.Error("SetColor failed", "error", err)
+		}
+		v.log.Debug("SetColor called", "color", fmt.Sprintf("0x%06X", colorInt))
+		return nil, nil
+	})
+
+	// StrPrint: Printf-style string formatting
+	// Requirement 1.1: When StrPrint is called with format string and arguments, system returns formatted string.
+	// Requirement 1.2: System supports %ld format specifier for decimal integers, converting to Go's %d.
+	// Requirement 1.3: System supports %lx format specifier for hexadecimal, converting to Go's %x.
+	// Requirement 1.4: System supports %s format specifier for strings.
+	// Requirement 1.5: System supports width and padding specifiers like %03d.
+	// Requirement 1.6: System converts escape sequences (\n, \t, \r) to actual control characters.
+	// Requirement 1.7: When called with fewer arguments than format specifiers, system handles gracefully.
+	// Requirement 1.8: When called with more arguments than format specifiers, system ignores extra arguments.
+	vm.RegisterBuiltinFunction("StrPrint", func(v *VM, args []any) (any, error) {
+		if len(args) < 1 {
+			return "", nil
+		}
+
+		// Get format string
+		format, ok := args[0].(string)
+		if !ok {
+			v.log.Error("StrPrint format must be string", "got", fmt.Sprintf("%T", args[0]))
+			return "", nil
+		}
+
+		// Convert FILLY format specifiers to Go format specifiers
+		// Use regex to handle width/padding specifiers like %03ld, %5lx
+		// Pattern: %[flags][width][.precision]ld or %[flags][width][.precision]lx
+		convertedFormat := format
+
+		// Convert %ld variants (with optional flags, width, precision) to %d
+		// Matches: %ld, %5ld, %05ld, %-5ld, %+5ld, etc.
+		ldPattern := regexp.MustCompile(`%([+-]?\d*\.?\d*)ld`)
+		convertedFormat = ldPattern.ReplaceAllString(convertedFormat, "%${1}d")
+
+		// Convert %lx variants to %x
+		lxPattern := regexp.MustCompile(`%([+-]?\d*\.?\d*)lx`)
+		convertedFormat = lxPattern.ReplaceAllString(convertedFormat, "%${1}x")
+
+		// Convert escape sequences to actual control characters
+		convertedFormat = strings.ReplaceAll(convertedFormat, "\\n", "\n")
+		convertedFormat = strings.ReplaceAll(convertedFormat, "\\t", "\t")
+		convertedFormat = strings.ReplaceAll(convertedFormat, "\\r", "\r")
+
+		// Prepare arguments for fmt.Sprintf
+		formatArgs := make([]any, 0, len(args)-1)
+		for i := 1; i < len(args); i++ {
+			formatArgs = append(formatArgs, args[i])
+		}
+
+		// Use fmt.Sprintf to format the string
+		// This handles both fewer and more arguments than format specifiers gracefully
+		result := fmt.Sprintf(convertedFormat, formatArgs...)
+
+		v.log.Debug("StrPrint called", "format", format, "result", result)
+		return result, nil
 	})
 }
 
@@ -1321,8 +2268,10 @@ func (vm *VM) executeRegisterEventHandler(opcode compiler.OpCode) (any, error) {
 		return nil, fmt.Errorf("OpRegisterEventHandler body must be []OpCode, got %T", opcode.Args[1])
 	}
 
-	// Create and register the handler
-	handler := NewEventHandler("", eventType, bodyOpcodes, vm)
+	// Create and register the handler with the current scope
+	// This allows the handler to access variables from the enclosing scope (like C blocks)
+	parentScope := vm.GetCurrentScope()
+	handler := NewEventHandler("", eventType, bodyOpcodes, vm, parentScope)
 	id := vm.handlerRegistry.Register(handler)
 
 	vm.log.Debug("Event handler registered", "id", id, "eventType", eventType, "opcodeCount", len(bodyOpcodes))
@@ -1459,6 +2408,36 @@ func (vm *VM) SetCurrentHandler(handler *EventHandler) {
 // Requirement 6.1: When OpSetStep is executed, system initializes step counter.
 func (vm *VM) GetStepCounter() int {
 	return vm.stepCounter
+}
+
+// PushMouseEvent pushes a mouse event to the event queue.
+// This implements the MouseEventPusher interface for the window package.
+// 要件 14.6: マウスイベントをEbitengineから取得し、VMのイベントキューに追加する
+// 要件 7.1: 左マウスボタンが押されたとき、LBDOWNイベントを生成する
+// 要件 7.2: 右マウスボタンが押されたとき、RBDOWNイベントを生成する
+// 要件 7.3: 右マウスボタンがダブルクリックされたとき、RBDBLCLKイベントを生成する
+func (vm *VM) PushMouseEvent(eventType string, windowID, x, y int) {
+	var evType EventType
+	switch eventType {
+	case "LBDOWN":
+		evType = EventLBDOWN
+	case "RBDOWN":
+		evType = EventRBDOWN
+	case "RBDBLCLK":
+		evType = EventRBDBLCLK
+	default:
+		vm.log.Warn("Unknown mouse event type", "type", eventType)
+		return
+	}
+
+	event := NewEventWithParams(evType, map[string]any{
+		"MesP1": windowID, // ウィンドウID
+		"MesP2": x,        // X座標
+		"MesP3": y,        // Y座標
+	})
+
+	vm.eventQueue.Push(event)
+	vm.log.Debug("Mouse event pushed", "type", eventType, "windowID", windowID, "x", x, "y", y)
 }
 
 // SetStepCounter sets the VM's step counter.

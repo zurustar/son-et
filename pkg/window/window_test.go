@@ -42,12 +42,12 @@ func TestLayout(t *testing.T) {
 
 	width, height := game.Layout(0, 0)
 
-	if width != 1280 {
-		t.Errorf("expected width 1280, got %d", width)
+	if width != 1024 {
+		t.Errorf("expected width 1024, got %d", width)
 	}
 
-	if height != 720 {
-		t.Errorf("expected height 720, got %d", height)
+	if height != 768 {
+		t.Errorf("expected height 768, got %d", height)
 	}
 }
 

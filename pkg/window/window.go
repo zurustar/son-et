@@ -5,9 +5,13 @@ import (
 	"context"
 	"fmt"
 	"image/color"
+	"image/png"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -48,6 +52,17 @@ type Game struct {
 	// Graphics system integration
 	graphicsSystem GraphicsSystemInterface
 	vmRunner       VMRunnerInterface
+	eventPusher    MouseEventPusher
+
+	// Mouse state tracking for event generation
+	lastMouseX int
+	lastMouseY int
+	mu         sync.RWMutex
+
+	// Screenshot
+	screenshotDir     string        // スクリーンショット保存ディレクトリ
+	screenshotCounter int           // スクリーンショットカウンター
+	lastScreen        *ebiten.Image // 最後に描画した画面（スクリーンショット用）
 }
 
 // GraphicsSystemInterface defines the interface for graphics operations
@@ -55,12 +70,27 @@ type GraphicsSystemInterface interface {
 	Update() error
 	Draw(screen *ebiten.Image)
 	Shutdown()
+	// GetVirtualWidth returns the virtual desktop width for coordinate conversion
+	GetVirtualWidth() int
+	// GetVirtualHeight returns the virtual desktop height for coordinate conversion
+	GetVirtualHeight() int
 }
 
 // VMRunnerInterface defines the interface for VM operations
 type VMRunnerInterface interface {
 	IsRunning() bool
 	Stop()
+}
+
+// EventQueueInterface defines the interface for pushing events to the VM
+type EventQueueInterface interface {
+	Push(event interface{})
+}
+
+// MouseEventPusher defines the interface for pushing mouse events
+// This is used to decouple the window package from the vm package
+type MouseEventPusher interface {
+	PushMouseEvent(eventType string, windowID, x, y int)
 }
 
 // NewGame Gameを作成
@@ -71,17 +101,29 @@ func NewGame(mode Mode, titles []title.FillyTitle, timeout time.Duration) *Game 
 		selectedIndex: 0,
 		timeout:       timeout,
 		startTime:     time.Now(),
+		screenshotDir: "screenshots",
 	}
 }
 
 // SetGraphicsSystem sets the graphics system for desktop mode
 func (g *Game) SetGraphicsSystem(gs GraphicsSystemInterface) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.graphicsSystem = gs
 }
 
 // SetVMRunner sets the VM runner for desktop mode
 func (g *Game) SetVMRunner(vm VMRunnerInterface) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.vmRunner = vm
+}
+
+// SetEventPusher sets the event pusher for mouse events
+func (g *Game) SetEventPusher(pusher MouseEventPusher) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.eventPusher = pusher
 }
 
 // Update ゲームロジックの更新（Ebitengineが毎フレーム呼び出す）
@@ -132,25 +174,183 @@ func (g *Game) updateSelection() error {
 }
 
 // updateDesktop 仮想デスクトップの更新
+// 要件 14.1: EbitengineのUpdate()内でVMのイベント処理を呼び出す
+// 要件 14.4: VMが終了したとき、Ebitengineのゲームループを終了する
+// 要件 14.5: Ebitengineのウィンドウが閉じられたとき、VMを停止する
 func (g *Game) updateDesktop() error {
 	// Escキーで終了（1回だけ反応）
+	// 要件 14.5: Ebitengineのウィンドウが閉じられたとき、VMを停止する
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.mu.RLock()
+		vmRunner := g.vmRunner
+		g.mu.RUnlock()
+		if vmRunner != nil {
+			vmRunner.Stop()
+		}
 		return ebiten.Termination
+	}
+
+	// Sキーでスクリーンショット保存
+	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		g.saveScreenshot()
 	}
 
 	// VMが停止していたら終了
-	if g.vmRunner != nil && !g.vmRunner.IsRunning() {
+	// 要件 14.4: VMが終了したとき、Ebitengineのゲームループを終了する
+	g.mu.RLock()
+	vmRunner := g.vmRunner
+	g.mu.RUnlock()
+	if vmRunner != nil && !vmRunner.IsRunning() {
 		return ebiten.Termination
 	}
 
-	// GraphicsSystemの更新
-	if g.graphicsSystem != nil {
-		if err := g.graphicsSystem.Update(); err != nil {
+	// マウスイベントを処理
+	// 要件 14.6: マウスイベントをEbitengineから取得し、VMのイベントキューに追加する
+	g.processMouseEvents()
+
+	// GraphicsSystemの更新（コマンドキューの処理）
+	// 要件 14.2: EbitengineのDraw()内で描画コマンドキューを処理する
+	// Note: 実際のコマンドキュー処理はUpdate()で行う（Ebitengineの推奨）
+	g.mu.RLock()
+	graphicsSystem := g.graphicsSystem
+	g.mu.RUnlock()
+	if graphicsSystem != nil {
+		if err := graphicsSystem.Update(); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// saveScreenshot はスクリーンショットを保存する
+func (g *Game) saveScreenshot() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.lastScreen == nil {
+		fmt.Println("Screenshot: No screen to save")
+		return
+	}
+
+	// ディレクトリを作成
+	if err := os.MkdirAll(g.screenshotDir, 0755); err != nil {
+		fmt.Printf("Screenshot: Failed to create directory: %v\n", err)
+		return
+	}
+
+	// ファイル名を生成
+	filename := filepath.Join(g.screenshotDir, fmt.Sprintf("screenshot_%03d.png", g.screenshotCounter))
+	g.screenshotCounter++
+
+	// ファイルを作成
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Printf("Screenshot: Failed to create file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	// PNG形式で保存
+	if err := png.Encode(file, g.lastScreen); err != nil {
+		fmt.Printf("Screenshot: Failed to encode PNG: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Screenshot saved: %s\n", filename)
+}
+
+// processMouseEvents はマウスイベントを処理してVMに伝達する
+// 要件 14.6: マウスイベントをEbitengineから取得し、VMのイベントキューに追加する
+// 要件 8.7: マウスイベントが発生したとき、仮想デスクトップ座標に変換してMesP2、MesP3に設定する
+func (g *Game) processMouseEvents() {
+	g.mu.RLock()
+	eventPusher := g.eventPusher
+	graphicsSystem := g.graphicsSystem
+	g.mu.RUnlock()
+
+	if eventPusher == nil {
+		return
+	}
+
+	// マウス座標を取得
+	mouseX, mouseY := ebiten.CursorPosition()
+
+	// 仮想デスクトップ座標に変換
+	virtualX, virtualY := g.screenToVirtual(mouseX, mouseY, graphicsSystem)
+
+	// 左クリック
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		// windowID は 0 (メインウィンドウ) として扱う
+		// 実際のウィンドウIDの判定は後のフェーズで実装
+		eventPusher.PushMouseEvent("LBDOWN", 0, virtualX, virtualY)
+	}
+
+	// 右クリック
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		eventPusher.PushMouseEvent("RBDOWN", 0, virtualX, virtualY)
+	}
+
+	// 右ダブルクリック（Ebitengineでは直接サポートされていないため、
+	// 短時間内の2回クリックで判定する必要がある - 将来の拡張）
+	// TODO: 右ダブルクリックの実装
+
+	// マウス座標を保存
+	g.mu.Lock()
+	g.lastMouseX = virtualX
+	g.lastMouseY = virtualY
+	g.mu.Unlock()
+}
+
+// screenToVirtual はスクリーン座標を仮想デスクトップ座標に変換する
+// 要件 8.7: マウスイベントが発生したとき、仮想デスクトップ座標に変換する
+func (g *Game) screenToVirtual(screenX, screenY int, gs GraphicsSystemInterface) (int, int) {
+	// 仮想デスクトップのサイズを取得
+	virtualWidth := 1024
+	virtualHeight := 768
+	if gs != nil {
+		virtualWidth = gs.GetVirtualWidth()
+		virtualHeight = gs.GetVirtualHeight()
+	}
+
+	// 実際のウィンドウサイズを取得
+	screenWidth, screenHeight := ebiten.WindowSize()
+	if screenWidth == 0 || screenHeight == 0 {
+		// ウィンドウサイズが取得できない場合はそのまま返す
+		return screenX, screenY
+	}
+
+	// スケーリング係数を計算（アスペクト比を維持）
+	scaleX := float64(screenWidth) / float64(virtualWidth)
+	scaleY := float64(screenHeight) / float64(virtualHeight)
+	scale := scaleX
+	if scaleY < scaleX {
+		scale = scaleY
+	}
+
+	// レターボックスのオフセットを計算
+	offsetX := (float64(screenWidth) - float64(virtualWidth)*scale) / 2
+	offsetY := (float64(screenHeight) - float64(virtualHeight)*scale) / 2
+
+	// 仮想デスクトップ座標に変換
+	virtualX := int((float64(screenX) - offsetX) / scale)
+	virtualY := int((float64(screenY) - offsetY) / scale)
+
+	// 範囲チェック
+	if virtualX < 0 {
+		virtualX = 0
+	}
+	if virtualX >= virtualWidth {
+		virtualX = virtualWidth - 1
+	}
+	if virtualY < 0 {
+		virtualY = 0
+	}
+	if virtualY >= virtualHeight {
+		virtualY = virtualHeight - 1
+	}
+
+	return virtualX, virtualY
 }
 
 // Draw 画面描画（Ebitengineが毎フレーム呼び出す）
@@ -164,6 +364,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case ModeDesktop:
 		g.drawDesktop(screen)
 	}
+
+	// スクリーンショット用に画面を保存
+	g.mu.Lock()
+	g.lastScreen = ebiten.NewImage(screen.Bounds().Dx(), screen.Bounds().Dy())
+	g.lastScreen.DrawImage(screen, nil)
+	g.mu.Unlock()
 }
 
 // drawSelection タイトル選択画面の描画
@@ -215,8 +421,8 @@ func (g *Game) drawDesktop(screen *ebiten.Image) {
 
 // Layout 画面サイズを返す
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	// skelton要件 3.2: ウィンドウサイズは 1280x720 ピクセル
-	return 1280, 720
+	// skelton要件 3.2: ウィンドウサイズは 1024x768 ピクセル
+	return 1024, 768
 }
 
 // GetSelectedTitle 選択されたタイトルを取得
@@ -309,9 +515,14 @@ func Run(mode Mode, titles []title.FillyTitle, timeout time.Duration) (*title.Fi
 	game := NewGame(mode, titles, timeout)
 
 	// ウィンドウ設定
-	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowSize(1024, 768)
 	ebiten.SetWindowTitle("FILLY - son-et")
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
+	// 要件 8.5: アスペクト比を維持してスケーリングする
+	// 要件 8.6: スケーリング時にレターボックス（黒帯）を表示する
+	// WindowResizingModeEnabledを使用してウィンドウのリサイズを許可
+	// Ebitengineが自動的にアスペクト比を維持してスケーリングし、
+	// レターボックスを表示する
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
 	// ゲームを実行
 	if err := ebiten.RunGame(game); err != nil {

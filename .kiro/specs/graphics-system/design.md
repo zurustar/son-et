@@ -202,11 +202,18 @@ func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 ```go
 // Picture はメモリ上の画像データを表す
 type Picture struct {
-    ID     int
-    Image  *ebiten.Image
-    Width  int
-    Height int
+    ID            int
+    Image         *ebiten.Image  // 現在の画像（テキスト描画後）
+    OriginalImage *image.RGBA    // 元の背景画像（テキスト描画前）
+    Width         int
+    Height        int
 }
+```
+
+**OriginalImageフィールドについて**:
+- テキスト描画時のアンチエイリアス影問題を解決するために追加
+- LoadPic/CreatePic時に元の画像をRGBAとして保存
+- TextWriteでは、このOriginalImageを基準に差分を取ることで、同じ位置に別の色でテキストを描画しても前のテキストの影が残らない
 
 // PictureManager はピクチャーを管理する
 type PictureManager struct {
@@ -238,6 +245,47 @@ func (pm *PictureManager) LoadPic(filename string) (int, error) {
     fullPath, err := fileutil.FindFile(pm.basePath, filename)
     if err != nil {
         return -1, fmt.Errorf("file not found: %s", filename)
+    }
+    // ...
+}
+```
+
+#### RLE圧縮BMPデコーダー (pkg/graphics/bmp.go)
+
+Go標準ライブラリの`image/bmp`はRLE圧縮をサポートしていないため、カスタムデコーダーを実装しています。
+
+**サポートする圧縮方式**:
+- BI_RGB (0): 非圧縮
+- BI_RLE8 (1): 8ビットRLE圧縮
+- BI_RLE4 (2): 4ビットRLE圧縮
+
+**RLE8デコードアルゴリズム**:
+```
+2バイトペアを読み取る:
+- 最初のバイトが0でない場合: 2番目のバイトを最初のバイト回繰り返す
+- 最初のバイトが0の場合:
+  - 2番目のバイトが0: 行末 (End of Line)
+  - 2番目のバイトが1: ビットマップ終了 (End of Bitmap)
+  - 2番目のバイトが2: デルタ（位置移動）
+  - それ以外: 絶対モード（2番目のバイト個のピクセルをそのまま読み取る）
+```
+
+**RLE4デコードアルゴリズム**:
+RLE8と同様だが、1バイトに2ピクセル（上位4ビットと下位4ビット）が格納される。
+
+**LoadPicでの使用**:
+```go
+func (pm *PictureManager) LoadPic(filename string) (int, error) {
+    // BMPファイルの場合、RLE圧縮かどうかを確認
+    if isBMPFile(fullPath) {
+        isRLE, err := IsBMPRLECompressed(file)
+        if isRLE {
+            // RLE圧縮BMPの場合、カスタムデコーダーを使用
+            img, err = DecodeBMP(file)
+        } else {
+            // 非圧縮BMPの場合、標準デコーダーを使用
+            img, _, err = image.Decode(file)
+        }
     }
     // ...
 }
@@ -401,6 +449,19 @@ var (
 
 ### 5. Cast Manager (pkg/graphics/cast.go)
 
+#### 概要
+
+キャストはスプライト（動くキャラクター）として機能します。`PutCast`で配置し、`MoveCast`で位置やソース領域を更新します。キャストは毎フレーム`drawCastsForWindow`で描画され、背景画像に焼き付けられることはありません。
+
+#### 動作原理
+
+1. **PutCast**: キャストを作成し、ウィンドウに配置
+2. **MoveCast**: キャストの位置/ソース領域を更新（描画は行わない）
+3. **描画**: 毎フレーム`Draw()`内で`drawCastsForWindow()`が呼ばれ、すべての可視キャストが描画される
+4. **DelCast**: キャストを削除
+
+この設計により、キャストを移動してもアニメーションが正しく表示され、残像が発生しません。
+
 #### 構造体
 
 ```go
@@ -472,6 +533,79 @@ func (tr *TextRenderer) SetBgColor(c color.Color)
 func (tr *TextRenderer) SetBackMode(mode int)
 func (tr *TextRenderer) TextWrite(pic *Picture, x, y int, text string) error
 ```
+
+#### レイヤー方式によるテキスト描画（アンチエイリアス影問題の解決）
+
+FILLYスクリプトでは、同じ位置に異なる色でテキストを描画することがあります（例：黒で描画後、白で上書き）。
+通常のアルファブレンディングでは、前のテキストのアンチエイリアス部分が「影」として残ってしまいます。
+
+この問題を解決するため、レイヤー方式を採用しています：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    レイヤー方式の処理フロー                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. 元の背景画像（OriginalImage）を取得                          │
+│     ┌─────────────┐                                             │
+│     │ 背景画像    │  ← LoadPic時に保存されたオリジナル           │
+│     │ (文字なし)  │                                             │
+│     └─────────────┘                                             │
+│                                                                 │
+│  2. 背景のコピーにテキストを描画                                  │
+│     ┌─────────────┐                                             │
+│     │ 背景 + 文字 │  ← アルファブレンディングで描画              │
+│     │ (黒い文字)  │                                             │
+│     └─────────────┘                                             │
+│                                                                 │
+│  3. 背景との差分を取り、文字部分だけを抽出                        │
+│     ┌─────────────┐                                             │
+│     │ 透明背景    │  ← 色が変わった部分 = 文字                   │
+│     │ + 文字のみ  │     色が同じ部分 = 透明                      │
+│     └─────────────┘                                             │
+│                                                                 │
+│  4. 抽出したレイヤーを元の背景に合成                              │
+│     ┌─────────────┐                                             │
+│     │ 最終画像    │  ← draw.Over でアルファブレンディング        │
+│     │             │                                             │
+│     └─────────────┘                                             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**重要なポイント**:
+- 毎回「元の背景画像（OriginalImage）」を基準に差分を取る
+- これにより、同じ位置に別の色で描画しても、前のテキストの影が残らない
+- 後から描画したテキストが完全に前のテキストを上書きする
+
+**実装（pkg/graphics/text_layer.go）**:
+
+```go
+// TextLayer はテキスト描画のレイヤーを表す
+type TextLayer struct {
+    Image  *image.RGBA // 透明背景 + 文字
+    PicID  int         // 描画先のピクチャーID
+    X, Y   int         // ピクチャー内の描画位置
+    Width  int         // レイヤーの幅
+    Height int         // レイヤーの高さ
+}
+
+// CreateTextLayer はテキストレイヤーを作成する
+// 背景に文字を描画し、差分を取って文字部分だけを透明背景で抽出する
+func CreateTextLayer(
+    background *image.RGBA,  // 元の背景画像（OriginalImage）
+    face font.Face,
+    text string,
+    x, y int,
+    fontSize int,
+    textColor color.Color,
+    picID int,
+) *TextLayer
+```
+
+**パフォーマンス**:
+- ベンチマーク結果: レイヤー作成 ~66μs、10レイヤー合成 ~50μs
+- 60fps（16.7ms/フレーム）で十分な余裕がある
 
 #### アンチエイリアス無効化
 
@@ -651,8 +785,8 @@ var TransparentColor = color.RGBA{0, 0, 0, 0xFF}
 ### 座標系
 
 ```go
-// 仮想デスクトップ座標（1280x720）
-// 左上が(0, 0)、右下が(1279, 719)
+// 仮想デスクトップ座標（1024x768）
+// 左上が(0, 0)、右下が(1023, 767)
 
 // 実際のウィンドウ座標への変換
 func (gs *GraphicsSystem) VirtualToScreen(vx, vy int, screenW, screenH int) (int, int) {
@@ -843,10 +977,12 @@ func (gs *GraphicsSystem) ScreenToVirtual(sx, sy int, screenW, screenH int) (int
 pkg/graphics/
 ├── graphics.go      # GraphicsSystem
 ├── picture.go       # PictureManager
+├── bmp.go           # RLE圧縮BMPデコーダー
 ├── transfer.go      # ピクチャー転送
 ├── window.go        # WindowManager
 ├── cast.go          # CastManager
 ├── text.go          # TextRenderer
+├── text_layer.go    # テキストレイヤー（アンチエイリアス影問題対策）
 ├── primitives.go    # 描画プリミティブ
 ├── queue.go         # CommandQueue
 ├── color.go         # 色変換ユーティリティ

@@ -328,10 +328,9 @@ func (vm *VM) executeCall(opcode compiler.OpCode) (any, error) {
 		}
 	}
 
-	// Requirement 10.8: When unknown function is called, system logs error and continues execution.
-	// Requirement 11.6: When function is not found, system logs error and continues execution.
-	vm.log.Warn("Unknown function called", "function", funcName)
-	return int64(0), nil
+	// 未定義関数が呼ばれた場合はエラーで終了
+	vm.log.Error("Undefined function called", "function", funcName)
+	return nil, fmt.Errorf("undefined function: %s", funcName)
 }
 
 // returnMarker is a special type to indicate a function return.
@@ -345,8 +344,16 @@ type returnMarker struct {
 // Requirement 9.3: When function is called, system creates new local scope.
 // Requirement 9.4: When function returns, system destroys local scope.
 func (vm *VM) callUserFunction(fn *FunctionDef, args []any) (any, error) {
-	// Create new local scope
-	localScope := NewScope(vm.globalScope)
+	// For main() function, use global scope instead of creating a new local scope.
+	// This ensures that variables defined in main() are accessible to event handlers.
+	// FILLY treats main() as the top-level scope where global variables are defined.
+	var localScope *Scope
+	if fn.Name == "main" {
+		localScope = vm.globalScope
+	} else {
+		// Create new local scope for other functions
+		localScope = NewScope(vm.globalScope)
+	}
 
 	// Bind parameters to local scope
 	// Requirement 9.7: When function parameters are passed, system binds them to local scope.

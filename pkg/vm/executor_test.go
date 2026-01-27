@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zurustar/son-et/pkg/compiler"
@@ -566,19 +567,19 @@ func TestExecuteCall(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown function returns zero", func(t *testing.T) {
+	t.Run("unknown function returns error", func(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 		opcode := compiler.OpCode{
 			Cmd:  compiler.OpCall,
 			Args: []any{"unknownFunc"},
 		}
 
-		result, err := vm.executeCall(opcode)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		_, err := vm.executeCall(opcode)
+		if err == nil {
+			t.Fatal("expected error for unknown function, got nil")
 		}
-		if result != int64(0) {
-			t.Errorf("expected 0 for unknown function, got %v", result)
+		if !strings.Contains(err.Error(), "undefined function") {
+			t.Errorf("expected 'undefined function' error, got %v", err)
 		}
 	})
 
@@ -1863,7 +1864,7 @@ func TestExecuteSetStep(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create and set a current handler
-		handler := NewEventHandler("test_handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test_handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		opcode := compiler.OpCode{

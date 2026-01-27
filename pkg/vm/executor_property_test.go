@@ -752,7 +752,7 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 			vm := New([]compiler.OpCode{})
 
 			// Create and set a current handler
-			handler := NewEventHandler("test_handler", EventTIME, []compiler.OpCode{}, vm)
+			handler := NewEventHandler("test_handler", EventTIME, []compiler.OpCode{}, vm, nil)
 			vm.SetCurrentHandler(handler)
 
 			opcode := compiler.OpCode{
@@ -975,7 +975,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Create and dispatch events
@@ -1032,7 +1032,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// First event triggers the handler and sets wait counter
@@ -1094,7 +1094,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Single event should complete the handler
@@ -1137,7 +1137,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Single event should complete the handler
@@ -1188,7 +1188,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 					Args: []any{compiler.Variable("handler1_completed"), int64(1)},
 				},
 			}
-			handler1 := NewEventHandler("handler1", EventTIME, handler1Opcodes, vm)
+			handler1 := NewEventHandler("handler1", EventTIME, handler1Opcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler1)
 
 			// Create second handler
@@ -1202,7 +1202,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 					Args: []any{compiler.Variable("handler2_completed"), int64(1)},
 				},
 			}
-			handler2 := NewEventHandler("handler2", EventTIME, handler2Opcodes, vm)
+			handler2 := NewEventHandler("handler2", EventTIME, handler2Opcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler2)
 
 			// Dispatch events
@@ -1260,7 +1260,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch event to trigger handler
@@ -1315,7 +1315,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch wait1 + 1 events - should complete step1
@@ -1385,7 +1385,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 					Args: []any{compiler.Variable("time_completed"), int64(1)},
 				},
 			}
-			timeHandler := NewEventHandler("time_handler", EventTIME, timeHandlerOpcodes, vm)
+			timeHandler := NewEventHandler("time_handler", EventTIME, timeHandlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(timeHandler)
 
 			// Create MIDI_TIME handler
@@ -1399,7 +1399,7 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 					Args: []any{compiler.Variable("midi_completed"), int64(1)},
 				},
 			}
-			midiHandler := NewEventHandler("midi_handler", EventMIDI_TIME, midiHandlerOpcodes, vm)
+			midiHandler := NewEventHandler("midi_handler", EventMIDI_TIME, midiHandlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(midiHandler)
 
 			// Dispatch TIME events only (waitCount + 1 events needed)
@@ -1468,7 +1468,7 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch commaCount + 1 events
@@ -1519,7 +1519,7 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// First event triggers handler and sets wait counter
@@ -1592,7 +1592,7 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch events for first comma sequence
@@ -1660,7 +1660,7 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventMIDI_TIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventMIDI_TIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch MIDI_TIME events
@@ -1710,7 +1710,7 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch events
@@ -1776,7 +1776,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch waitCount + 1 events
@@ -1831,7 +1831,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Single event should complete the handler
@@ -1871,7 +1871,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Single event should complete the handler
@@ -1929,7 +1929,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch events for first Wait
@@ -2000,7 +2000,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventTIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch events
@@ -2047,7 +2047,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				},
 			}
 
-			handler := NewEventHandler("test_handler", EventMIDI_TIME, handlerOpcodes, vm)
+			handler := NewEventHandler("test_handler", EventMIDI_TIME, handlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler)
 
 			// Dispatch MIDI_TIME events
@@ -2101,7 +2101,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 					Args: []any{compiler.Variable("handler1_completed"), int64(1)},
 				},
 			}
-			handler1 := NewEventHandler("handler1", EventTIME, handler1Opcodes, vm)
+			handler1 := NewEventHandler("handler1", EventTIME, handler1Opcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler1)
 
 			// Create second handler
@@ -2115,7 +2115,7 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 					Args: []any{compiler.Variable("handler2_completed"), int64(1)},
 				},
 			}
-			handler2 := NewEventHandler("handler2", EventTIME, handler2Opcodes, vm)
+			handler2 := NewEventHandler("handler2", EventTIME, handler2Opcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler2)
 
 			// Dispatch events

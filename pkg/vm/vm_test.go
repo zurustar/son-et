@@ -1,10 +1,13 @@
 package vm
 
 import (
+	"fmt"
+	"image/color"
 	"testing"
 	"time"
 
 	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/graphics"
 )
 
 // TestNewVM tests the VM constructor with various options.
@@ -320,16 +323,16 @@ func TestVMBuiltinPlayMIDI(t *testing.T) {
 		}
 	})
 
-	t.Run("PlayMIDI handles missing argument gracefully", func(t *testing.T) {
+	t.Run("PlayMIDI handles missing argument with error", func(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
-		// Call PlayMIDI without arguments - should not panic
+		// Call PlayMIDI without arguments - should return error
 		fn := vm.builtins["PlayMIDI"]
 		result, err := fn(vm, []any{})
 
-		// Should return nil without error (error is logged)
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
+		// Should return error for missing argument
+		if err == nil {
+			t.Errorf("expected error for missing argument, got nil")
 		}
 		if result != nil {
 			t.Errorf("expected nil result, got %v", result)
@@ -381,16 +384,16 @@ func TestVMBuiltinPlayWAVE(t *testing.T) {
 		}
 	})
 
-	t.Run("PlayWAVE handles missing argument gracefully", func(t *testing.T) {
+	t.Run("PlayWAVE handles missing argument with error", func(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
-		// Call PlayWAVE without arguments - should not panic
+		// Call PlayWAVE without arguments - should return error
 		fn := vm.builtins["PlayWAVE"]
 		result, err := fn(vm, []any{})
 
-		// Should return nil without error (error is logged)
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
+		// Should return error for missing argument
+		if err == nil {
+			t.Errorf("expected error for missing argument, got nil")
 		}
 		if result != nil {
 			t.Errorf("expected nil result, got %v", result)
@@ -463,7 +466,7 @@ func TestOpWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(2)}}, // Wait for 2 events
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -505,7 +508,7 @@ func TestOpWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(2)}}, // Wait for 2 events
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -537,7 +540,7 @@ func TestOpWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(2)}}, // Wait for 2 events
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -578,7 +581,7 @@ func TestOpWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(0)}}, // Wait for 0 events (immediate)
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -606,7 +609,7 @@ func TestOpWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(-1)}}, // Negative count (immediate)
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -636,7 +639,7 @@ func TestOpWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(2)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(1)}}, // Wait for 1 event
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(3)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -697,7 +700,7 @@ func TestEventHandlerPauseResume(t *testing.T) {
 		// Create a simple handler without OpWait
 		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -727,7 +730,7 @@ func TestEventHandlerPauseResume(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
 			{Cmd: compiler.OpWait, Args: []any{int64(3)}}, // Wait for 3 events
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -767,7 +770,7 @@ func TestVMBuiltinEndStep(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create a handler with step counter
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		handler.StepCounter = 10
 		handler.WaitCounter = 5
 		handler.CurrentPC = 3
@@ -827,7 +830,7 @@ func TestVMBuiltinEndStep(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("before_end"), int64(1)}},
 			{Cmd: compiler.OpCall, Args: []any{"end_step", []any{}}},
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("after_end"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -870,7 +873,7 @@ func TestVMBuiltinWait(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(5)
@@ -896,7 +899,7 @@ func TestVMBuiltinWait(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(0)
@@ -922,7 +925,7 @@ func TestVMBuiltinWait(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(-5)
@@ -965,7 +968,7 @@ func TestVMBuiltinWait(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(3.7) - should truncate to 3
@@ -991,7 +994,7 @@ func TestVMBuiltinWait(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm)
+		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait() with no arguments
@@ -1021,7 +1024,7 @@ func TestVMBuiltinWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(1)}},
 			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(2)}},
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -1061,7 +1064,7 @@ func TestVMBuiltinWait(t *testing.T) {
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("midi_step"), int64(1)}},
 			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(2)}},
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("midi_step"), int64(2)}},
-		}, vm)
+		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
 
@@ -1095,14 +1098,14 @@ func TestVMBuiltinWait(t *testing.T) {
 		handler1 := NewEventHandler("handler1", EventTIME, []compiler.OpCode{
 			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(3)}},
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("handler1_done"), int64(1)}},
-		}, vm)
+		}, vm, nil)
 		vm.handlerRegistry.Register(handler1)
 
 		// Create second handler with Wait(1)
 		handler2 := NewEventHandler("handler2", EventTIME, []compiler.OpCode{
 			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(1)}},
 			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("handler2_done"), int64(1)}},
-		}, vm)
+		}, vm, nil)
 		vm.handlerRegistry.Register(handler2)
 
 		// Event 1: both handlers start waiting
@@ -1167,8 +1170,8 @@ func TestVMBuiltinExitTitle(t *testing.T) {
 		vm := New([]compiler.OpCode{})
 
 		// Register some handlers
-		handler1 := NewEventHandler("handler1", EventTIME, []compiler.OpCode{}, vm)
-		handler2 := NewEventHandler("handler2", EventMIDI_TIME, []compiler.OpCode{}, vm)
+		handler1 := NewEventHandler("handler1", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler2 := NewEventHandler("handler2", EventMIDI_TIME, []compiler.OpCode{}, vm, nil)
 		vm.handlerRegistry.Register(handler1)
 		vm.handlerRegistry.Register(handler2)
 
@@ -1236,6 +1239,1199 @@ func TestVMBuiltinExitTitle(t *testing.T) {
 		}
 		if result != nil {
 			t.Errorf("expected nil result, got %v", result)
+		}
+	})
+}
+
+// TestVMBuiltinStrPrint tests the StrPrint built-in function.
+// Validates: Requirements 1.1-1.8
+func TestVMBuiltinStrPrint(t *testing.T) {
+	t.Run("StrPrint is registered as built-in", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+
+		// Verify StrPrint is registered
+		if _, ok := vm.builtins["StrPrint"]; !ok {
+			t.Error("expected StrPrint to be registered as built-in function")
+		}
+	})
+
+	// Requirement 1.1: Basic format string with arguments
+	t.Run("basic format string with arguments", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Hello %s", "World"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Hello World" {
+			t.Errorf("expected 'Hello World', got %v", result)
+		}
+	})
+
+	// Requirement 1.2: %ld format specifier for decimal integers
+	t.Run("%ld format specifier for decimal integers", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Number: %ld", int64(42)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Number: 42" {
+			t.Errorf("expected 'Number: 42', got %v", result)
+		}
+	})
+
+	t.Run("%ld with negative number", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Value: %ld", int64(-123)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Value: -123" {
+			t.Errorf("expected 'Value: -123', got %v", result)
+		}
+	})
+
+	// Requirement 1.3: %lx format specifier for hexadecimal
+	t.Run("%lx format specifier for hexadecimal", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Hex: %lx", int64(255)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Hex: ff" {
+			t.Errorf("expected 'Hex: ff', got %v", result)
+		}
+	})
+
+	t.Run("%lx with zero", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Hex: %lx", int64(0)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Hex: 0" {
+			t.Errorf("expected 'Hex: 0', got %v", result)
+		}
+	})
+
+	// Requirement 1.4: %s format specifier for strings
+	t.Run("%s format specifier for strings", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Name: %s", "Alice"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Name: Alice" {
+			t.Errorf("expected 'Name: Alice', got %v", result)
+		}
+	})
+
+	t.Run("%s with empty string", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Value: [%s]", ""})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Value: []" {
+			t.Errorf("expected 'Value: []', got %v", result)
+		}
+	})
+
+	// Requirement 1.5: Width and padding specifiers
+	t.Run("%03d width and padding specifier", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"ROBOT%03d.BMP", int64(1)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "ROBOT001.BMP" {
+			t.Errorf("expected 'ROBOT001.BMP', got %v", result)
+		}
+	})
+
+	t.Run("%05ld width and padding with %ld", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"ID: %05ld", int64(42)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "ID: 00042" {
+			t.Errorf("expected 'ID: 00042', got %v", result)
+		}
+	})
+
+	t.Run("%08lx width and padding with %lx", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Addr: %08lx", int64(4096)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Addr: 00001000" {
+			t.Errorf("expected 'Addr: 00001000', got %v", result)
+		}
+	})
+
+	// Requirement 1.6: Escape sequences
+	t.Run("\\n escape sequence", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Line1\\nLine2"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Line1\nLine2" {
+			t.Errorf("expected 'Line1\\nLine2', got %v", result)
+		}
+	})
+
+	t.Run("\\t escape sequence", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Col1\\tCol2"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Col1\tCol2" {
+			t.Errorf("expected 'Col1\\tCol2', got %v", result)
+		}
+	})
+
+	t.Run("\\r escape sequence", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Start\\rEnd"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Start\rEnd" {
+			t.Errorf("expected 'Start\\rEnd', got %v", result)
+		}
+	})
+
+	t.Run("multiple escape sequences", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"A\\nB\\tC\\rD"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "A\nB\tC\rD" {
+			t.Errorf("expected 'A\\nB\\tC\\rD', got %v", result)
+		}
+	})
+
+	// Requirement 1.7: Fewer arguments than format specifiers
+	t.Run("fewer arguments than format specifiers", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		// Should not crash, Go's fmt.Sprintf handles this gracefully
+		result, err := fn(vm, []any{"Value: %s %d"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		// Result should contain MISSING markers from Go's fmt.Sprintf
+		if result == "" {
+			t.Error("expected non-empty result")
+		}
+	})
+
+	t.Run("one argument missing", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"%s and %s", "first"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		// Should contain the first argument and a MISSING marker for the second
+		if result == "" {
+			t.Error("expected non-empty result")
+		}
+	})
+
+	// Requirement 1.8: More arguments than format specifiers
+	t.Run("more arguments than format specifiers", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Value: %s", "used", "ignored1", "ignored2"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		// Extra arguments should be appended by Go's fmt.Sprintf
+		// The result will contain the extra arguments
+		if result == "" {
+			t.Error("expected non-empty result")
+		}
+	})
+
+	// Edge cases
+	t.Run("empty format string", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{""})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "" {
+			t.Errorf("expected empty string, got %v", result)
+		}
+	})
+
+	t.Run("no format specifiers", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"Hello World"})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Hello World" {
+			t.Errorf("expected 'Hello World', got %v", result)
+		}
+	})
+
+	t.Run("no arguments", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "" {
+			t.Errorf("expected empty string, got %v", result)
+		}
+	})
+
+	t.Run("non-string format argument", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{123})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "" {
+			t.Errorf("expected empty string for non-string format, got %v", result)
+		}
+	})
+
+	// Multiple format specifiers
+	t.Run("multiple format specifiers", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		result, err := fn(vm, []any{"%s: %ld (0x%lx)", "Value", int64(255), int64(255)})
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != "Value: 255 (0xff)" {
+			t.Errorf("expected 'Value: 255 (0xff)', got %v", result)
+		}
+	})
+
+	// Real-world use case from ROBOT sample
+	t.Run("ROBOT sample use case", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		fn := vm.builtins["StrPrint"]
+
+		// Test the actual use case from ROBOT.TFY: StrPrint("ROBOT%03d.BMP", i)
+		for i := int64(0); i <= 1; i++ {
+			result, err := fn(vm, []any{"ROBOT%03d.BMP", i})
+			if err != nil {
+				t.Errorf("expected no error for i=%d, got %v", i, err)
+			}
+			expected := "ROBOT00" + string('0'+byte(i)) + ".BMP"
+			if result != expected {
+				t.Errorf("for i=%d: expected '%s', got %v", i, expected, result)
+			}
+		}
+	})
+}
+
+// mockGraphicsSystem is a mock implementation of GraphicsSystemInterface for testing.
+// This mock is used to test CreatePic and CapTitle built-in functions without requiring a real graphics system.
+type mockGraphicsSystem struct {
+	pictures       map[int]*mockPicture
+	nextPicID      int
+	createPicErr   error // Error to return from CreatePic
+	windows        map[int]*mockWindow
+	nextWinID      int
+	capTitleAllCnt int    // Count of CapTitleAll calls
+	lastCapTitle   string // Last title set by CapTitleAll
+}
+
+type mockPicture struct {
+	id     int
+	width  int
+	height int
+}
+
+type mockWindow struct {
+	id      int
+	picID   int
+	caption string
+}
+
+func newMockGraphicsSystem() *mockGraphicsSystem {
+	return &mockGraphicsSystem{
+		pictures:  make(map[int]*mockPicture),
+		nextPicID: 0,
+		windows:   make(map[int]*mockWindow),
+		nextWinID: 0,
+	}
+}
+
+func (m *mockGraphicsSystem) LoadPic(filename string) (int, error) {
+	return -1, fmt.Errorf("not implemented")
+}
+
+func (m *mockGraphicsSystem) CreatePic(width, height int) (int, error) {
+	if m.createPicErr != nil {
+		return -1, m.createPicErr
+	}
+	if width <= 0 || height <= 0 {
+		return -1, fmt.Errorf("invalid dimensions: width=%d, height=%d", width, height)
+	}
+	id := m.nextPicID
+	m.nextPicID++
+	m.pictures[id] = &mockPicture{id: id, width: width, height: height}
+	return id, nil
+}
+
+func (m *mockGraphicsSystem) CreatePicFrom(srcID int) (int, error) {
+	if m.createPicErr != nil {
+		return -1, m.createPicErr
+	}
+	src, ok := m.pictures[srcID]
+	if !ok {
+		return -1, fmt.Errorf("source picture %d not found", srcID)
+	}
+	id := m.nextPicID
+	m.nextPicID++
+	m.pictures[id] = &mockPicture{id: id, width: src.width, height: src.height}
+	return id, nil
+}
+
+func (m *mockGraphicsSystem) CreatePicWithSize(srcID, width, height int) (int, error) {
+	if m.createPicErr != nil {
+		return -1, m.createPicErr
+	}
+	// Check if source picture exists (要件 2.3)
+	if _, ok := m.pictures[srcID]; !ok {
+		return -1, fmt.Errorf("source picture %d not found", srcID)
+	}
+	// Validate dimensions (要件 2.4)
+	if width <= 0 || height <= 0 {
+		return -1, fmt.Errorf("invalid dimensions: width=%d, height=%d", width, height)
+	}
+	id := m.nextPicID
+	m.nextPicID++
+	// Create empty picture with specified size (要件 2.1, 2.2)
+	m.pictures[id] = &mockPicture{id: id, width: width, height: height}
+	return id, nil
+}
+
+func (m *mockGraphicsSystem) DelPic(id int) error {
+	if _, ok := m.pictures[id]; !ok {
+		return fmt.Errorf("picture %d not found", id)
+	}
+	delete(m.pictures, id)
+	return nil
+}
+
+func (m *mockGraphicsSystem) PicWidth(id int) int {
+	if pic, ok := m.pictures[id]; ok {
+		return pic.width
+	}
+	return 0
+}
+
+func (m *mockGraphicsSystem) PicHeight(id int) int {
+	if pic, ok := m.pictures[id]; ok {
+		return pic.height
+	}
+	return 0
+}
+
+func (m *mockGraphicsSystem) MovePic(srcID, srcX, srcY, width, height, dstID, dstX, dstY, mode int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) MovePicWithSpeed(srcID, srcX, srcY, width, height, dstID, dstX, dstY, mode, speed int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) MoveSPic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) TransPic(srcID, srcX, srcY, width, height, dstID, dstX, dstY int, transColor any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) ReversePic(srcID, srcX, srcY, width, height, dstID, dstX, dstY int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
+	id := m.nextWinID
+	m.nextWinID++
+	m.windows[id] = &mockWindow{id: id, picID: picID, caption: ""}
+	return id, nil
+}
+
+func (m *mockGraphicsSystem) MoveWin(id int, opts ...any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) CloseWin(id int) error {
+	delete(m.windows, id)
+	return nil
+}
+
+func (m *mockGraphicsSystem) CloseWinAll() {
+	m.windows = make(map[int]*mockWindow)
+}
+
+func (m *mockGraphicsSystem) CapTitle(id int, title string) error {
+	if win, ok := m.windows[id]; ok {
+		win.caption = title
+	}
+	// 存在しないウィンドウIDでもエラーを返さない (要件 3.4)
+	return nil
+}
+
+func (m *mockGraphicsSystem) CapTitleAll(title string) {
+	m.capTitleAllCnt++
+	m.lastCapTitle = title
+	for _, win := range m.windows {
+		win.caption = title
+	}
+}
+
+func (m *mockGraphicsSystem) GetPicNo(id int) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGraphicsSystem) GetWinByPicID(picID int) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGraphicsSystem) PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGraphicsSystem) PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h int, transColor color.Color) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGraphicsSystem) MoveCast(id int, opts ...any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) MoveCastWithOptions(id int, opts ...graphics.CastOption) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) DelCast(id int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) TextWrite(picID, x, y int, text string) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) SetFont(name string, size int, opts ...any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) SetTextColor(c any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) SetBgColor(c any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) SetBackMode(mode int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) DrawLine(picID, x1, y1, x2, y2 int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) DrawRect(picID, x1, y1, x2, y2, fillMode int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) FillRect(picID, x1, y1, x2, y2 int, c any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) DrawCircle(picID, x, y, radius, fillMode int) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) SetLineSize(size int) {}
+
+func (m *mockGraphicsSystem) SetPaintColor(c any) error {
+	return nil
+}
+
+func (m *mockGraphicsSystem) GetColor(picID, x, y int) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGraphicsSystem) GetVirtualWidth() int {
+	return 800
+}
+
+func (m *mockGraphicsSystem) GetVirtualHeight() int {
+	return 600
+}
+
+// TestVMBuiltinCreatePic tests the CreatePic built-in function.
+// Validates: Requirements 2.1-2.5
+func TestVMBuiltinCreatePic(t *testing.T) {
+	t.Run("CreatePic is registered as built-in", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+
+		// Verify CreatePic is registered
+		if _, ok := vm.builtins["CreatePic"]; !ok {
+			t.Error("expected CreatePic to be registered as built-in function")
+		}
+	})
+
+	// Test 1: CreatePic with 3 arguments creates picture with correct size (要件 2.1)
+	t.Run("CreatePic with 3 arguments creates picture with correct size", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID), int64(200), int64(150)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		newID, ok := result.(int)
+		if !ok {
+			t.Fatalf("expected int result, got %T", result)
+		}
+
+		// Verify new picture has correct dimensions
+		if mockGS.PicWidth(newID) != 200 {
+			t.Errorf("expected width 200, got %d", mockGS.PicWidth(newID))
+		}
+		if mockGS.PicHeight(newID) != 150 {
+			t.Errorf("expected height 150, got %d", mockGS.PicHeight(newID))
+		}
+	})
+
+	// Test 2: CreatePic with 3 arguments creates empty picture (要件 2.2)
+	// Note: The mock doesn't actually copy content, so we verify the new picture
+	// has different dimensions from the source to confirm it's not a copy
+	t.Run("CreatePic with 3 arguments creates empty picture (not copying source)", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture with specific size
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID), int64(50), int64(75)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		newID, ok := result.(int)
+		if !ok {
+			t.Fatalf("expected int result, got %T", result)
+		}
+
+		// Verify new picture has different dimensions from source
+		// (confirming it's not a copy of the source)
+		if mockGS.PicWidth(newID) == mockGS.PicWidth(srcID) && mockGS.PicHeight(newID) == mockGS.PicHeight(srcID) {
+			t.Error("new picture should have different dimensions from source (not a copy)")
+		}
+
+		// Verify new picture has the specified dimensions
+		if mockGS.PicWidth(newID) != 50 {
+			t.Errorf("expected width 50, got %d", mockGS.PicWidth(newID))
+		}
+		if mockGS.PicHeight(newID) != 75 {
+			t.Errorf("expected height 75, got %d", mockGS.PicHeight(newID))
+		}
+	})
+
+	// Test 3: CreatePic with non-existent source ID returns error (要件 2.3)
+	t.Run("CreatePic with non-existent source ID returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(999), int64(100), int64(100)})
+
+		// Should return error
+		if err == nil {
+			t.Error("expected error for non-existent source ID, got nil")
+		}
+
+		// Result should be -1
+		if result != -1 {
+			t.Errorf("expected result -1, got %v", result)
+		}
+	})
+
+	// Test 4: CreatePic with zero width returns error (要件 2.4)
+	t.Run("CreatePic with zero width returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID), int64(0), int64(100)})
+
+		// Should return error
+		if err == nil {
+			t.Error("expected error for zero width, got nil")
+		}
+
+		// Result should be -1
+		if result != -1 {
+			t.Errorf("expected result -1, got %v", result)
+		}
+	})
+
+	// Test 4b: CreatePic with zero height returns error (要件 2.4)
+	t.Run("CreatePic with zero height returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID), int64(100), int64(0)})
+
+		// Should return error
+		if err == nil {
+			t.Error("expected error for zero height, got nil")
+		}
+
+		// Result should be -1
+		if result != -1 {
+			t.Errorf("expected result -1, got %v", result)
+		}
+	})
+
+	// Test 4c: CreatePic with negative width returns error (要件 2.4)
+	t.Run("CreatePic with negative width returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID), int64(-10), int64(100)})
+
+		// Should return error
+		if err == nil {
+			t.Error("expected error for negative width, got nil")
+		}
+
+		// Result should be -1
+		if result != -1 {
+			t.Errorf("expected result -1, got %v", result)
+		}
+	})
+
+	// Test 4d: CreatePic with negative height returns error (要件 2.4)
+	t.Run("CreatePic with negative height returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID), int64(100), int64(-10)})
+
+		// Should return error
+		if err == nil {
+			t.Error("expected error for negative height, got nil")
+		}
+
+		// Result should be -1
+		if result != -1 {
+			t.Errorf("expected result -1, got %v", result)
+		}
+	})
+
+	// Test 5: Backward compatibility - 1-argument pattern still works (要件 2.5)
+	t.Run("backward compatibility: 1-argument pattern (CreatePicFrom)", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(srcID)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		newID, ok := result.(int)
+		if !ok {
+			t.Fatalf("expected int result, got %T", result)
+		}
+
+		// Verify new picture has same dimensions as source (copy behavior)
+		if mockGS.PicWidth(newID) != 100 {
+			t.Errorf("expected width 100, got %d", mockGS.PicWidth(newID))
+		}
+		if mockGS.PicHeight(newID) != 100 {
+			t.Errorf("expected height 100, got %d", mockGS.PicHeight(newID))
+		}
+	})
+
+	// Test 6: Backward compatibility - 2-argument pattern still works (要件 2.5)
+	t.Run("backward compatibility: 2-argument pattern (CreatePic width, height)", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(200), int64(150)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		newID, ok := result.(int)
+		if !ok {
+			t.Fatalf("expected int result, got %T", result)
+		}
+
+		// Verify new picture has specified dimensions
+		if mockGS.PicWidth(newID) != 200 {
+			t.Errorf("expected width 200, got %d", mockGS.PicWidth(newID))
+		}
+		if mockGS.PicHeight(newID) != 150 {
+			t.Errorf("expected height 150, got %d", mockGS.PicHeight(newID))
+		}
+	})
+
+	// Edge case: CreatePic without graphics system
+	t.Run("CreatePic without graphics system returns -1", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		// Don't set graphics system
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{int64(100), int64(100)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		if result != -1 {
+			t.Errorf("expected result -1 when no graphics system, got %v", result)
+		}
+	})
+
+	// Edge case: CreatePic with no arguments
+	t.Run("CreatePic with no arguments returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		fn := vm.builtins["CreatePic"]
+		_, err := fn(vm, []any{})
+
+		if err == nil {
+			t.Error("expected error for no arguments, got nil")
+		}
+	})
+
+	// Edge case: CreatePic with non-integer arguments
+	t.Run("CreatePic with non-integer arguments returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{"not", "integers"})
+
+		if err == nil {
+			t.Error("expected error for non-integer arguments, got nil")
+		}
+
+		if result != -1 {
+			t.Errorf("expected result -1, got %v", result)
+		}
+	})
+
+	// Test with float arguments (should be converted to int)
+	t.Run("CreatePic with float arguments", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{float64(100), float64(200)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		newID, ok := result.(int)
+		if !ok {
+			t.Fatalf("expected int result, got %T", result)
+		}
+
+		// Verify dimensions (float should be truncated to int)
+		if mockGS.PicWidth(newID) != 100 {
+			t.Errorf("expected width 100, got %d", mockGS.PicWidth(newID))
+		}
+		if mockGS.PicHeight(newID) != 200 {
+			t.Errorf("expected height 200, got %d", mockGS.PicHeight(newID))
+		}
+	})
+
+	// Test 3-argument pattern with float arguments
+	t.Run("CreatePic 3-argument pattern with float arguments", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create source picture first
+		srcID, _ := mockGS.CreatePic(100, 100)
+
+		fn := vm.builtins["CreatePic"]
+		result, err := fn(vm, []any{float64(srcID), float64(150), float64(200)})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+
+		newID, ok := result.(int)
+		if !ok {
+			t.Fatalf("expected int result, got %T", result)
+		}
+
+		// Verify dimensions
+		if mockGS.PicWidth(newID) != 150 {
+			t.Errorf("expected width 150, got %d", mockGS.PicWidth(newID))
+		}
+		if mockGS.PicHeight(newID) != 200 {
+			t.Errorf("expected height 200, got %d", mockGS.PicHeight(newID))
+		}
+	})
+}
+
+// TestVMBuiltinCapTitle tests the CapTitle built-in function.
+// Validates: Requirements 3.1-3.5
+func TestVMBuiltinCapTitle(t *testing.T) {
+	t.Run("CapTitle is registered as built-in", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+
+		// Verify CapTitle is registered
+		if _, ok := vm.builtins["CapTitle"]; !ok {
+			t.Error("expected CapTitle to be registered as built-in function")
+		}
+	})
+
+	// Test case 1: CapTitle with 1 argument sets caption for ALL windows (requirement 3.1)
+	t.Run("CapTitle with 1 argument sets caption for ALL windows", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create multiple windows
+		mockGS.OpenWin(0)
+		mockGS.OpenWin(1)
+		mockGS.OpenWin(2)
+
+		fn := vm.builtins["CapTitle"]
+		result, err := fn(vm, []any{"Test Title"})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify all windows have the same caption
+		for id, win := range mockGS.windows {
+			if win.caption != "Test Title" {
+				t.Errorf("window %d: expected caption 'Test Title', got '%s'", id, win.caption)
+			}
+		}
+
+		// Verify CapTitleAll was called
+		if mockGS.capTitleAllCnt != 1 {
+			t.Errorf("expected CapTitleAll to be called once, got %d", mockGS.capTitleAllCnt)
+		}
+	})
+
+	// Test case 2: CapTitle with 1 argument when no windows exist (requirement 3.2)
+	t.Run("CapTitle with 1 argument when no windows exist", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// No windows created
+
+		fn := vm.builtins["CapTitle"]
+		result, err := fn(vm, []any{"Test Title"})
+
+		// Should not return error (requirement 3.2)
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify CapTitleAll was still called
+		if mockGS.capTitleAllCnt != 1 {
+			t.Errorf("expected CapTitleAll to be called once, got %d", mockGS.capTitleAllCnt)
+		}
+	})
+
+	// Test case 3: CapTitle with 2 arguments sets caption for specific window only (requirement 3.3)
+	t.Run("CapTitle with 2 arguments sets caption for specific window only", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create multiple windows
+		mockGS.OpenWin(0) // winID 0
+		mockGS.OpenWin(1) // winID 1
+		mockGS.OpenWin(2) // winID 2
+
+		// Set initial captions
+		mockGS.windows[0].caption = "Original 0"
+		mockGS.windows[1].caption = "Original 1"
+		mockGS.windows[2].caption = "Original 2"
+
+		fn := vm.builtins["CapTitle"]
+		result, err := fn(vm, []any{int64(1), "New Title"})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify only window 1 has the new caption
+		if mockGS.windows[0].caption != "Original 0" {
+			t.Errorf("window 0: expected caption 'Original 0', got '%s'", mockGS.windows[0].caption)
+		}
+		if mockGS.windows[1].caption != "New Title" {
+			t.Errorf("window 1: expected caption 'New Title', got '%s'", mockGS.windows[1].caption)
+		}
+		if mockGS.windows[2].caption != "Original 2" {
+			t.Errorf("window 2: expected caption 'Original 2', got '%s'", mockGS.windows[2].caption)
+		}
+
+		// Verify CapTitleAll was NOT called
+		if mockGS.capTitleAllCnt != 0 {
+			t.Errorf("expected CapTitleAll to not be called, got %d", mockGS.capTitleAllCnt)
+		}
+	})
+
+	// Test case 4: CapTitle with non-existent window ID does not error (requirement 3.4)
+	t.Run("CapTitle with non-existent window ID does not error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create one window
+		mockGS.OpenWin(0) // winID 0
+		mockGS.windows[0].caption = "Original"
+
+		fn := vm.builtins["CapTitle"]
+		// Call with non-existent window ID 999
+		result, err := fn(vm, []any{int64(999), "New Title"})
+
+		// Should not return error (requirement 3.4)
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify existing window caption is unchanged
+		if mockGS.windows[0].caption != "Original" {
+			t.Errorf("window 0: expected caption 'Original', got '%s'", mockGS.windows[0].caption)
+		}
+	})
+
+	// Test case 5: CapTitle with empty string clears caption (requirement 3.5)
+	t.Run("CapTitle with empty string clears caption", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create window with initial caption
+		mockGS.OpenWin(0)
+		mockGS.windows[0].caption = "Initial Title"
+
+		fn := vm.builtins["CapTitle"]
+		// Call with empty string (1 argument pattern)
+		result, err := fn(vm, []any{""})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify caption is cleared
+		if mockGS.windows[0].caption != "" {
+			t.Errorf("window 0: expected empty caption, got '%s'", mockGS.windows[0].caption)
+		}
+	})
+
+	// Test case 5b: CapTitle with empty string clears caption (2 argument pattern)
+	t.Run("CapTitle with empty string clears caption (2 argument pattern)", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create window with initial caption
+		mockGS.OpenWin(0)
+		mockGS.windows[0].caption = "Initial Title"
+
+		fn := vm.builtins["CapTitle"]
+		// Call with empty string (2 argument pattern)
+		result, err := fn(vm, []any{int64(0), ""})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify caption is cleared
+		if mockGS.windows[0].caption != "" {
+			t.Errorf("window 0: expected empty caption, got '%s'", mockGS.windows[0].caption)
+		}
+	})
+
+	// Test case 6: CapTitle without graphics system returns nil (edge case)
+	t.Run("CapTitle without graphics system returns nil", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		// No graphics system set
+
+		fn := vm.builtins["CapTitle"]
+		result, err := fn(vm, []any{"Test Title"})
+
+		// Should not return error
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+	})
+
+	// Test case 7: CapTitle with no arguments returns error (edge case)
+	t.Run("CapTitle with no arguments returns error", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		fn := vm.builtins["CapTitle"]
+		_, err := fn(vm, []any{})
+
+		// Should return error
+		if err == nil {
+			t.Error("expected error for missing arguments")
+		}
+	})
+
+	// Additional test: CapTitle with float window ID
+	t.Run("CapTitle with float window ID", func(t *testing.T) {
+		vm := New([]compiler.OpCode{})
+		mockGS := newMockGraphicsSystem()
+		vm.SetGraphicsSystem(mockGS)
+
+		// Create windows
+		mockGS.OpenWin(0) // winID 0
+		mockGS.OpenWin(1) // winID 1
+		mockGS.windows[0].caption = "Original 0"
+		mockGS.windows[1].caption = "Original 1"
+
+		fn := vm.builtins["CapTitle"]
+		// Call with float window ID (should be truncated to int)
+		result, err := fn(vm, []any{float64(1.9), "Float Title"})
+
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil result, got %v", result)
+		}
+
+		// Verify window 1 (truncated from 1.9) has the new caption
+		if mockGS.windows[1].caption != "Float Title" {
+			t.Errorf("window 1: expected caption 'Float Title', got '%s'", mockGS.windows[1].caption)
+		}
+		// Verify window 0 is unchanged
+		if mockGS.windows[0].caption != "Original 0" {
+			t.Errorf("window 0: expected caption 'Original 0', got '%s'", mockGS.windows[0].caption)
 		}
 	})
 }

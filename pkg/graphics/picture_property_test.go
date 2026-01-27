@@ -226,3 +226,111 @@ func TestProperty_CreatePicFromPreservesSize(t *testing.T) {
 
 	properties.TestingRun(t)
 }
+
+// TestProperty_CreatePicWithSizeSizeAndContent tests Property 2: CreatePic 3引数パターンのサイズと内容
+// **Validates: Requirements 2.1, 2.2**
+// 任意の有効なソースピクチャーIDと正の幅・高さに対して、CreatePic(srcID, width, height) は
+// 指定されたサイズの空のピクチャーを作成し、そのピクチャーの幅と高さは指定された値と一致する。
+func TestProperty_CreatePicWithSizeSizeAndContent(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("CreatePicWithSizeは指定されたサイズの空のピクチャーを作成する", prop.ForAll(
+		func(srcWidth, srcHeight, newWidth, newHeight int) bool {
+			pm := NewPictureManager("")
+
+			// Create source picture first
+			srcID, err := pm.CreatePic(srcWidth, srcHeight)
+			if err != nil {
+				return true // Skip if source creation fails (resource limit)
+			}
+
+			// Call CreatePicWithSize with the source ID and random dimensions
+			newID, err := pm.CreatePicWithSize(srcID, newWidth, newHeight)
+			if err != nil {
+				return false // Should succeed with valid inputs
+			}
+
+			// Verify the created picture has the exact width and height specified
+			actualWidth := pm.PicWidth(newID)
+			actualHeight := pm.PicHeight(newID)
+
+			if actualWidth != newWidth || actualHeight != newHeight {
+				return false
+			}
+
+			// Verify the new picture is different from the source
+			if newID == srcID {
+				return false
+			}
+
+			return true
+		},
+		gen.IntRange(1, 1000), // srcWidth
+		gen.IntRange(1, 1000), // srcHeight
+		gen.IntRange(1, 1000), // newWidth
+		gen.IntRange(1, 1000), // newHeight
+	))
+
+	properties.TestingRun(t)
+}
+
+// TestProperty_CreatePicWithSizeEmptyContent tests that CreatePicWithSize creates an empty picture
+// **Validates: Requirements 2.2**
+// ソースピクチャーの内容をコピーせず、空のピクチャーを返すことを検証する
+func TestProperty_CreatePicWithSizeEmptyContent(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("CreatePicWithSizeで作成されたピクチャーは空（透明）である", prop.ForAll(
+		func(srcWidth, srcHeight, newWidth, newHeight int) bool {
+			pm := NewPictureManager("")
+
+			// Create source picture
+			srcID, err := pm.CreatePic(srcWidth, srcHeight)
+			if err != nil {
+				return true // Skip if source creation fails
+			}
+
+			// Call CreatePicWithSize
+			newID, err := pm.CreatePicWithSize(srcID, newWidth, newHeight)
+			if err != nil {
+				return false // Should succeed with valid inputs
+			}
+
+			// Get the new picture and verify it's empty (transparent)
+			newPic, err := pm.GetPic(newID)
+			if err != nil {
+				return false
+			}
+
+			// Check that OriginalImage is empty (all pixels are transparent)
+			if newPic.OriginalImage == nil {
+				return false
+			}
+
+			bounds := newPic.OriginalImage.Bounds()
+			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+				for x := bounds.Min.X; x < bounds.Max.X; x++ {
+					r, g, b, a := newPic.OriginalImage.At(x, y).RGBA()
+					// Empty RGBA image should have all zeros (transparent)
+					if r != 0 || g != 0 || b != 0 || a != 0 {
+						return false
+					}
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(1, 100), // srcWidth (smaller range to avoid slow pixel checks)
+		gen.IntRange(1, 100), // srcHeight
+		gen.IntRange(1, 50),  // newWidth (smaller to make pixel check faster)
+		gen.IntRange(1, 50),  // newHeight
+	))
+
+	properties.TestingRun(t)
+}

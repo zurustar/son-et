@@ -261,10 +261,15 @@ type EventHandler struct {
 	// MarkedForDeletion indicates the handler should be removed after execution.
 	// This is set by del_me/del_us.
 	MarkedForDeletion bool
+
+	// ParentScope is the scope in which the handler was registered.
+	// This allows the handler to access variables from the enclosing scope (like C blocks).
+	ParentScope *Scope
 }
 
 // NewEventHandler creates a new event handler.
-func NewEventHandler(id string, eventType EventType, opcodes []compiler.OpCode, vm *VM) *EventHandler {
+// parentScope is the scope in which the handler was registered, allowing access to enclosing variables.
+func NewEventHandler(id string, eventType EventType, opcodes []compiler.OpCode, vm *VM, parentScope *Scope) *EventHandler {
 	return &EventHandler{
 		ID:          id,
 		EventType:   eventType,
@@ -274,6 +279,7 @@ func NewEventHandler(id string, eventType EventType, opcodes []compiler.OpCode, 
 		WaitCounter: 0,
 		CurrentPC:   0,
 		VM:          vm,
+		ParentScope: parentScope,
 	}
 }
 
@@ -311,6 +317,13 @@ func (eh *EventHandler) Execute(event *Event) error {
 	previousHandler := eh.VM.currentHandler
 	eh.VM.currentHandler = eh
 
+	// Save the current local scope and set the parent scope for this handler
+	// This allows the handler to access variables from the enclosing scope (like C blocks)
+	previousLocalScope := eh.VM.localScope
+	if eh.ParentScope != nil {
+		eh.VM.localScope = eh.ParentScope
+	}
+
 	// Set event parameters in the VM's scope for access via MesP1, MesP2, MesP3
 	// Requirement 1.6: When handler is executing, system provides access to event-specific parameters.
 	if event.Params != nil {
@@ -345,8 +358,9 @@ func (eh *EventHandler) Execute(event *Event) error {
 		// Requirement 6.2: When OpWait is executed, system pauses execution until next event.
 		if _, isWait := result.(*waitMarker); isWait {
 			eh.VM.log.Debug("Handler pausing execution", "handler", eh.ID, "pc", eh.CurrentPC, "waitCounter", eh.WaitCounter)
-			// Restore the previous handler and return
+			// Restore the previous handler and local scope, then return
 			eh.VM.currentHandler = previousHandler
+			eh.VM.localScope = previousLocalScope
 			return nil
 		}
 	}
@@ -356,8 +370,9 @@ func (eh *EventHandler) Execute(event *Event) error {
 	eh.CurrentPC = 0
 	eh.VM.log.Debug("Handler execution completed, resetting PC", "handler", eh.ID)
 
-	// Restore the previous handler
+	// Restore the previous handler and local scope
 	eh.VM.currentHandler = previousHandler
+	eh.VM.localScope = previousLocalScope
 
 	return nil
 }

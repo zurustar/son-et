@@ -390,7 +390,7 @@ func TestProperty3_HandlerCompleteInvocation(t *testing.T) {
 
 			// Register handlers
 			for i := 0; i < handlerCount; i++ {
-				handler := NewEventHandler("", EventTIME, nil, vm)
+				handler := NewEventHandler("", EventTIME, nil, vm, nil)
 				id := registry.Register(handler)
 				calledHandlers[id] = false
 
@@ -450,7 +450,7 @@ func TestProperty4_HandlerRegistrationOrder(t *testing.T) {
 			// Register handlers and track order
 			registeredIDs := make([]string, 0, handlerCount)
 			for i := 0; i < handlerCount; i++ {
-				handler := NewEventHandler("", EventTIME, nil, vm)
+				handler := NewEventHandler("", EventTIME, nil, vm, nil)
 				id := registry.Register(handler)
 				registeredIDs = append(registeredIDs, id)
 			}
@@ -537,7 +537,7 @@ func TestProperty6_HandlerRegistrationSuccess(t *testing.T) {
 			registry := NewHandlerRegistry()
 			vm := New(nil)
 
-			handler := NewEventHandler("", eventType, nil, vm)
+			handler := NewEventHandler("", eventType, nil, vm, nil)
 			id := registry.Register(handler)
 
 			// Handler should be retrievable
@@ -556,7 +556,7 @@ func TestProperty6_HandlerRegistrationSuccess(t *testing.T) {
 			registry := NewHandlerRegistry()
 			vm := New(nil)
 
-			handler := NewEventHandler("", eventType, nil, vm)
+			handler := NewEventHandler("", eventType, nil, vm, nil)
 			registry.Register(handler)
 
 			// Handler should appear in GetHandlers
@@ -585,7 +585,7 @@ func TestProperty6_HandlerRegistrationSuccess(t *testing.T) {
 			vm := New(nil)
 
 			for i := 0; i < handlerCount; i++ {
-				handler := NewEventHandler("", EventTIME, nil, vm)
+				handler := NewEventHandler("", EventTIME, nil, vm, nil)
 				registry.Register(handler)
 			}
 
@@ -612,7 +612,7 @@ func TestProperty7_DelMeHandlerRemoval(t *testing.T) {
 			registry := NewHandlerRegistry()
 			vm := New(nil)
 
-			handler := NewEventHandler("", eventType, nil, vm)
+			handler := NewEventHandler("", eventType, nil, vm, nil)
 			id := registry.Register(handler)
 
 			// Simulate del_me by calling Remove
@@ -642,7 +642,7 @@ func TestProperty7_DelMeHandlerRemoval(t *testing.T) {
 			registry := NewHandlerRegistry()
 			vm := New(nil)
 
-			handler := NewEventHandler("", eventType, nil, vm)
+			handler := NewEventHandler("", eventType, nil, vm, nil)
 			id := registry.Register(handler)
 
 			// Unregister should remove immediately
@@ -683,7 +683,7 @@ func TestProperty8_DelAllHandlerRemoval(t *testing.T) {
 			eventTypes := []EventType{EventTIME, EventMIDI_TIME, EventLBDOWN}
 			for i := 0; i < handlerCount; i++ {
 				eventType := eventTypes[i%len(eventTypes)]
-				handler := NewEventHandler("", eventType, nil, vm)
+				handler := NewEventHandler("", eventType, nil, vm, nil)
 				registry.Register(handler)
 			}
 
@@ -714,7 +714,7 @@ func TestProperty8_DelAllHandlerRemoval(t *testing.T) {
 			// Register handlers for all event types
 			eventTypes := []EventType{EventTIME, EventMIDI_TIME, EventMIDI_END, EventLBDOWN, EventRBDOWN, EventRBDBLCLK}
 			for _, et := range eventTypes {
-				handler := NewEventHandler("", et, nil, vm)
+				handler := NewEventHandler("", et, nil, vm, nil)
 				registry.Register(handler)
 			}
 

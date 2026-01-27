@@ -327,3 +327,66 @@ func TestGetPicNoInvalidID(t *testing.T) {
 		t.Error("Expected error when getting picture number from non-existent window, got nil")
 	}
 }
+
+func TestCapTitleAll(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create multiple windows
+	winIDs := make([]int, 3)
+	for i := 0; i < 3; i++ {
+		id, err := wm.OpenWin(i)
+		if err != nil {
+			t.Fatalf("OpenWin failed: %v", err)
+		}
+		winIDs[i] = id
+	}
+
+	// Set caption on all windows
+	wm.CapTitleAll("All Windows Title")
+
+	// Verify all windows have the same caption
+	for _, winID := range winIDs {
+		win, err := wm.GetWin(winID)
+		if err != nil {
+			t.Fatalf("GetWin failed: %v", err)
+		}
+		if win.Caption != "All Windows Title" {
+			t.Errorf("Expected caption 'All Windows Title', got '%s' for window %d", win.Caption, winID)
+		}
+	}
+}
+
+func TestCapTitleAllNoWindows(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Call CapTitleAll with no windows (should not panic or error)
+	wm.CapTitleAll("Test Title")
+
+	// Verify no windows exist
+	windows := wm.GetWindowsOrdered()
+	if len(windows) != 0 {
+		t.Errorf("Expected 0 windows, got %d", len(windows))
+	}
+}
+
+func TestCapTitleAllEmptyString(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create a window with a caption
+	winID, err := wm.OpenWin(1, WithCaption("Initial Caption"))
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	// Clear caption using empty string
+	wm.CapTitleAll("")
+
+	// Verify caption is cleared
+	win, err := wm.GetWin(winID)
+	if err != nil {
+		t.Fatalf("GetWin failed: %v", err)
+	}
+	if win.Caption != "" {
+		t.Errorf("Expected empty caption, got '%s'", win.Caption)
+	}
+}

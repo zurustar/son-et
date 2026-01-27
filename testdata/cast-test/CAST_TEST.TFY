@@ -1,0 +1,43 @@
+// Cast表示テスト用タイトル
+// y_saruのシーン3（飛行機落ちる）を再現
+
+main(){
+    // 背景画像をロード
+    LoadPic("BG.bmp");      // 0: 背景
+    LoadPic("PLANE.bmp");   // 1: 飛行機（キャスト用）
+
+    picW = PicWidth(0);
+    picH = PicHeight(0);
+    winW = WinInfo(0);
+    winH = WinInfo(1);
+    winX = 0 - (winW - picW) / 2;
+    winY = 0 - (winH - picH) / 2;
+
+    // base_picを作成
+    base_pic = CreatePic(0);
+    
+    // ウィンドウを開く
+    OpenWin(base_pic, 0, 0, winW, winH, winX, winY, 0xffffff);
+    
+    // 背景をキャストとして設定（透明色なしモード）
+    // y_saruでは: PutCast(25,base_pic,0,0);
+    PutCast(0, base_pic, 0, 0);
+    
+    // 飛行機をキャストとして配置（透明色あり）
+    // y_saruでは: cast = PutCast(17,base_pic,113,0, 0xffffff,0,0,0,89,77,0,0);
+    int cast;
+    cast = PutCast(1, base_pic, 50, 10, 0xffffff, 0, 0, 0, 100, 100, 0, 0);
+    
+    // 飛行機を動かす
+    Wait(500);
+    MoveCast(cast, 1, 50, 30, 0, 100, 100, 0, 0);
+    Wait(500);
+    MoveCast(cast, 1, 50, 60, 0, 100, 100, 0, 0);
+    Wait(500);
+    MoveCast(cast, 1, 50, 90, 0, 100, 100, 0, 0);
+    Wait(500);
+    MoveCast(cast, 1, 50, 120, 0, 100, 100, 0, 0);
+    Wait(1000);
+    
+    CloseWin(base_pic);
+}

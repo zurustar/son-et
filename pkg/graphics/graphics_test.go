@@ -16,12 +16,12 @@ func TestNewGraphicsSystem(t *testing.T) {
 		t.Fatal("NewGraphicsSystem returned nil")
 	}
 
-	if gs.virtualWidth != 1280 {
-		t.Errorf("Expected virtualWidth 1280, got %d", gs.virtualWidth)
+	if gs.virtualWidth != 1024 {
+		t.Errorf("Expected virtualWidth 1024, got %d", gs.virtualWidth)
 	}
 
-	if gs.virtualHeight != 720 {
-		t.Errorf("Expected virtualHeight 720, got %d", gs.virtualHeight)
+	if gs.virtualHeight != 768 {
+		t.Errorf("Expected virtualHeight 768, got %d", gs.virtualHeight)
 	}
 
 	if gs.pictures == nil {
@@ -42,6 +42,11 @@ func TestNewGraphicsSystem(t *testing.T) {
 
 	if gs.cmdQueue == nil {
 		t.Error("CommandQueue not initialized")
+	}
+
+	// 要件 8.1: LayerManagerが初期化されていることを確認
+	if gs.layerManager == nil {
+		t.Error("LayerManager not initialized")
 	}
 }
 
@@ -93,7 +98,7 @@ func TestGraphicsSystemDraw(t *testing.T) {
 	gs := NewGraphicsSystem("")
 
 	// ダミーのスクリーンを作成
-	screen := ebiten.NewImage(1280, 720)
+	screen := ebiten.NewImage(1024, 768)
 
 	// Draw を呼び出す（エラーが発生しないことを確認）
 	gs.Draw(screen)
@@ -111,5 +116,98 @@ func TestGraphicsSystemShutdown(t *testing.T) {
 	// キューが空になっているはず
 	if gs.cmdQueue.Len() != 0 {
 		t.Errorf("Expected empty queue after Shutdown, got %d commands", gs.cmdQueue.Len())
+	}
+}
+
+// TestGraphicsSystem_GetLayerManager はGetLayerManagerメソッドをテストする
+// 要件 8.1: GraphicsSystemにLayerManagerを統合する
+func TestGraphicsSystem_GetLayerManager(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// GetLayerManagerがnilでないことを確認
+	lm := gs.GetLayerManager()
+	if lm == nil {
+		t.Fatal("GetLayerManager returned nil")
+	}
+
+	// LayerManagerが正しく動作することを確認
+	// PictureLayerSetを作成
+	pls := lm.GetOrCreatePictureLayerSet(1)
+	if pls == nil {
+		t.Fatal("GetOrCreatePictureLayerSet returned nil")
+	}
+
+	if pls.PicID != 1 {
+		t.Errorf("Expected PicID 1, got %d", pls.PicID)
+	}
+
+	// 同じPictureLayerSetを取得できることを確認
+	pls2 := lm.GetPictureLayerSet(1)
+	if pls2 != pls {
+		t.Error("GetPictureLayerSet returned different instance")
+	}
+
+	// LayerManagerのカウントを確認
+	if lm.GetPictureLayerSetCount() != 1 {
+		t.Errorf("Expected 1 PictureLayerSet, got %d", lm.GetPictureLayerSetCount())
+	}
+}
+
+// TestGraphicsSystem_CastManagerLayerManagerIntegration はCastManagerとLayerManagerの統合をテストする
+// 要件 8.2: CastManagerとLayerManagerを統合する
+func TestGraphicsSystem_CastManagerLayerManagerIntegration(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// CastManagerがLayerManagerと統合されていることを確認
+	lm := gs.GetLayerManager()
+	if lm == nil {
+		t.Fatal("LayerManager is nil")
+	}
+
+	// PutCastを呼び出してCastLayerが作成されることを確認
+	// 要件 2.1: PutCastが呼び出されたときに対応するCast_Layerを作成する
+	castID, err := gs.PutCast(0, 1, 10, 20, 0, 0, 32, 32)
+	if err != nil {
+		t.Fatalf("PutCast failed: %v", err)
+	}
+
+	// CastLayerが作成されていることを確認
+	pls := lm.GetPictureLayerSet(0)
+	if pls == nil {
+		t.Fatal("PictureLayerSet not created")
+	}
+
+	castLayer := pls.GetCastLayer(castID)
+	if castLayer == nil {
+		t.Fatal("CastLayer not created")
+	}
+
+	// CastLayerの位置を確認
+	x, y := castLayer.GetPosition()
+	if x != 10 || y != 20 {
+		t.Errorf("Expected position (10, 20), got (%d, %d)", x, y)
+	}
+
+	// MoveCastを呼び出してCastLayerが更新されることを確認
+	// 要件 2.2: MoveCastが呼び出されたときに対応するCast_Layerの位置を更新する
+	err = gs.MoveCast(castID, 100, 200)
+	if err != nil {
+		t.Fatalf("MoveCast failed: %v", err)
+	}
+
+	x, y = castLayer.GetPosition()
+	if x != 100 || y != 200 {
+		t.Errorf("Expected position (100, 200), got (%d, %d)", x, y)
+	}
+
+	// DelCastを呼び出してCastLayerが削除されることを確認
+	// 要件 2.3: DelCastが呼び出されたときに対応するCast_Layerを削除する
+	err = gs.DelCast(castID)
+	if err != nil {
+		t.Fatalf("DelCast failed: %v", err)
+	}
+
+	if pls.GetCastLayer(castID) != nil {
+		t.Error("CastLayer should be deleted")
 	}
 }

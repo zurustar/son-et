@@ -1,6 +1,7 @@
 package graphics
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/leanovate/gopter"
@@ -340,6 +341,260 @@ func TestProperty5_WindowDeletionCascade(t *testing.T) {
 			return len(windows) == 0
 		},
 		gen.IntRange(1, 64),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: missing-builtin-functions, Property 3: CapTitle 1引数パターンで全ウィンドウ更新
+// **Validates: Requirements 3.1**
+func TestProperty3_CapTitleAllWindowsUpdate(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("CapTitleAll updates all windows to the same caption", prop.ForAll(
+		func(windowCount int, title string) bool {
+			if windowCount <= 0 || windowCount > 10 {
+				return true
+			}
+
+			wm := NewWindowManager()
+
+			// Open multiple windows with different initial captions
+			windowIDs := make([]int, windowCount)
+			for i := 0; i < windowCount; i++ {
+				id, err := wm.OpenWin(i, WithCaption(fmt.Sprintf("Initial Caption %d", i)))
+				if err != nil {
+					return false
+				}
+				windowIDs[i] = id
+			}
+
+			// Call CapTitleAll with the new title
+			wm.CapTitleAll(title)
+
+			// Verify all windows have the same caption
+			for _, winID := range windowIDs {
+				win, err := wm.GetWin(winID)
+				if err != nil {
+					return false
+				}
+				if win.Caption != title {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(1, 10),
+		gen.AnyString(),
+	))
+
+	properties.Property("CapTitleAll with empty string clears all captions", prop.ForAll(
+		func(windowCount int) bool {
+			if windowCount <= 0 || windowCount > 10 {
+				return true
+			}
+
+			wm := NewWindowManager()
+
+			// Open multiple windows with non-empty captions
+			windowIDs := make([]int, windowCount)
+			for i := 0; i < windowCount; i++ {
+				id, err := wm.OpenWin(i, WithCaption(fmt.Sprintf("Caption %d", i)))
+				if err != nil {
+					return false
+				}
+				windowIDs[i] = id
+			}
+
+			// Call CapTitleAll with empty string
+			wm.CapTitleAll("")
+
+			// Verify all windows have empty caption
+			for _, winID := range windowIDs {
+				win, err := wm.GetWin(winID)
+				if err != nil {
+					return false
+				}
+				if win.Caption != "" {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(1, 10),
+	))
+
+	properties.Property("CapTitleAll on empty window manager does not panic", prop.ForAll(
+		func(title string) bool {
+			wm := NewWindowManager()
+
+			// Call CapTitleAll with no windows (should not panic)
+			wm.CapTitleAll(title)
+
+			// Verify no windows exist
+			windows := wm.GetWindowsOrdered()
+			return len(windows) == 0
+		},
+		gen.AnyString(),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: missing-builtin-functions, Property 4: CapTitle 2引数パターンで特定ウィンドウのみ更新
+// **Validates: Requirements 3.3**
+func TestProperty4_CapTitleSpecificWindowUpdate(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("CapTitle updates only the specified window", prop.ForAll(
+		func(windowCount int, targetIndex int, newTitle string) bool {
+			if windowCount <= 0 || windowCount > 10 {
+				return true
+			}
+			// Ensure targetIndex is within bounds
+			targetIndex = targetIndex % windowCount
+
+			wm := NewWindowManager()
+
+			// Open multiple windows with unique initial captions
+			windowIDs := make([]int, windowCount)
+			initialCaptions := make([]string, windowCount)
+			for i := 0; i < windowCount; i++ {
+				caption := fmt.Sprintf("Initial Caption %d", i)
+				initialCaptions[i] = caption
+				id, err := wm.OpenWin(i, WithCaption(caption))
+				if err != nil {
+					return false
+				}
+				windowIDs[i] = id
+			}
+
+			// Update only the target window's caption
+			targetWinID := windowIDs[targetIndex]
+			err := wm.CapTitle(targetWinID, newTitle)
+			if err != nil {
+				return false
+			}
+
+			// Verify only the target window's caption changed
+			for i, winID := range windowIDs {
+				win, err := wm.GetWin(winID)
+				if err != nil {
+					return false
+				}
+
+				if i == targetIndex {
+					// Target window should have the new title
+					if win.Caption != newTitle {
+						return false
+					}
+				} else {
+					// Other windows should retain their original captions
+					if win.Caption != initialCaptions[i] {
+						return false
+					}
+				}
+			}
+
+			return true
+		},
+		gen.IntRange(1, 10),
+		gen.IntRange(0, 9),
+		gen.AnyString(),
+	))
+
+	properties.Property("CapTitle on non-existent window returns error", prop.ForAll(
+		func(windowCount int, invalidID int) bool {
+			if windowCount <= 0 || windowCount > 10 {
+				return true
+			}
+			// Ensure invalidID is outside the valid range
+			invalidID = windowCount + invalidID + 100
+
+			wm := NewWindowManager()
+
+			// Open some windows
+			for i := 0; i < windowCount; i++ {
+				_, err := wm.OpenWin(i)
+				if err != nil {
+					return false
+				}
+			}
+
+			// Try to set caption on non-existent window
+			err := wm.CapTitle(invalidID, "Test Title")
+			return err != nil
+		},
+		gen.IntRange(1, 10),
+		gen.IntRange(0, 100),
+	))
+
+	properties.Property("CapTitle preserves other window properties", prop.ForAll(
+		func(windowCount int, targetIndex int, newTitle string) bool {
+			if windowCount <= 0 || windowCount > 10 {
+				return true
+			}
+			// Ensure targetIndex is within bounds
+			targetIndex = targetIndex % windowCount
+
+			wm := NewWindowManager()
+
+			// Open multiple windows with various properties
+			windowIDs := make([]int, windowCount)
+			for i := 0; i < windowCount; i++ {
+				id, err := wm.OpenWin(i,
+					WithPosition(i*10, i*20),
+					WithSize(100+i, 200+i),
+					WithCaption(fmt.Sprintf("Caption %d", i)),
+				)
+				if err != nil {
+					return false
+				}
+				windowIDs[i] = id
+			}
+
+			// Store original properties of target window
+			targetWinID := windowIDs[targetIndex]
+			originalWin, err := wm.GetWin(targetWinID)
+			if err != nil {
+				return false
+			}
+			originalX := originalWin.X
+			originalY := originalWin.Y
+			originalWidth := originalWin.Width
+			originalHeight := originalWin.Height
+			originalPicID := originalWin.PicID
+
+			// Update only the caption
+			err = wm.CapTitle(targetWinID, newTitle)
+			if err != nil {
+				return false
+			}
+
+			// Verify other properties are preserved
+			updatedWin, err := wm.GetWin(targetWinID)
+			if err != nil {
+				return false
+			}
+
+			return updatedWin.X == originalX &&
+				updatedWin.Y == originalY &&
+				updatedWin.Width == originalWidth &&
+				updatedWin.Height == originalHeight &&
+				updatedWin.PicID == originalPicID &&
+				updatedWin.Caption == newTitle
+		},
+		gen.IntRange(1, 10),
+		gen.IntRange(0, 9),
+		gen.AnyString(),
 	))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))

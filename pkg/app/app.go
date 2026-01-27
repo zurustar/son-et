@@ -235,6 +235,9 @@ func (app *Application) runDesktop() error {
 	vmInstance.SetGraphicsSystem(graphicsSys)
 	app.log.Info("Graphics system initialized")
 
+	// ログレベルに基づいてデバッグオーバーレイを有効化
+	graphicsSys.SetDebugOverlayFromLogLevelString(app.config.LogLevel)
+
 	defer func() {
 		graphicsSys.Shutdown()
 		app.log.Info("Graphics system shut down")
@@ -244,6 +247,7 @@ func (app *Application) runDesktop() error {
 	game := window.NewGame(window.ModeDesktop, nil, app.config.Timeout)
 	game.SetGraphicsSystem(graphicsSys)
 	game.SetVMRunner(vmInstance)
+	game.SetEventPusher(vmInstance) // マウスイベントをVMに伝達
 
 	// VMを別ゴルーチンで実行
 	vmErrCh := make(chan error, 1)
@@ -254,8 +258,8 @@ func (app *Application) runDesktop() error {
 
 	// Ebitengineのゲームループを実行
 	app.log.Info("Starting Ebitengine game loop")
-	// skelton要件 3.2: ウィンドウサイズは 1280x720 ピクセル
-	ebiten.SetWindowSize(1280, 720)
+	// skelton要件 3.2: ウィンドウサイズは 1024x768 ピクセル
+	ebiten.SetWindowSize(1024, 768)
 	ebiten.SetWindowTitle("FILLY - son-et")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 
@@ -342,18 +346,38 @@ func (app *Application) runVM() error {
 	}
 
 	// グラフィックスシステムを初期化
-	graphicsSys := graphics.NewGraphicsSystem(
-		app.selectedTitle.Path,
-		graphics.WithLogger(app.log),
-	)
-	vmInstance.SetGraphicsSystem(graphicsSys)
-	app.log.Info("Graphics system initialized")
+	// 要件 10.4: ヘッドレスモードが有効のとき、描画操作をログに記録するのみで実際の描画を行わない
+	if app.config.Headless {
+		// ヘッドレスモード用のダミーGraphicsSystemを使用
+		headlessGS := graphics.NewHeadlessGraphicsSystem(
+			graphics.WithHeadlessLogger(app.log),
+			graphics.WithLogOperations(true),
+		)
+		vmInstance.SetGraphicsSystem(headlessGS)
+		app.log.Info("Headless graphics system initialized")
 
-	// クリーンアップを設定
-	defer func() {
-		graphicsSys.Shutdown()
-		app.log.Info("Graphics system shut down")
-	}()
+		defer func() {
+			headlessGS.Shutdown()
+			app.log.Info("Headless graphics system shut down")
+		}()
+	} else {
+		// 通常のGraphicsSystemを使用
+		graphicsSys := graphics.NewGraphicsSystem(
+			app.selectedTitle.Path,
+			graphics.WithLogger(app.log),
+		)
+		vmInstance.SetGraphicsSystem(graphicsSys)
+		app.log.Info("Graphics system initialized")
+
+		// ログレベルに基づいてデバッグオーバーレイを有効化
+		graphicsSys.SetDebugOverlayFromLogLevelString(app.config.LogLevel)
+
+		// クリーンアップを設定
+		defer func() {
+			graphicsSys.Shutdown()
+			app.log.Info("Graphics system shut down")
+		}()
+	}
 
 	// VMを実行
 	app.log.Info("Starting VM execution")
