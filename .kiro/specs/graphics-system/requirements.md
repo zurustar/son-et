@@ -20,6 +20,16 @@
 - **Transparent_Color**: 透明色として扱う色（通常は黒 0x000000）
 - **Drawing_Command_Queue**: メインスレッドで実行される描画コマンドのキュー
 - **Ebitengine**: Go言語用の2Dゲームエンジン。描画とオーディオを提供する
+- **Layer**: 描画要素を保持する単位。位置、サイズ、Z順序、可視性を持つ
+- **Layer_Manager**: レイヤーの作成、削除、合成を管理するコンポーネント
+- **Background_Layer**: 背景画像（OriginalImage）を保持するレイヤー
+- **Cast_Layer**: キャストを保持するレイヤー。透明色処理を含む
+- **Drawing_Layer**: MovePicで描画された内容を保持するレイヤー
+- **Text_Layer**: テキスト描画を保持するレイヤー
+- **Dirty_Flag**: レイヤーの変更を追跡するフラグ
+- **Composite_Buffer**: レイヤーを合成した結果を保持するバッファ
+- **Z_Order**: レイヤーの描画順序。大きいほど前面に表示される
+- **Visible_Region**: ウィンドウ内で実際に表示される領域
 
 ## 技術的制約
 
@@ -281,3 +291,100 @@ Ebitengineの描画APIはメインスレッドでのみ呼び出し可能です�
 15.6. THE System SHALL デバッグラベルの表示形式を以下とする：ウィンドウ `[W1]`、ピクチャー `P1`、キャスト `C1(P2)`
 15.7. WHEN ログレベルがDebug未満のとき、THE System SHALL デバッグオーバーレイを表示しない
 15.8. THE System SHALL デバッグオーバーレイの表示/非表示をログレベル設定で切り替え可能にする
+
+
+### 要件16: レイヤーベース描画システム
+
+**ユーザーストーリー:** 開発者として、描画要素をレイヤーとして管理したい。これにより、正しいZ順序で描画要素を合成でき、MovePicで描画された内容がキャストの下に隠れてしまう問題を解決できる。
+
+#### 受け入れ基準
+
+16.1. THE Layer_Manager SHALL 背景レイヤー（Background_Layer）を管理する
+16.2. THE Layer_Manager SHALL キャストレイヤー（Cast_Layer）をZ順序で管理する
+16.3. THE Layer_Manager SHALL 描画エントリ（Drawing_Entry）を管理する
+16.4. THE Layer_Manager SHALL テキストレイヤー（Text_Layer）を管理する
+16.5. WHEN レイヤーが追加されたとき THEN THE Layer_Manager SHALL 操作順序に基づいてZ順序を割り当てる
+16.6. THE Layer_Manager SHALL レイヤーを操作順序（Z順序）で合成する
+16.7. 後から実行された操作（MovePic、PutCast、TextWrite）は、先に実行された操作の上に表示される
+
+### 要件17: レイヤー管理
+
+**ユーザーストーリー:** 開発者として、レイヤーを動的に追加・削除・更新したい。これにより、ゲームの状態変化に応じて描画内容を変更できる。
+
+#### 受け入れ基準
+
+17.1. WHEN PutCastが呼び出されたとき THEN THE Layer_Manager SHALL 新しいCast_Layerを作成し、現在のZ順序カウンターを割り当てる
+17.2. WHEN MoveCastが呼び出されたとき THEN THE Layer_Manager SHALL 対応するCast_Layerの位置を更新する（Z順序は変更しない）
+17.3. WHEN DelCastが呼び出されたとき THEN THE Layer_Manager SHALL 対応するCast_Layerを削除する
+17.4. WHEN MovePicが呼び出されたとき THEN THE Layer_Manager SHALL 新しいDrawing_Entryを作成し、現在のZ順序カウンターを割り当てる
+17.5. WHEN TextWriteが呼び出されたとき THEN THE Layer_Manager SHALL 新しいText_Layerを作成し、現在のZ順序カウンターを割り当てる
+17.6. WHEN ウィンドウが閉じられたとき THEN THE Layer_Manager SHALL そのウィンドウに属するすべてのレイヤーを削除する
+17.7. すべての描画操作（MovePic、PutCast、TextWrite）は同じZ順序カウンターを共有し、操作のたびにカウンターが増加する
+
+### 要件18: ダーティフラグによる最適化
+
+**ユーザーストーリー:** 開発者として、変更があったレイヤーのみを再描画したい。これにより、描画パフォーマンスを向上できる。
+
+#### 受け入れ基準
+
+18.1. WHEN レイヤーの位置が変更されたとき THEN THE Layer_Manager SHALL そのレイヤーのDirty_Flagを設定する
+18.2. WHEN レイヤーの内容が変更されたとき THEN THE Layer_Manager SHALL そのレイヤーのDirty_Flagを設定する
+18.3. WHEN レイヤーの可視性が変更されたとき THEN THE Layer_Manager SHALL そのレイヤーのDirty_Flagを設定する
+18.4. WHEN 合成処理が完了したとき THEN THE Layer_Manager SHALL すべてのDirty_Flagをクリアする
+18.5. WHEN Dirty_Flagが設定されていないレイヤーがあるとき THEN THE Layer_Manager SHALL そのレイヤーのキャッシュを使用する
+
+### 要件19: 可視領域クリッピング
+
+**ユーザーストーリー:** 開発者として、ウィンドウ外のレイヤーを描画処理からスキップしたい。これにより、不要な描画処理を削減できる。
+
+#### 受け入れ基準
+
+19.1. WHEN レイヤーがウィンドウの可視領域外にあるとき THEN THE Layer_Manager SHALL そのレイヤーの描画をスキップする
+19.2. WHEN レイヤーが部分的に可視領域内にあるとき THEN THE Layer_Manager SHALL 可視部分のみを描画する
+19.3. THE Layer_Manager SHALL 各レイヤーの境界ボックスを計算する
+19.4. THE Layer_Manager SHALL 可視領域との交差判定を行う
+
+### 要件20: レイヤーキャッシュ
+
+**ユーザーストーリー:** 開発者として、変更がないレイヤーのキャッシュを使用したい。これにより、再描画のコストを削減できる。
+
+#### 受け入れ基準
+
+20.1. THE Layer_Manager SHALL 各レイヤーの描画結果をキャッシュする
+20.2. WHEN レイヤーの内容が変更されていないとき THEN THE Layer_Manager SHALL キャッシュされた画像を使用する
+20.3. WHEN レイヤーの内容が変更されたとき THEN THE Layer_Manager SHALL キャッシュを無効化する
+20.4. THE Layer_Manager SHALL テキストレイヤーのキャッシュを特に重視する（作成コストが高いため）
+
+### 要件21: 部分更新
+
+**ユーザーストーリー:** 開発者として、変更があった領域のみを再合成したい。これにより、全画面再描画を避けられる。
+
+#### 受け入れ基準
+
+21.1. THE Layer_Manager SHALL 変更があった領域（ダーティ領域）を追跡する
+21.2. WHEN 合成処理を行うとき THEN THE Layer_Manager SHALL ダーティ領域のみを再合成する
+21.3. WHEN 複数のダーティ領域があるとき THEN THE Layer_Manager SHALL それらを統合して処理する
+21.4. THE Layer_Manager SHALL ダーティ領域の境界ボックスを計算する
+
+### 要件22: 上書きスキップ
+
+**ユーザーストーリー:** 開発者として、完全に覆われたレイヤーの描画をスキップしたい。これにより、不要な描画処理を削減できる。
+
+#### 受け入れ基準
+
+22.1. WHEN 不透明なレイヤーが別のレイヤーを完全に覆っているとき THEN THE Layer_Manager SHALL 覆われたレイヤーの描画をスキップする
+22.2. THE Layer_Manager SHALL 各レイヤーの不透明度を追跡する
+22.3. THE Layer_Manager SHALL レイヤー間の重なり判定を行う
+
+### 要件23: 操作順序に基づくZ順序管理
+
+**ユーザーストーリー:** 開発者として、FILLYの「焼き付け」方式と同等の描画結果を得たい。後から実行した描画操作が前面に表示される。
+
+#### 受け入れ基準
+
+23.1. THE Layer_Manager SHALL すべての描画操作（MovePic、PutCast、TextWrite）に対して共通のZ順序カウンターを使用する
+23.2. WHEN 描画操作が実行されたとき THEN THE Layer_Manager SHALL 現在のZ順序カウンターを割り当て、カウンターを増加させる
+23.3. WHEN MovePicがPutCastの後に呼び出されたとき THEN MovePicの内容はCastの上に表示される
+23.4. WHEN PutCastがMovePicの後に呼び出されたとき THEN CastはMovePicの内容の上に表示される
+23.5. THE Layer_Manager SHALL 合成時にすべてのレイヤーをZ順序でソートして描画する
+23.6. 例: MovePic(Z=1) → PutCast(Z=2) → MovePic(Z=3) の場合、Z=3のMovePicがZ=2のCastの上に表示される
