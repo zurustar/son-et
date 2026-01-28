@@ -10,30 +10,13 @@ import (
 
 // TestNewDrawingLayer は新しい描画レイヤーの作成をテストする
 func TestNewDrawingLayer(t *testing.T) {
-	// ゼロサイズでの作成
+	// ゼロサイズでの作成（要件 10.3: nilを返す）
 	t.Run("zero size", func(t *testing.T) {
 		layer := NewDrawingLayer(1, 100, 0, 0)
 
-		if layer.GetID() != 1 {
-			t.Errorf("expected ID 1, got %d", layer.GetID())
-		}
-		if layer.GetPicID() != 100 {
-			t.Errorf("expected PicID 100, got %d", layer.GetPicID())
-		}
-		if layer.GetZOrder() != ZOrderDrawing {
-			t.Errorf("expected ZOrder %d, got %d", ZOrderDrawing, layer.GetZOrder())
-		}
-		if !layer.IsVisible() {
-			t.Error("expected layer to be visible")
-		}
-		if !layer.IsDirty() {
-			t.Error("expected layer to be dirty on creation")
-		}
-		if layer.GetImage() != nil {
-			t.Error("expected nil image for zero size")
-		}
-		if !layer.GetBounds().Empty() {
-			t.Errorf("expected empty bounds, got %v", layer.GetBounds())
+		// 要件 10.3: レイヤー作成に失敗したときにnilを返す
+		if layer != nil {
+			t.Error("expected nil for zero size layer")
 		}
 	})
 
@@ -41,6 +24,9 @@ func TestNewDrawingLayer(t *testing.T) {
 	t.Run("with valid size", func(t *testing.T) {
 		layer := NewDrawingLayer(2, 200, 640, 480)
 
+		if layer == nil {
+			t.Fatal("expected non-nil layer for valid size")
+		}
 		if layer.GetID() != 2 {
 			t.Errorf("expected ID 2, got %d", layer.GetID())
 		}
@@ -60,15 +46,13 @@ func TestNewDrawingLayer(t *testing.T) {
 		}
 	})
 
-	// 負のサイズでの作成
+	// 負のサイズでの作成（要件 10.3: nilを返す）
 	t.Run("negative size", func(t *testing.T) {
 		layer := NewDrawingLayer(3, 300, -100, -100)
 
-		if layer.GetImage() != nil {
-			t.Error("expected nil image for negative size")
-		}
-		if !layer.GetBounds().Empty() {
-			t.Errorf("expected empty bounds for negative size, got %v", layer.GetBounds())
+		// 要件 10.3: レイヤー作成に失敗したときにnilを返す
+		if layer != nil {
+			t.Error("expected nil for negative size layer")
 		}
 	})
 }
@@ -244,14 +228,19 @@ func TestDrawingLayerClear(t *testing.T) {
 		t.Error("expected layer to be dirty after Clear")
 	}
 
-	// nilイメージの場合はパニックしないことを確認
+	// nilレイヤーの場合はnilが返されることを確認（要件 10.3）
 	nilLayer := NewDrawingLayer(2, 200, 0, 0)
-	nilLayer.Clear() // パニックしないことを確認
+	if nilLayer != nil {
+		t.Error("expected nil for zero size layer")
+	}
 }
 
 // TestDrawingLayerDrawImage は画像描画機能をテストする
 func TestDrawingLayerDrawImage(t *testing.T) {
 	layer := NewDrawingLayer(1, 100, 200, 200)
+	if layer == nil {
+		t.Fatal("expected non-nil layer for valid size")
+	}
 
 	// ソース画像を作成
 	srcImg := ebiten.NewImage(50, 50)
@@ -274,14 +263,19 @@ func TestDrawingLayerDrawImage(t *testing.T) {
 		t.Error("expected layer to not be dirty after DrawImage with nil source")
 	}
 
-	// nilレイヤー画像の場合はパニックしないことを確認
+	// nilレイヤーの場合はnilが返されることを確認（要件 10.3）
 	nilLayer := NewDrawingLayer(2, 200, 0, 0)
-	nilLayer.DrawImage(srcImg, 0, 0) // パニックしないことを確認
+	if nilLayer != nil {
+		t.Error("expected nil for zero size layer")
+	}
 }
 
 // TestDrawingLayerDrawSubImage は部分画像描画機能をテストする
 func TestDrawingLayerDrawSubImage(t *testing.T) {
 	layer := NewDrawingLayer(1, 100, 200, 200)
+	if layer == nil {
+		t.Fatal("expected non-nil layer for valid size")
+	}
 
 	// ソース画像を作成
 	srcImg := ebiten.NewImage(100, 100)
@@ -304,9 +298,11 @@ func TestDrawingLayerDrawSubImage(t *testing.T) {
 		t.Error("expected layer to not be dirty after DrawSubImage with nil source")
 	}
 
-	// nilレイヤー画像の場合はパニックしないことを確認
+	// nilレイヤーの場合はnilが返されることを確認（要件 10.3）
 	nilLayer := NewDrawingLayer(2, 200, 0, 0)
-	nilLayer.DrawSubImage(srcImg, 0, 0, 0, 0, 10, 10) // パニックしないことを確認
+	if nilLayer != nil {
+		t.Error("expected nil for zero size layer")
+	}
 }
 
 // TestDrawingLayerResize はリサイズ機能をテストする

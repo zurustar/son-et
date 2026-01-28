@@ -44,13 +44,13 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 			t.Fatalf("PutCast failed: %v", err)
 		}
 
-		// LayerManagerにCastLayerが作成されたことを確認
-		pls := lm.GetPictureLayerSet(winID)
-		if pls == nil {
-			t.Fatal("expected PictureLayerSet to be created")
+		// LayerManagerにCastLayerが作成されたことを確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
 		}
 
-		castLayer := pls.GetCastLayer(castID)
+		castLayer := wls.GetCastLayer(castID)
 		if castLayer == nil {
 			t.Fatal("expected CastLayer to be created via GraphicsSystem.PutCast")
 		}
@@ -80,9 +80,15 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 			t.Fatalf("MoveCastWithOptions failed: %v", err)
 		}
 
-		// LayerManagerのCastLayerが更新されたことを確認
-		pls := lm.GetPictureLayerSet(winID)
-		castLayer := pls.GetCastLayer(castID)
+		// LayerManagerのCastLayerが更新されたことを確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		castLayer := wls.GetCastLayer(castID)
+		if castLayer == nil {
+			t.Fatal("expected CastLayer to exist")
+		}
 
 		x, y := castLayer.GetPosition()
 		if x != 100 || y != 200 {
@@ -102,9 +108,12 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 		// キャストを配置
 		castID, _ := gs.PutCast(winID, picID, 10, 20, 0, 0, 32, 32)
 
-		// CastLayerが存在することを確認
-		pls := lm.GetPictureLayerSet(winID)
-		if pls.GetCastLayer(castID) == nil {
+		// CastLayerが存在することを確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		if wls.GetCastLayer(castID) == nil {
 			t.Fatal("expected CastLayer to exist before deletion")
 		}
 
@@ -115,7 +124,7 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 		}
 
 		// LayerManagerからCastLayerが削除されたことを確認
-		if pls.GetCastLayer(castID) != nil {
+		if wls.GetCastLayer(castID) != nil {
 			t.Error("expected CastLayer to be removed after deletion")
 		}
 	})
@@ -163,10 +172,13 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 		gs.PutCast(winID, picID, 10, 10, 0, 0, 32, 32)
 		gs.PutCast(winID, picID, 20, 20, 0, 0, 32, 32)
 
-		// CastLayerが存在することを確認
-		pls := lm.GetPictureLayerSet(winID)
-		if pls.GetCastLayerCount() != 2 {
-			t.Errorf("expected 2 CastLayers before close, got %d", pls.GetCastLayerCount())
+		// CastLayerが存在することを確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		if wls.GetCastLayerCount() != 2 {
+			t.Errorf("expected 2 CastLayers before close, got %d", wls.GetCastLayerCount())
 		}
 
 		// ウィンドウを閉じる
@@ -175,9 +187,10 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 			t.Fatalf("CloseWin failed: %v", err)
 		}
 
-		// LayerManagerからCastLayerが削除されたことを確認
-		if pls.GetCastLayerCount() != 0 {
-			t.Errorf("expected 0 CastLayers after close, got %d", pls.GetCastLayerCount())
+		// WindowLayerSetが削除されたことを確認
+		wlsAfter := lm.GetWindowLayerSet(winID)
+		if wlsAfter != nil {
+			t.Error("expected WindowLayerSet to be deleted after CloseWin")
 		}
 	})
 
@@ -197,9 +210,12 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 			t.Fatalf("PutCastWithTransColor failed: %v", err)
 		}
 
-		// LayerManagerにCastLayerが作成されたことを確認
-		pls := lm.GetPictureLayerSet(winID)
-		castLayer := pls.GetCastLayer(castID)
+		// LayerManagerにCastLayerが作成されたことを確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		castLayer := wls.GetCastLayer(castID)
 		if castLayer == nil {
 			t.Fatal("expected CastLayer to be created")
 		}
@@ -247,10 +263,17 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 		// テキストを描画
 		gs.TextWrite(picID, 10, 20, "Hello")
 
-		// Z順序を確認
-		pls := lm.GetPictureLayerSet(winID)
-		castLayer1 := pls.GetCastLayer(castID1)
-		castLayer2 := pls.GetCastLayer(castID2)
+		// Z順序を確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		castLayer1 := wls.GetCastLayer(castID1)
+		castLayer2 := wls.GetCastLayer(castID2)
+
+		if castLayer1 == nil || castLayer2 == nil {
+			t.Fatal("expected both CastLayers to exist")
+		}
 
 		// 操作順序に基づくZ順序: 最初のキャストはZ=1から開始
 		// 要件 10.1, 10.2: 操作順序に基づくZ順序
@@ -291,7 +314,7 @@ func TestVMGraphicsSystemLayerManagerIntegration(t *testing.T) {
 // TestGraphicsSystemLayerManagerIntegration_Composite は合成処理の統合テスト
 // 要件 8.1: GraphicsSystemへのLayerManager統合
 func TestGraphicsSystemLayerManagerIntegration_Composite(t *testing.T) {
-	t.Run("LayerManager PictureLayerSet is created when cast is placed", func(t *testing.T) {
+	t.Run("LayerManager WindowLayerSet is created when cast is placed", func(t *testing.T) {
 		gs := NewGraphicsSystem("")
 		lm := gs.GetLayerManager()
 
@@ -307,25 +330,25 @@ func TestGraphicsSystemLayerManagerIntegration_Composite(t *testing.T) {
 			t.Fatalf("OpenWin failed: %v", err)
 		}
 
-		// キャストを配置（これによりPictureLayerSetが作成される）
+		// キャストを配置（これによりWindowLayerSetにCastLayerが追加される）
 		_, err = gs.PutCast(winID, picID, 10, 10, 0, 0, 32, 32)
 		if err != nil {
 			t.Fatalf("PutCast failed: %v", err)
 		}
 
-		// PictureLayerSetが作成されていることを確認
-		pls := lm.GetPictureLayerSet(winID)
-		if pls == nil {
-			t.Fatal("expected PictureLayerSet to be created for window")
+		// WindowLayerSetが作成されていることを確認
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created for window")
 		}
 
-		// PicIDが正しいことを確認
-		if pls.PicID != winID {
-			t.Errorf("expected PicID %d, got %d", winID, pls.PicID)
+		// WinIDが正しいことを確認
+		if wls.GetWinID() != winID {
+			t.Errorf("expected WinID %d, got %d", winID, wls.GetWinID())
 		}
 	})
 
-	t.Run("Multiple windows create separate PictureLayerSets", func(t *testing.T) {
+	t.Run("Multiple windows create separate WindowLayerSets", func(t *testing.T) {
 		gs := NewGraphicsSystem("")
 		lm := gs.GetLayerManager()
 
@@ -336,24 +359,24 @@ func TestGraphicsSystemLayerManagerIntegration_Composite(t *testing.T) {
 		winID1, _ := gs.OpenWin(picID1)
 		winID2, _ := gs.OpenWin(picID2)
 
-		// キャストを配置（これによりPictureLayerSetが作成される）
+		// キャストを配置（これによりWindowLayerSetにCastLayerが追加される）
 		gs.PutCast(winID1, picID1, 10, 10, 0, 0, 32, 32)
 		gs.PutCast(winID2, picID2, 10, 10, 0, 0, 32, 32)
 
-		// 各ウィンドウに対応するPictureLayerSetが作成されていることを確認
-		pls1 := lm.GetPictureLayerSet(winID1)
-		pls2 := lm.GetPictureLayerSet(winID2)
+		// 各ウィンドウに対応するWindowLayerSetが作成されていることを確認
+		wls1 := lm.GetWindowLayerSet(winID1)
+		wls2 := lm.GetWindowLayerSet(winID2)
 
-		if pls1 == nil {
-			t.Fatal("expected PictureLayerSet for window 1")
+		if wls1 == nil {
+			t.Fatal("expected WindowLayerSet for window 1")
 		}
-		if pls2 == nil {
-			t.Fatal("expected PictureLayerSet for window 2")
+		if wls2 == nil {
+			t.Fatal("expected WindowLayerSet for window 2")
 		}
 
-		// 異なるPictureLayerSetであることを確認
-		if pls1 == pls2 {
-			t.Error("expected different PictureLayerSets for different windows")
+		// 異なるWindowLayerSetであることを確認
+		if wls1 == wls2 {
+			t.Error("expected different WindowLayerSets for different windows")
 		}
 	})
 }
@@ -369,24 +392,24 @@ func TestCastManagerLayerManagerIntegration_FullChain(t *testing.T) {
 		picID, _ := gs.CreatePic(100, 100)
 		winID, _ := gs.OpenWin(picID)
 
-		// キャストを配置（これによりPictureLayerSetが作成される）
+		// キャストを配置（これによりWindowLayerSetにCastLayerが追加される）
 		castID, _ := gs.PutCast(winID, picID, 10, 20, 0, 0, 32, 32)
 
-		// PictureLayerSetを取得
-		pls := lm.GetPictureLayerSet(winID)
-		if pls == nil {
-			t.Fatal("expected PictureLayerSet to be created")
+		// WindowLayerSetを取得
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
 		}
 
 		// ダーティフラグをクリア
-		pls.ClearAllDirtyFlags()
+		wls.ClearDirty()
 
 		// キャストを移動（ダーティフラグが設定されるはず）
 		gs.MoveCastWithOptions(castID, WithCastPosition(50, 60))
 
 		// ダーティフラグが設定されていることを確認
-		if !pls.IsDirty() {
-			t.Error("expected PictureLayerSet to be dirty after MoveCast")
+		if !wls.IsDirty() {
+			t.Error("expected WindowLayerSet to be dirty after MoveCast")
 		}
 	})
 
@@ -405,8 +428,14 @@ func TestCastManagerLayerManagerIntegration_FullChain(t *testing.T) {
 		gs.MoveCastWithOptions(castID, WithCastSource(10, 10, 64, 64))
 
 		// LayerManagerのCastLayerが更新されたことを確認
-		pls := lm.GetPictureLayerSet(winID)
-		castLayer := pls.GetCastLayer(castID)
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		castLayer := wls.GetCastLayer(castID)
+		if castLayer == nil {
+			t.Fatal("expected CastLayer to exist")
+		}
 
 		srcX, srcY, srcW, srcH := castLayer.GetSourceRect()
 		if srcX != 10 || srcY != 10 || srcW != 64 || srcH != 64 {
@@ -429,10 +458,17 @@ func TestCastManagerLayerManagerIntegration_FullChain(t *testing.T) {
 		castID3, _ := gs.PutCast(winID, picID, 30, 30, 0, 0, 32, 32)
 
 		// Z順序を確認
-		pls := lm.GetPictureLayerSet(winID)
-		cast1 := pls.GetCastLayer(castID1)
-		cast2 := pls.GetCastLayer(castID2)
-		cast3 := pls.GetCastLayer(castID3)
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+		cast1 := wls.GetCastLayer(castID1)
+		cast2 := wls.GetCastLayer(castID2)
+		cast3 := wls.GetCastLayer(castID3)
+
+		if cast1 == nil || cast2 == nil || cast3 == nil {
+			t.Fatal("expected all CastLayers to exist")
+		}
 
 		// 後から作成したキャストほどZ順序が大きい
 		if cast1.GetZOrder() >= cast2.GetZOrder() {
@@ -555,19 +591,19 @@ func TestVMIntegration_CompleteRenderingPipeline(t *testing.T) {
 			t.Fatalf("PutCast 2 failed: %v", err)
 		}
 
-		// 4. LayerManagerの状態を確認
-		pls := lm.GetPictureLayerSet(winID)
-		if pls == nil {
-			t.Fatal("expected PictureLayerSet to be created")
+		// 4. LayerManagerの状態を確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
 		}
 
 		// キャストが正しく登録されていることを確認
-		if pls.GetCastLayerCount() != 2 {
-			t.Errorf("expected 2 casts, got %d", pls.GetCastLayerCount())
+		if wls.GetCastLayerCount() != 2 {
+			t.Errorf("expected 2 casts, got %d", wls.GetCastLayerCount())
 		}
 
-		cast1 := pls.GetCastLayer(castID1)
-		cast2 := pls.GetCastLayer(castID2)
+		cast1 := wls.GetCastLayer(castID1)
+		cast2 := wls.GetCastLayer(castID2)
 
 		if cast1 == nil || cast2 == nil {
 			t.Fatal("expected both casts to be registered")
@@ -592,11 +628,11 @@ func TestVMIntegration_CompleteRenderingPipeline(t *testing.T) {
 		}
 
 		// 削除が反映されていることを確認
-		if pls.GetCastLayerCount() != 1 {
-			t.Errorf("expected 1 cast after deletion, got %d", pls.GetCastLayerCount())
+		if wls.GetCastLayerCount() != 1 {
+			t.Errorf("expected 1 cast after deletion, got %d", wls.GetCastLayerCount())
 		}
 
-		if pls.GetCastLayer(castID1) != nil {
+		if wls.GetCastLayer(castID1) != nil {
 			t.Error("expected cast1 to be removed")
 		}
 
@@ -606,9 +642,10 @@ func TestVMIntegration_CompleteRenderingPipeline(t *testing.T) {
 			t.Fatalf("CloseWin failed: %v", err)
 		}
 
-		// すべてのキャストが削除されていることを確認
-		if pls.GetCastLayerCount() != 0 {
-			t.Errorf("expected 0 casts after window close, got %d", pls.GetCastLayerCount())
+		// WindowLayerSetが削除されたことを確認
+		wlsAfter := lm.GetWindowLayerSet(winID)
+		if wlsAfter != nil {
+			t.Error("expected WindowLayerSet to be deleted after CloseWin")
 		}
 	})
 
@@ -672,13 +709,17 @@ func TestVMIntegration_CompleteRenderingPipeline(t *testing.T) {
 		gs.PutCast(winID, picID, 20, 20, 0, 0, 32, 32)
 		gs.TextWrite(picID, 60, 60, "Text 2")
 
-		// LayerManagerの状態を確認
-		plsWin := lm.GetPictureLayerSet(winID)
+		// LayerManagerの状態を確認（WindowLayerSetを使用）
+		wls := lm.GetWindowLayerSet(winID)
 		plsPic := lm.GetPictureLayerSet(picID)
 
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+
 		// キャストは2つ
-		if plsWin.GetCastLayerCount() != 2 {
-			t.Errorf("expected 2 casts, got %d", plsWin.GetCastLayerCount())
+		if wls.GetCastLayerCount() != 2 {
+			t.Errorf("expected 2 casts, got %d", wls.GetCastLayerCount())
 		}
 
 		// テキストは2つ
@@ -686,11 +727,12 @@ func TestVMIntegration_CompleteRenderingPipeline(t *testing.T) {
 			t.Errorf("expected 2 texts, got %d", plsPic.GetTextLayerCount())
 		}
 
-		// 操作順序に基づくZ順序: キャストとテキストは異なるPictureLayerSetに追加されるため、
-		// 各PictureLayerSet内でのZ順序の増加を確認
+		// 操作順序に基づくZ順序: キャストとテキストは異なるLayerSetに追加されるため、
+		// 各LayerSet内でのZ順序の増加を確認
 		// キャスト内のZ順序が増加していることを確認
-		for i := 0; i < len(plsWin.Casts)-1; i++ {
-			if plsWin.Casts[i].GetZOrder() >= plsWin.Casts[i+1].GetZOrder() {
+		casts := wls.GetAllCastLayers()
+		for i := 0; i < len(casts)-1; i++ {
+			if casts[i].GetZOrder() >= casts[i+1].GetZOrder() {
 				t.Error("cast Z-order should increase with addition order")
 			}
 		}
@@ -707,23 +749,23 @@ func TestVMIntegration_CompleteRenderingPipeline(t *testing.T) {
 // TestLayerManagerIntegration_DirtyFlagPropagation はダーティフラグの伝播をテスト
 // 要件 8.1, 8.2, 8.3, 8.4: 統合時のダーティフラグ管理
 func TestLayerManagerIntegration_DirtyFlagPropagation(t *testing.T) {
-	t.Run("PutCast creates PictureLayerSet and sets dirty flag", func(t *testing.T) {
+	t.Run("PutCast creates WindowLayerSet and sets dirty flag", func(t *testing.T) {
 		gs := NewGraphicsSystem("")
 		lm := gs.GetLayerManager()
 
 		picID, _ := gs.CreatePic(100, 100)
 		winID, _ := gs.OpenWin(picID)
 
-		// キャストを配置（PictureLayerSetが作成される）
+		// キャストを配置（WindowLayerSetにCastLayerが追加される）
 		gs.PutCast(winID, picID, 10, 10, 0, 0, 32, 32)
 
-		pls := lm.GetPictureLayerSet(winID)
-		if pls == nil {
-			t.Fatal("expected PictureLayerSet to be created")
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
 		}
 
 		// ダーティフラグが設定されていることを確認
-		if !pls.IsDirty() {
+		if !wls.IsDirty() {
 			t.Error("expected dirty flag to be set after PutCast")
 		}
 	})
@@ -736,14 +778,14 @@ func TestLayerManagerIntegration_DirtyFlagPropagation(t *testing.T) {
 		winID, _ := gs.OpenWin(picID)
 		castID, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 32, 32)
 
-		pls := lm.GetPictureLayerSet(winID)
-		pls.ClearAllDirtyFlags()
+		wls := lm.GetWindowLayerSet(winID)
+		wls.ClearDirty()
 
 		// キャストを移動
 		gs.MoveCastWithOptions(castID, WithCastPosition(50, 50))
 
 		// ダーティフラグが設定されていることを確認
-		if !pls.IsDirty() {
+		if !wls.IsDirty() {
 			t.Error("expected dirty flag to be set after MoveCast")
 		}
 	})
@@ -756,14 +798,14 @@ func TestLayerManagerIntegration_DirtyFlagPropagation(t *testing.T) {
 		winID, _ := gs.OpenWin(picID)
 		castID, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 32, 32)
 
-		pls := lm.GetPictureLayerSet(winID)
-		pls.ClearAllDirtyFlags()
+		wls := lm.GetWindowLayerSet(winID)
+		wls.ClearDirty()
 
 		// キャストを削除
 		gs.DelCast(castID)
 
 		// ダーティフラグが設定されていることを確認
-		if !pls.IsDirty() {
+		if !wls.IsDirty() {
 			t.Error("expected dirty flag to be set after DelCast")
 		}
 	})
@@ -806,6 +848,169 @@ func TestLayerManagerIntegration_DirtyFlagPropagation(t *testing.T) {
 		// ダーティフラグが設定されていることを確認
 		if !pls.IsDirty() {
 			t.Error("expected dirty flag to be set after second TextWrite")
+		}
+	})
+}
+
+// TestOpenWinCreatesWindowLayerSet はOpenWinがWindowLayerSetを作成することをテスト
+// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
+func TestOpenWinCreatesWindowLayerSet(t *testing.T) {
+	t.Run("OpenWin creates WindowLayerSet", func(t *testing.T) {
+		gs := NewGraphicsSystem("")
+		lm := gs.GetLayerManager()
+
+		// ピクチャーを作成
+		picID, err := gs.CreatePic(200, 150)
+		if err != nil {
+			t.Fatalf("CreatePic failed: %v", err)
+		}
+
+		// ウィンドウを開く
+		winID, err := gs.OpenWin(picID)
+		if err != nil {
+			t.Fatalf("OpenWin failed: %v", err)
+		}
+
+		// WindowLayerSetが作成されていることを確認
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created when window is opened")
+		}
+
+		// WindowLayerSetのウィンドウIDが正しいことを確認
+		if wls.GetWinID() != winID {
+			t.Errorf("expected WinID %d, got %d", winID, wls.GetWinID())
+		}
+	})
+
+	t.Run("OpenWin creates WindowLayerSet with correct size from picture", func(t *testing.T) {
+		gs := NewGraphicsSystem("")
+		lm := gs.GetLayerManager()
+
+		// ピクチャーを作成
+		picID, err := gs.CreatePic(320, 240)
+		if err != nil {
+			t.Fatalf("CreatePic failed: %v", err)
+		}
+
+		// ウィンドウを開く（サイズ指定なし）
+		winID, err := gs.OpenWin(picID)
+		if err != nil {
+			t.Fatalf("OpenWin failed: %v", err)
+		}
+
+		// WindowLayerSetが作成されていることを確認
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+
+		// サイズがピクチャーのサイズと一致することを確認
+		width, height := wls.GetSize()
+		if width != 320 || height != 240 {
+			t.Errorf("expected size (320, 240), got (%d, %d)", width, height)
+		}
+	})
+
+	t.Run("OpenWin creates WindowLayerSet with specified size", func(t *testing.T) {
+		gs := NewGraphicsSystem("")
+		lm := gs.GetLayerManager()
+
+		// ピクチャーを作成
+		picID, err := gs.CreatePic(640, 480)
+		if err != nil {
+			t.Fatalf("CreatePic failed: %v", err)
+		}
+
+		// ウィンドウを開く（サイズ指定あり）
+		winID, err := gs.OpenWin(picID, 0, 0, 400, 300, 0, 0, 0)
+		if err != nil {
+			t.Fatalf("OpenWin failed: %v", err)
+		}
+
+		// WindowLayerSetが作成されていることを確認
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+
+		// サイズが指定したサイズと一致することを確認
+		width, height := wls.GetSize()
+		if width != 400 || height != 300 {
+			t.Errorf("expected size (400, 300), got (%d, %d)", width, height)
+		}
+	})
+
+	t.Run("OpenWin creates WindowLayerSet with background color", func(t *testing.T) {
+		gs := NewGraphicsSystem("")
+		lm := gs.GetLayerManager()
+
+		// ピクチャーを作成
+		picID, err := gs.CreatePic(200, 200)
+		if err != nil {
+			t.Fatalf("CreatePic failed: %v", err)
+		}
+
+		// ウィンドウを開く（背景色指定あり: 0xFF0000 = 赤）
+		winID, err := gs.OpenWin(picID, 0, 0, 200, 200, 0, 0, 0xFF0000)
+		if err != nil {
+			t.Fatalf("OpenWin failed: %v", err)
+		}
+
+		// WindowLayerSetが作成されていることを確認
+		wls := lm.GetWindowLayerSet(winID)
+		if wls == nil {
+			t.Fatal("expected WindowLayerSet to be created")
+		}
+
+		// 背景色が設定されていることを確認
+		bgColor := wls.GetBgColor()
+		if bgColor == nil {
+			t.Fatal("expected background color to be set")
+		}
+	})
+
+	t.Run("Multiple OpenWin creates separate WindowLayerSets", func(t *testing.T) {
+		gs := NewGraphicsSystem("")
+		lm := gs.GetLayerManager()
+
+		// 複数のピクチャーを作成
+		picID1, _ := gs.CreatePic(100, 100)
+		picID2, _ := gs.CreatePic(200, 200)
+
+		// 複数のウィンドウを開く
+		winID1, err := gs.OpenWin(picID1)
+		if err != nil {
+			t.Fatalf("OpenWin 1 failed: %v", err)
+		}
+
+		winID2, err := gs.OpenWin(picID2)
+		if err != nil {
+			t.Fatalf("OpenWin 2 failed: %v", err)
+		}
+
+		// 各ウィンドウに対応するWindowLayerSetが作成されていることを確認
+		wls1 := lm.GetWindowLayerSet(winID1)
+		wls2 := lm.GetWindowLayerSet(winID2)
+
+		if wls1 == nil {
+			t.Fatal("expected WindowLayerSet for window 1")
+		}
+		if wls2 == nil {
+			t.Fatal("expected WindowLayerSet for window 2")
+		}
+
+		// 異なるWindowLayerSetであることを確認
+		if wls1 == wls2 {
+			t.Error("expected different WindowLayerSets for different windows")
+		}
+
+		// 各WindowLayerSetのウィンドウIDが正しいことを確認
+		if wls1.GetWinID() != winID1 {
+			t.Errorf("expected WinID %d for wls1, got %d", winID1, wls1.GetWinID())
+		}
+		if wls2.GetWinID() != winID2 {
+			t.Errorf("expected WinID %d for wls2, got %d", winID2, wls2.GetWinID())
 		}
 	})
 }

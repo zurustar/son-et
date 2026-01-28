@@ -1,7 +1,9 @@
 package graphics
 
 import (
+	"fmt"
 	"image"
+	"image/color"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -21,7 +23,12 @@ const (
 // 要件 1.1, 1.2, 1.3, 1.4: 各種レイヤーの管理
 // スレッドセーフな実装（sync.RWMutex使用）
 type LayerManager struct {
-	// ピクチャーIDごとのレイヤー
+	// ウィンドウIDごとのレイヤーセット（新規）
+	// 要件 1.1: レイヤーをWindowIDで管理する
+	// 要件 1.5: WindowIDをキーとしてWindowLayerSetを検索する
+	windowLayers map[int]*WindowLayerSet
+
+	// ピクチャーIDごとのレイヤー（後方互換性のために残す）
 	layers map[int]*PictureLayerSet
 
 	// 次のレイヤーID
@@ -86,8 +93,48 @@ type PictureLayerSet struct {
 // NewLayerManager は新しいLayerManagerを作成する
 func NewLayerManager() *LayerManager {
 	return &LayerManager{
-		layers:      make(map[int]*PictureLayerSet),
-		nextLayerID: 1,
+		windowLayers: make(map[int]*WindowLayerSet),
+		layers:       make(map[int]*PictureLayerSet),
+		nextLayerID:  1,
+	}
+}
+
+// GetOrCreateWindowLayerSet は指定されたウィンドウIDのWindowLayerSetを取得または作成する
+// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
+// 要件 1.5: WindowIDをキーとしてWindowLayerSetを検索する
+func (lm *LayerManager) GetOrCreateWindowLayerSet(winID, width, height int, bgColor color.Color) *WindowLayerSet {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
+	wls, exists := lm.windowLayers[winID]
+	if !exists {
+		wls = NewWindowLayerSet(winID, width, height, bgColor)
+		lm.windowLayers[winID] = wls
+	}
+
+	return wls
+}
+
+// GetWindowLayerSet は指定されたウィンドウIDのWindowLayerSetを取得する
+// 存在しない場合はnilを返す
+// 要件 1.5: WindowIDをキーとしてWindowLayerSetを検索する
+func (lm *LayerManager) GetWindowLayerSet(winID int) *WindowLayerSet {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
+	return lm.windowLayers[winID]
+}
+
+// DeleteWindowLayerSet は指定されたウィンドウIDのWindowLayerSetを削除する
+// 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
+func (lm *LayerManager) DeleteWindowLayerSet(winID int) {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
+	// WindowLayerSetが存在する場合、すべてのレイヤーをクリアしてから削除
+	if wls, exists := lm.windowLayers[winID]; exists {
+		wls.ClearLayers()
+		delete(lm.windowLayers, winID)
 	}
 }
 
@@ -156,11 +203,12 @@ func (lm *LayerManager) GetPictureLayerSetCount() int {
 	return len(lm.layers)
 }
 
-// Clear はすべてのPictureLayerSetを削除する
+// Clear はすべてのPictureLayerSetとWindowLayerSetを削除する
 func (lm *LayerManager) Clear() {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
+	lm.windowLayers = make(map[int]*WindowLayerSet)
 	lm.layers = make(map[int]*PictureLayerSet)
 	// nextLayerIDはリセットしない（一意性を保つため）
 }
@@ -229,6 +277,7 @@ func (pls *PictureLayerSet) RemoveCastLayer(castID int) bool {
 }
 
 // RemoveCastLayerByID はレイヤーIDでキャストレイヤーを削除する
+// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (pls *PictureLayerSet) RemoveCastLayerByID(layerID int) bool {
 	for i, cast := range pls.Casts {
 		if cast.GetID() == layerID {
@@ -241,6 +290,9 @@ func (pls *PictureLayerSet) RemoveCastLayerByID(layerID int) bool {
 			return true
 		}
 	}
+	// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録
+	// 要件 10.5: エラーメッセージに関数名、ピクチャーID、レイヤーIDを含める
+	fmt.Printf("RemoveCastLayerByID: layer not found, picID=%d, layerID=%d\n", pls.PicID, layerID)
 	return false
 }
 
@@ -255,12 +307,16 @@ func (pls *PictureLayerSet) GetCastLayer(castID int) *CastLayer {
 }
 
 // GetCastLayerByID はレイヤーIDでキャストレイヤーを取得する
+// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (pls *PictureLayerSet) GetCastLayerByID(layerID int) *CastLayer {
 	for _, cast := range pls.Casts {
 		if cast.GetID() == layerID {
 			return cast
 		}
 	}
+	// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録
+	// 要件 10.5: エラーメッセージに関数名、ピクチャーID、レイヤーIDを含める
+	fmt.Printf("GetCastLayerByID: layer not found, picID=%d, layerID=%d\n", pls.PicID, layerID)
 	return nil
 }
 
@@ -311,6 +367,7 @@ func (pls *PictureLayerSet) GetNextZOrder() int {
 }
 
 // RemoveTextLayer はテキストレイヤーを削除する
+// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (pls *PictureLayerSet) RemoveTextLayer(layerID int) bool {
 	for i, text := range pls.Texts {
 		if text.GetID() == layerID {
@@ -323,16 +380,23 @@ func (pls *PictureLayerSet) RemoveTextLayer(layerID int) bool {
 			return true
 		}
 	}
+	// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録
+	// 要件 10.5: エラーメッセージに関数名、ピクチャーID、レイヤーIDを含める
+	fmt.Printf("RemoveTextLayer: layer not found, picID=%d, layerID=%d\n", pls.PicID, layerID)
 	return false
 }
 
 // GetTextLayer はレイヤーIDでテキストレイヤーを取得する
+// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (pls *PictureLayerSet) GetTextLayer(layerID int) *TextLayerEntry {
 	for _, text := range pls.Texts {
 		if text.GetID() == layerID {
 			return text
 		}
 	}
+	// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録
+	// 要件 10.5: エラーメッセージに関数名、ピクチャーID、レイヤーIDを含める
+	fmt.Printf("GetTextLayer: layer not found, picID=%d, layerID=%d\n", pls.PicID, layerID)
 	return nil
 }
 

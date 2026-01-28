@@ -144,7 +144,8 @@ func TestZOrderConstants(t *testing.T) {
 // mockLayer はLayerインターフェースのモック実装
 type mockLayer struct {
 	BaseLayer
-	image *ebiten.Image
+	image     *ebiten.Image
+	layerType LayerType
 }
 
 func (m *mockLayer) GetImage() *ebiten.Image {
@@ -154,6 +155,10 @@ func (m *mockLayer) GetImage() *ebiten.Image {
 func (m *mockLayer) Invalidate() {
 	m.image = nil
 	m.dirty = true
+}
+
+func (m *mockLayer) GetLayerType() LayerType {
+	return m.layerType
 }
 
 // TestLayerInterface はLayerインターフェースが正しく実装されていることをテストする

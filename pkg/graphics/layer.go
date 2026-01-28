@@ -20,6 +20,10 @@ type Layer interface {
 	// 要件 1.5, 1.6: Z順序による描画順序の管理
 	GetZOrder() int
 
+	// SetZOrder はZ順序を設定する
+	// 要件 6.3: 新しいレイヤーが作成されたときに現在のZ順序カウンターを割り当てる
+	SetZOrder(zOrder int)
+
 	// IsVisible は可視性を返す
 	// 要件 3.3: 可視性の変更を追跡
 	IsVisible() bool
@@ -44,6 +48,42 @@ type Layer interface {
 	// Invalidate はキャッシュを無効化する
 	// 要件 5.3: キャッシュの無効化
 	Invalidate()
+
+	// GetLayerType はレイヤータイプを返す
+	// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+	GetLayerType() LayerType
+}
+
+// LayerType はレイヤーの種類を表す
+// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+type LayerType int
+
+const (
+	// LayerTypePicture はMovePicで作成されるレイヤー（焼き付け可能）
+	// 要件 2.1: Picture_Layerを定義する
+	LayerTypePicture LayerType = iota
+
+	// LayerTypeText はTextWriteで作成されるレイヤー（常に新規作成）
+	// 要件 2.2: Text_Layerを定義する
+	LayerTypeText
+
+	// LayerTypeCast はPutCastで作成されるスプライトレイヤー
+	// 要件 2.3: Cast_Layerを定義する
+	LayerTypeCast
+)
+
+// String はLayerTypeの文字列表現を返す
+func (lt LayerType) String() string {
+	switch lt {
+	case LayerTypePicture:
+		return "Picture"
+	case LayerTypeText:
+		return "Text"
+	case LayerTypeCast:
+		return "Cast"
+	default:
+		return "Unknown"
+	}
 }
 
 // Z順序の定数

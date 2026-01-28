@@ -1,6 +1,7 @@
 package graphics
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 
@@ -26,7 +27,15 @@ type CastLayer struct {
 
 // NewCastLayer は新しいキャストレイヤーを作成する
 // zOrderOffset はZOrderCastBaseからのオフセット値
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewCastLayer(id, castID, picID, srcPicID int, x, y, srcX, srcY, width, height int, zOrderOffset int) *CastLayer {
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
+	if width <= 0 || height <= 0 {
+		fmt.Printf("NewCastLayer: invalid size, id=%d, castID=%d, width=%d, height=%d\n", id, castID, width, height)
+		return nil
+	}
+
 	bounds := image.Rect(x, y, x+width, y+height)
 
 	layer := &CastLayer{
@@ -57,8 +66,13 @@ func NewCastLayer(id, castID, picID, srcPicID int, x, y, srcX, srcY, width, heig
 }
 
 // NewCastLayerWithTransColor は透明色付きで新しいキャストレイヤーを作成する
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewCastLayerWithTransColor(id, castID, picID, srcPicID int, x, y, srcX, srcY, width, height int, zOrderOffset int, transColor color.Color) *CastLayer {
 	layer := NewCastLayer(id, castID, picID, srcPicID, x, y, srcX, srcY, width, height, zOrderOffset)
+	if layer == nil {
+		// NewCastLayerが既にエラーをログに記録しているので、ここでは追加のログは不要
+		return nil
+	}
 	if transColor != nil {
 		layer.transColor = transColor
 		layer.hasTransColor = true
@@ -278,4 +292,10 @@ func colorEqual(c1, c2 color.Color) bool {
 func (l *CastLayer) SetCachedImage(img *ebiten.Image) {
 	l.image = img
 	l.dirty = false
+}
+
+// GetLayerType はレイヤータイプを返す
+// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+func (l *CastLayer) GetLayerType() LayerType {
+	return LayerTypeCast
 }

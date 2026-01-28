@@ -197,6 +197,7 @@ func (gs *GraphicsSystem) executeCommand(cmd Command) error {
 // 要件 4.8: キャストを透明色（黒 0x000000）を除いて描画する
 // 要件 4.9: キャストをZ順序で管理し、後から配置したキャストを前面に表示する
 // 要件 15.1-15.8: デバッグオーバーレイの描画
+// 要件 10.1, 10.2: PutCast、MovePic、TextWriteの操作順序に基づくZ順序で描画
 func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
@@ -226,8 +227,9 @@ func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 		// ウィンドウ装飾を描画（Windows 3.1風）
 		gs.drawWindowDecoration(screen, win, pic)
 
-		// このウィンドウに属するキャストを描画（要件 4.9: Z順序でソート済み）
-		gs.drawCastsForWindow(screen, win)
+		// このウィンドウに属するすべてのレイヤーをZ順序で描画
+		// 要件 10.1, 10.2: キャスト、描画エントリ（MovePic）、テキストを操作順序で描画
+		gs.drawLayersForWindow(screen, win)
 
 		// デバッグオーバーレイを描画（要件 15.1-15.8）
 		gs.drawDebugOverlayForWindow(screen, win, pic)
@@ -336,6 +338,212 @@ func (gs *GraphicsSystem) drawCastWithTransparency(screen *ebiten.Image, src *eb
 		opts.GeoM.Translate(float64(dstX), float64(dstY))
 		screen.DrawImage(src, opts)
 	}
+}
+
+// drawLayersForWindow はウィンドウに属するすべてのレイヤーをZ順序で描画する
+// 要件 10.1, 10.2: PutCast、MovePic、TextWriteの操作順序に基づくZ順序で描画
+// 要件 6.1: ウィンドウの背景色を最初に描画する
+// キャスト、描画エントリ（MovePic）、テキストを統一したZ順序で描画する
+func (gs *GraphicsSystem) drawLayersForWindow(screen *ebiten.Image, win *Window) {
+	const (
+		borderThickness = 4
+		titleBarHeight  = 20
+	)
+
+	// コンテンツ領域の開始位置を計算
+	contentX := win.X + borderThickness
+	contentY := win.Y + borderThickness + titleBarHeight
+
+	// レイヤーの位置はピクチャー座標系で指定される
+	// PicX/PicYはピクチャーの表示オフセットなので、レイヤーの位置にも適用する
+	offsetX := -win.PicX
+	offsetY := -win.PicY
+
+	// LayerManagerがない場合は従来のキャスト描画にフォールバック
+	if gs.layerManager == nil {
+		gs.drawCastsForWindow(screen, win)
+		return
+	}
+
+	// ウィンドウIDに関連付けられたレイヤーを取得
+	// 要件 7.4: drawLayersForWindowはウィンドウIDでレイヤーを検索する
+	wls := gs.layerManager.GetWindowLayerSet(win.ID)
+	if wls == nil {
+		// WindowLayerSetがない場合は従来のキャスト描画にフォールバック
+		gs.drawCastsForWindow(screen, win)
+		return
+	}
+
+	// 注意: 要件 6.1の背景色描画はdrawWindowDecoration()で既に行われている
+	// drawWindowDecoration()は背景色を描画した後、ピクチャー画像を描画する
+	// ここで再度背景色を描画するとピクチャー画像が覆われてしまうため、
+	// drawWindowBackground()の呼び出しは削除した
+
+	// すべてのレイヤーをZ順序でソートして取得
+	layers := wls.GetLayersSorted()
+
+	// レイヤーがない場合は背景色のみ描画して終了
+	if len(layers) == 0 {
+		return
+	}
+
+	// Z順序順に描画
+	for _, layer := range layers {
+		if layer == nil || !layer.IsVisible() {
+			continue
+		}
+
+		// レイヤーの種類に応じて描画
+		switch l := layer.(type) {
+		case *CastLayer:
+			// キャストレイヤーの描画
+			gs.drawCastLayerOnScreen(screen, l, contentX, contentY, offsetX, offsetY)
+
+		case *DrawingEntry:
+			// 描画エントリの描画（MovePicで作成）
+			gs.drawDrawingEntryOnScreen(screen, l, contentX, contentY, offsetX, offsetY)
+
+		case *TextLayerEntry:
+			// テキストレイヤーの描画
+			gs.drawTextLayerOnScreen(screen, l, contentX, contentY, offsetX, offsetY)
+		}
+	}
+
+	// 要件 9.3: 合成処理完了後にダーティフラグをクリアする
+	// これにより、変更のないフレームでは不要な再レンダリングがスキップされる
+	wls.ClearDirty()
+}
+
+// drawCastLayerOnScreen はキャストレイヤーをスクリーンに描画する
+func (gs *GraphicsSystem) drawCastLayerOnScreen(screen *ebiten.Image, castLayer *CastLayer, contentX, contentY, offsetX, offsetY int) {
+	// キャストのピクチャーを取得
+	castPic, err := gs.pictures.GetPicWithoutLock(castLayer.GetSrcPicID())
+	if err != nil {
+		gs.log.Warn("Failed to get picture for cast layer",
+			"castID", castLayer.GetCastID(),
+			"pictureID", castLayer.GetSrcPicID(),
+			"error", err)
+		return
+	}
+
+	// キャストのソース領域を取得
+	srcX, srcY, srcW, srcH := castLayer.GetSourceRect()
+
+	// ソース領域のクリッピング
+	if srcX < 0 {
+		srcW += srcX
+		srcX = 0
+	}
+	if srcY < 0 {
+		srcH += srcY
+		srcY = 0
+	}
+	if srcX+srcW > castPic.Width {
+		srcW = castPic.Width - srcX
+	}
+	if srcY+srcH > castPic.Height {
+		srcH = castPic.Height - srcY
+	}
+
+	// サイズが0以下なら描画しない
+	if srcW <= 0 || srcH <= 0 {
+		return
+	}
+
+	// ソース領域を切り出す
+	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
+	subImg := castPic.Image.SubImage(srcRect).(*ebiten.Image)
+
+	// キャストの描画位置を計算（ピクチャー座標系 → スクリーン座標）
+	x, y := castLayer.GetPosition()
+	screenX := contentX + offsetX + x
+	screenY := contentY + offsetY + y
+
+	// キャストを描画（透明色処理）
+	gs.drawCastWithTransparency(screen, subImg, screenX, screenY, castLayer.GetTransColor(), castLayer.HasTransColor())
+}
+
+// drawDrawingEntryOnScreen は描画エントリをスクリーンに描画する
+func (gs *GraphicsSystem) drawDrawingEntryOnScreen(screen *ebiten.Image, entry *DrawingEntry, contentX, contentY, offsetX, offsetY int) {
+	img := entry.GetImage()
+	if img == nil {
+		return
+	}
+
+	// 描画位置を計算（ピクチャー座標系 → スクリーン座標）
+	screenX := contentX + offsetX + entry.GetDestX()
+	screenY := contentY + offsetY + entry.GetDestY()
+
+	// 描画
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(screenX), float64(screenY))
+	screen.DrawImage(img, opts)
+}
+
+// drawTextLayerOnScreen はテキストレイヤーをスクリーンに描画する
+func (gs *GraphicsSystem) drawTextLayerOnScreen(screen *ebiten.Image, textLayer *TextLayerEntry, contentX, contentY, offsetX, offsetY int) {
+	img := textLayer.GetImage()
+	if img == nil {
+		return
+	}
+
+	// 描画位置を計算（ピクチャー座標系 → スクリーン座標）
+	x, y := textLayer.GetPosition()
+	screenX := contentX + offsetX + x
+	screenY := contentY + offsetY + y
+
+	// 描画
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(screenX), float64(screenY))
+	screen.DrawImage(img, opts)
+}
+
+// drawWindowBackground はウィンドウの背景色を描画する
+// 要件 6.1: ウィンドウの背景色を最初に描画する
+func (gs *GraphicsSystem) drawWindowBackground(screen *ebiten.Image, win *Window, wls *WindowLayerSet) {
+	const (
+		borderThickness = 4
+		titleBarHeight  = 20
+	)
+
+	// 背景色を取得（WindowLayerSetの背景色を優先、なければWindowの背景色を使用）
+	bgColor := wls.GetBgColor()
+	if bgColor == nil {
+		bgColor = win.BgColor
+	}
+
+	// 背景色がnilまたは完全に透明な場合は描画しない
+	if bgColor == nil {
+		return
+	}
+
+	// 背景色のアルファ値を確認
+	_, _, _, a := bgColor.RGBA()
+	if a == 0 {
+		return
+	}
+
+	// コンテンツ領域の開始位置を計算
+	contentX := float32(win.X + borderThickness)
+	contentY := float32(win.Y + borderThickness + titleBarHeight)
+
+	// ウィンドウのコンテンツ領域のサイズを取得
+	contentWidth := float32(wls.Width)
+	contentHeight := float32(wls.Height)
+
+	// WindowLayerSetのサイズが0の場合はWindowのサイズを使用
+	if contentWidth <= 0 || contentHeight <= 0 {
+		contentWidth = float32(win.Width)
+		contentHeight = float32(win.Height)
+	}
+
+	// サイズが0以下の場合は描画しない
+	if contentWidth <= 0 || contentHeight <= 0 {
+		return
+	}
+
+	// 背景色で矩形を塗りつぶす
+	vector.DrawFilledRect(screen, contentX, contentY, contentWidth, contentHeight, bgColor, false)
 }
 
 // drawDebugOverlayForWindow はウィンドウのデバッグオーバーレイを描画する
@@ -530,6 +738,7 @@ func (gs *GraphicsSystem) GetVirtualHeight() int {
 }
 
 // OpenWin opens a window
+// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
 func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -537,7 +746,43 @@ func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 	// Convert any options to WinOption
 	winOpts := gs.parseWinOptions(opts)
 
-	return gs.windows.OpenWin(picID, winOpts...)
+	// ウィンドウを開く
+	winID, err := gs.windows.OpenWin(picID, winOpts...)
+	if err != nil {
+		return -1, err
+	}
+
+	// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
+	// ウィンドウの情報を取得してWindowLayerSetを作成
+	win, err := gs.windows.GetWin(winID)
+	if err != nil {
+		// ウィンドウが作成されたが取得できない場合はエラー
+		gs.log.Error("OpenWin: failed to get window after creation", "winID", winID, "error", err)
+		return winID, nil // ウィンドウは作成されているので、IDは返す
+	}
+
+	// ウィンドウのサイズを取得（設定されていない場合はピクチャーのサイズを使用）
+	width := win.Width
+	height := win.Height
+	if width <= 0 || height <= 0 {
+		// ピクチャーのサイズを取得
+		pic, err := gs.pictures.GetPicWithoutLock(picID)
+		if err == nil {
+			width = pic.Width
+			height = pic.Height
+		} else {
+			// デフォルトサイズ
+			width = 640
+			height = 480
+		}
+	}
+
+	// WindowLayerSetを作成
+	gs.layerManager.GetOrCreateWindowLayerSet(winID, width, height, win.BgColor)
+
+	gs.log.Debug("OpenWin: created WindowLayerSet", "winID", winID, "width", width, "height", height)
+
+	return winID, nil
 }
 
 // parseWinOptions converts any slice to WinOption slice
@@ -616,6 +861,7 @@ func (gs *GraphicsSystem) MoveWin(id int, opts ...any) error {
 }
 
 // CloseWin closes a window
+// 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
 func (gs *GraphicsSystem) CloseWin(id int) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -623,21 +869,34 @@ func (gs *GraphicsSystem) CloseWin(id int) error {
 	// Delete casts belonging to this window (要件 9.2)
 	gs.casts.DeleteCastsByWindow(id)
 
+	// 要件 1.3: ウィンドウが閉じられたときにWindowLayerSetを削除する
+	if gs.layerManager != nil {
+		gs.layerManager.DeleteWindowLayerSet(id)
+		gs.log.Debug("CloseWin: deleted WindowLayerSet", "winID", id)
+	}
+
 	return gs.windows.CloseWin(id)
 }
 
 // CloseWinAll closes all windows
+// 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
 func (gs *GraphicsSystem) CloseWinAll() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// Get all windows and delete their casts
+	// Get all windows and delete their casts and WindowLayerSets
 	windows := gs.windows.GetWindowsOrdered()
 	for _, win := range windows {
 		gs.casts.DeleteCastsByWindow(win.ID)
+
+		// 要件 1.3: WindowLayerSetを削除する
+		if gs.layerManager != nil {
+			gs.layerManager.DeleteWindowLayerSet(win.ID)
+		}
 	}
 
 	gs.windows.CloseWinAll()
+	gs.log.Debug("CloseWinAll: deleted all WindowLayerSets", "windowCount", len(windows))
 }
 
 // CapTitle sets the caption of a window

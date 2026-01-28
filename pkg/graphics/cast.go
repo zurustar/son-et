@@ -147,18 +147,67 @@ func (cm *CastManager) PutCastWithTransColor(winID, picID, x, y, srcX, srcY, wid
 
 // createCastLayer はキャストに対応するCastLayerを作成する
 // 要件 2.1: PutCastが呼び出されたときに対応するCast_Layerを作成する
+// 要件 7.1: Cast_LayerをウィンドウIDで登録する
+// 要件 10.1: 存在しないウィンドウIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (cm *CastManager) createCastLayer(cast *Cast) {
 	if cm.layerManager == nil || cast == nil {
 		return
 	}
 
-	// PictureLayerSetを取得または作成
-	// キャストはウィンドウに属するが、レイヤーはピクチャーに属する
-	// ここではwinIDをpicIDとして使用（ウィンドウとピクチャーの対応は上位層で管理）
-	pls := cm.layerManager.GetOrCreatePictureLayerSet(cast.WinID)
-
 	// レイヤーIDを取得
 	layerID := cm.layerManager.GetNextLayerID()
+
+	// WindowLayerSetを取得（要件 7.1: ウィンドウIDで登録）
+	wls := cm.layerManager.GetWindowLayerSet(cast.WinID)
+	if wls != nil {
+		// WindowLayerSetが存在する場合、そこにCastLayerを追加
+		// Z順序はWindowLayerSetのAddLayerで自動的に割り当てられる
+		var castLayer *CastLayer
+		if cast.HasTransColor {
+			castLayer = NewCastLayerWithTransColor(
+				layerID,
+				cast.ID,
+				cast.WinID, // destPicID（ウィンドウID）
+				cast.PicID, // srcPicID
+				cast.X,
+				cast.Y,
+				cast.SrcX,
+				cast.SrcY,
+				cast.Width,
+				cast.Height,
+				0, // zOrderOffsetはWindowLayerSet.AddLayerで設定されるため0
+				cast.TransColor,
+			)
+		} else {
+			castLayer = NewCastLayer(
+				layerID,
+				cast.ID,
+				cast.WinID, // destPicID（ウィンドウID）
+				cast.PicID, // srcPicID
+				cast.X,
+				cast.Y,
+				cast.SrcX,
+				cast.SrcY,
+				cast.Width,
+				cast.Height,
+				0, // zOrderOffsetはWindowLayerSet.AddLayerで設定されるため0
+			)
+		}
+
+		// WindowLayerSetにCastLayerを追加
+		wls.AddLayer(castLayer)
+		return
+	}
+
+	// 要件 10.1: 存在しないウィンドウIDが指定されたときにエラーをログに記録
+	// 後方互換性のためPictureLayerSetにフォールバックするが、警告をログに記録
+	// Note: slogを使用するためにはCastManagerにloggerを追加する必要があるが、
+	// 現在の設計ではCastManagerはloggerを持っていないため、fmtでログを出力
+	// 将来的にはCastManagerにloggerを追加することを検討
+	fmt.Printf("createCastLayer: WindowLayerSet not found, windowID=%d, castID=%d (using PictureLayerSet fallback)\n", cast.WinID, cast.ID)
+
+	// 後方互換性: WindowLayerSetが存在しない場合はPictureLayerSetを使用
+	pls := cm.layerManager.GetOrCreatePictureLayerSet(cast.WinID)
 
 	// Z順序オフセットを取得
 	zOrderOffset := pls.GetNextCastZOffset()
@@ -231,20 +280,53 @@ func (cm *CastManager) MoveCast(id int, opts ...CastOption) error {
 
 // updateCastLayer はキャストに対応するCastLayerを更新する
 // 要件 2.2: MoveCastが呼び出されたときに対応するCast_Layerの位置を更新する
+// 要件 4.2: Cast_Layerの位置を更新する（残像なし）
+// 要件 10.1: 存在しないウィンドウIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (cm *CastManager) updateCastLayer(cast *Cast, oldX, oldY int) {
 	if cm.layerManager == nil || cast == nil {
 		return
 	}
 
-	// PictureLayerSetを取得
+	// まずWindowLayerSetを試す（要件 7.1: ウィンドウIDで登録）
+	wls := cm.layerManager.GetWindowLayerSet(cast.WinID)
+	if wls != nil {
+		// WindowLayerSetからCastLayerを取得
+		castLayer := wls.GetCastLayer(cast.ID)
+		if castLayer != nil {
+			// 古い位置をダーティ領域に追加（要件 4.6: 古い位置をダーティ領域としてマーク）
+			if oldX != cast.X || oldY != cast.Y {
+				wls.AddDirtyRegion(castLayer.GetBounds())
+			}
+
+			// CastLayerを更新
+			castLayer.UpdateFromCast(cast)
+
+			// 新しい位置をダーティ領域に追加（要件 4.6: 新しい位置をダーティ領域としてマーク）
+			wls.AddDirtyRegion(castLayer.GetBounds())
+			return
+		}
+		// 要件 10.1: CastLayerが見つからない場合はエラーをログに記録
+		fmt.Printf("updateCastLayer: CastLayer not found in WindowLayerSet, windowID=%d, castID=%d\n", cast.WinID, cast.ID)
+		return
+	}
+
+	// 要件 10.1: WindowLayerSetが見つからない場合はエラーをログに記録
+	// 後方互換性のためPictureLayerSetにフォールバック
+	fmt.Printf("updateCastLayer: WindowLayerSet not found, windowID=%d, castID=%d (using PictureLayerSet fallback)\n", cast.WinID, cast.ID)
+
+	// 後方互換性: WindowLayerSetが存在しない場合はPictureLayerSetを使用
 	pls := cm.layerManager.GetPictureLayerSet(cast.WinID)
 	if pls == nil {
+		// 要件 10.1: PictureLayerSetも見つからない場合はエラーをログに記録し、処理をスキップ
+		fmt.Printf("updateCastLayer: PictureLayerSet not found, windowID=%d, castID=%d (skipping)\n", cast.WinID, cast.ID)
 		return
 	}
 
 	// CastLayerを取得
 	castLayer := pls.GetCastLayer(cast.ID)
 	if castLayer == nil {
+		// 要件 10.1: CastLayerが見つからない場合はエラーをログに記録し、処理をスキップ
+		fmt.Printf("updateCastLayer: CastLayer not found in PictureLayerSet, windowID=%d, castID=%d (skipping)\n", cast.WinID, cast.ID)
 		return
 	}
 
@@ -286,19 +368,43 @@ func (cm *CastManager) DelCast(id int) error {
 
 // deleteCastLayer はキャストに対応するCastLayerを削除する
 // 要件 2.3: DelCastが呼び出されたときに対応するCast_Layerを削除する
+// 要件 4.3: DelCastが呼び出されたときにCast_Layerを削除する
+// 要件 10.1: 存在しないウィンドウIDが指定されたときにエラーをログに記録し、処理をスキップする
 func (cm *CastManager) deleteCastLayer(cast *Cast) {
 	if cm.layerManager == nil || cast == nil {
 		return
 	}
 
-	// PictureLayerSetを取得
+	// まずWindowLayerSetを試す（要件 7.1: ウィンドウIDで登録）
+	wls := cm.layerManager.GetWindowLayerSet(cast.WinID)
+	if wls != nil {
+		// WindowLayerSetからCastLayerを削除
+		// RemoveCastLayerは内部でダーティ領域を追加する
+		if wls.RemoveCastLayer(cast.ID) {
+			return
+		}
+		// 要件 10.1: CastLayerが見つからない場合はエラーをログに記録
+		fmt.Printf("deleteCastLayer: CastLayer not found in WindowLayerSet, windowID=%d, castID=%d\n", cast.WinID, cast.ID)
+		return
+	}
+
+	// 要件 10.1: WindowLayerSetが見つからない場合はエラーをログに記録
+	// 後方互換性のためPictureLayerSetにフォールバック
+	fmt.Printf("deleteCastLayer: WindowLayerSet not found, windowID=%d, castID=%d (using PictureLayerSet fallback)\n", cast.WinID, cast.ID)
+
+	// 後方互換性: WindowLayerSetが存在しない場合はPictureLayerSetを使用
 	pls := cm.layerManager.GetPictureLayerSet(cast.WinID)
 	if pls == nil {
+		// 要件 10.1: PictureLayerSetも見つからない場合はエラーをログに記録し、処理をスキップ
+		fmt.Printf("deleteCastLayer: PictureLayerSet not found, windowID=%d, castID=%d (skipping)\n", cast.WinID, cast.ID)
 		return
 	}
 
 	// CastLayerを削除（RemoveCastLayerは内部でダーティ領域を追加する）
-	pls.RemoveCastLayer(cast.ID)
+	if !pls.RemoveCastLayer(cast.ID) {
+		// 要件 10.1: CastLayerが見つからない場合はエラーをログに記録
+		fmt.Printf("deleteCastLayer: CastLayer not found in PictureLayerSet, windowID=%d, castID=%d (skipping)\n", cast.WinID, cast.ID)
+	}
 }
 
 // GetCast は指定されたキャストを取得する

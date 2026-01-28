@@ -2327,14 +2327,15 @@ func TestProperty4_EmptyVisibleRegion(t *testing.T) {
 
 // TestProperty4_EmptyLayerBounds は空のレイヤー境界の場合をテストする
 // 要件 4.3: 各レイヤーの境界ボックスを計算する
+// 要件 10.3: レイヤー作成に失敗したときにnilを返す
 func TestProperty4_EmptyLayerBounds(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100
 
 	properties := gopter.NewProperties(parameters)
 
-	// Property 4.5.1: 幅が0のレイヤーの場合、IsLayerVisibleはfalseを返す
-	properties.Property("幅が0のレイヤーの場合、IsLayerVisibleはfalseを返す", prop.ForAll(
+	// Property 4.5.1: 幅が0のレイヤーの場合、NewCastLayerはnilを返す（要件 10.3）
+	properties.Property("幅が0のレイヤーの場合、NewCastLayerはnilを返す", prop.ForAll(
 		func(layerX, layerY, layerH, visibleW, visibleH int) bool {
 			if layerH <= 0 || visibleW <= 0 || visibleH <= 0 {
 				return true
@@ -2343,12 +2344,11 @@ func TestProperty4_EmptyLayerBounds(t *testing.T) {
 			lm := NewLayerManager()
 			layerID := lm.GetNextLayerID()
 
-			// 幅が0のレイヤー
+			// 幅が0のレイヤー - 要件 10.3によりnilが返される
 			cl := NewCastLayer(layerID, 0, 0, 0, layerX, layerY, 0, 0, 0, layerH, 0)
 
-			visibleRect := image.Rect(0, 0, visibleW, visibleH)
-
-			return !IsLayerVisible(cl, visibleRect)
+			// 要件 10.3: レイヤー作成に失敗したときにnilを返す
+			return cl == nil
 		},
 		gen.IntRange(0, 100),
 		gen.IntRange(0, 100),
@@ -2357,8 +2357,8 @@ func TestProperty4_EmptyLayerBounds(t *testing.T) {
 		gen.IntRange(100, 300),
 	))
 
-	// Property 4.5.2: 高さが0のレイヤーの場合、IsLayerVisibleはfalseを返す
-	properties.Property("高さが0のレイヤーの場合、IsLayerVisibleはfalseを返す", prop.ForAll(
+	// Property 4.5.2: 高さが0のレイヤーの場合、NewCastLayerはnilを返す（要件 10.3）
+	properties.Property("高さが0のレイヤーの場合、NewCastLayerはnilを返す", prop.ForAll(
 		func(layerX, layerY, layerW, visibleW, visibleH int) bool {
 			if layerW <= 0 || visibleW <= 0 || visibleH <= 0 {
 				return true
@@ -2367,12 +2367,11 @@ func TestProperty4_EmptyLayerBounds(t *testing.T) {
 			lm := NewLayerManager()
 			layerID := lm.GetNextLayerID()
 
-			// 高さが0のレイヤー
+			// 高さが0のレイヤー - 要件 10.3によりnilが返される
 			cl := NewCastLayer(layerID, 0, 0, 0, layerX, layerY, 0, 0, layerW, 0, 0)
 
-			visibleRect := image.Rect(0, 0, visibleW, visibleH)
-
-			return !IsLayerVisible(cl, visibleRect)
+			// 要件 10.3: レイヤー作成に失敗したときにnilを返す
+			return cl == nil
 		},
 		gen.IntRange(0, 100),
 		gen.IntRange(0, 100),
@@ -3825,37 +3824,31 @@ func TestProperty7_InvisibleUpperLayerDoesNotCauseSkip(t *testing.T) {
 }
 
 // TestProperty7_EmptyBoundsHandling は空の境界を持つレイヤーの処理をテストする
+// 要件 10.3: レイヤー作成に失敗したときにnilを返す
 func TestProperty7_EmptyBoundsHandling(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100
 
 	properties := gopter.NewProperties(parameters)
 
-	// Property 7.6.1: 下位レイヤーの境界が空の場合、ShouldSkipLayerはtrueを返す
-	properties.Property("下位レイヤーの境界が空の場合、ShouldSkipLayerはtrueを返す", prop.ForAll(
+	// Property 7.6.1: 下位レイヤーの境界が空の場合（幅または高さが0）、NewCastLayerはnilを返す
+	properties.Property("下位レイヤーの境界が空の場合、NewCastLayerはnilを返す", prop.ForAll(
 		func(x, y int) bool {
 			lm := NewLayerManager()
 
-			// 境界が空の下位レイヤーを作成（幅または高さが0）
+			// 境界が空の下位レイヤーを作成（幅または高さが0）- 要件 10.3によりnilが返される
 			lowerID := lm.GetNextLayerID()
 			lowerLayer := NewCastLayer(lowerID, 0, 0, 0, x, y, 0, 0, 0, 0, 0)
 
-			// 上位レイヤーを作成
-			upperID := lm.GetNextLayerID()
-			upperLayer := NewCastLayer(upperID, 1, 0, 0, 0, 0, 0, 0, 100, 100, 1)
-			upperLayer.SetOpaque(true)
-
-			upperLayers := []Layer{upperLayer}
-
-			// 空の境界を持つレイヤーはスキップ
-			return lm.ShouldSkipLayer(lowerLayer, upperLayers)
+			// 要件 10.3: レイヤー作成に失敗したときにnilを返す
+			return lowerLayer == nil
 		},
 		gen.IntRange(0, 200),
 		gen.IntRange(0, 200),
 	))
 
-	// Property 7.6.2: 上位レイヤーの境界が空の場合、スキップを引き起こさない
-	properties.Property("上位レイヤーの境界が空の場合、スキップを引き起こさない", prop.ForAll(
+	// Property 7.6.2: 上位レイヤーの境界が空の場合（幅または高さが0）、NewCastLayerはnilを返す
+	properties.Property("上位レイヤーの境界が空の場合、NewCastLayerはnilを返す", prop.ForAll(
 		func(x, y, w, h int) bool {
 			if w <= 0 || h <= 0 {
 				return true
@@ -3863,19 +3856,12 @@ func TestProperty7_EmptyBoundsHandling(t *testing.T) {
 
 			lm := NewLayerManager()
 
-			// 下位レイヤーを作成
-			lowerID := lm.GetNextLayerID()
-			lowerLayer := NewCastLayer(lowerID, 0, 0, 0, x, y, 0, 0, w, h, 0)
-
-			// 境界が空の上位レイヤーを作成
+			// 境界が空の上位レイヤーを作成 - 要件 10.3によりnilが返される
 			upperID := lm.GetNextLayerID()
 			upperLayer := NewCastLayer(upperID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1)
-			upperLayer.SetOpaque(true)
 
-			upperLayers := []Layer{upperLayer}
-
-			// 空の境界を持つ上位レイヤーはスキップを引き起こさない
-			return !lm.ShouldSkipLayer(lowerLayer, upperLayers)
+			// 要件 10.3: レイヤー作成に失敗したときにnilを返す
+			return upperLayer == nil
 		},
 		gen.IntRange(0, 200),
 		gen.IntRange(0, 200),

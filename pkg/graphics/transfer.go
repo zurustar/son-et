@@ -68,6 +68,7 @@ func (gs *GraphicsSystem) MovePicWithSpeed(
 }
 
 // movePicInternal はロックなしでMovePicを実行する（内部用）
+// 要件 3.1, 3.2, 3.3, 3.4: MovePicの焼き付けロジック
 // 要件 10.3, 10.4: MovePicでDrawingEntryを作成し、操作順序に基づくZ順序を割り当てる
 func (gs *GraphicsSystem) movePicInternal(
 	srcID, srcX, srcY, width, height int,
@@ -122,13 +123,13 @@ func (gs *GraphicsSystem) movePicInternal(
 	switch TransferMode(mode) {
 	case TransferModeNormal:
 		// 通常コピー（mode=0）
-		// 要件 10.3, 10.4: DrawingEntryを作成してLayerManagerに追加
-		gs.createDrawingEntry(dstID, subImg, dstX, dstY, width, height, false)
+		// 要件 3.1, 3.2, 3.3, 3.4: 焼き付けロジックを使用
+		gs.bakeToPictureLayer(dstID, dstPic, subImg, dstX, dstY, width, height, false)
 
 	case TransferModeTransparent:
 		// 透明色除外（mode=1）
-		// 要件 10.3, 10.4: DrawingEntryを作成してLayerManagerに追加
-		gs.createDrawingEntryWithTransparency(dstID, subImg, dstX, dstY, width, height, DefaultTransparentColor)
+		// 要件 3.1, 3.2, 3.3, 3.4: 焼き付けロジックを使用
+		gs.bakeToPictureLayer(dstID, dstPic, subImg, dstX, dstY, width, height, true)
 
 	default:
 		// シーンチェンジモード（mode=2-9）
@@ -163,6 +164,157 @@ func (gs *GraphicsSystem) movePicInternal(
 		"mode", mode)
 
 	return nil
+}
+
+// bakeToPictureLayer は焼き付けロジックを実装する
+// 要件 3.1: MovePicが呼び出されたときに最上位レイヤーのタイプを確認する
+// 要件 3.2: 最上位レイヤーがPicture_Layerである場合、そのレイヤーに画像を焼き付ける
+// 要件 3.3: 最上位レイヤーがCast_LayerまたはText_Layerである場合、新しいPicture_Layerを作成
+// 要件 3.4: レイヤースタックが空である場合、新しいPicture_Layerを作成
+// 要件 3.5: Picture_Layerはウィンドウサイズの透明画像として初期化される
+// 要件 3.6: 焼き付けが行われたとき、焼き付け先レイヤーをダーティとしてマークする
+func (gs *GraphicsSystem) bakeToPictureLayer(
+	dstID int,
+	dstPic *Picture,
+	srcImg *ebiten.Image,
+	dstX, dstY, width, height int,
+	transparent bool,
+) {
+	// まず、実際のピクチャーに描画する（これがないと画面に表示されない）
+	if transparent {
+		gs.drawWithTransparency(srcImg, dstPic.Image, dstX, dstY, DefaultTransparentColor)
+	} else {
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(float64(dstX), float64(dstY))
+		dstPic.Image.DrawImage(srcImg, opts)
+	}
+
+	// LayerManagerがない場合は終了
+	if gs.layerManager == nil {
+		return
+	}
+
+	// 転送先ピクチャーIDからウィンドウIDを逆引き
+	// 要件 7.2: MovePicが呼び出されたときにPicture_Layerを転送先ピクチャーに関連付けられたウィンドウに登録する
+	winID, err := gs.windows.GetWinByPicID(dstID)
+	if err != nil {
+		// ウィンドウが見つからない場合は、従来のDrawingEntry方式にフォールバック
+		gs.log.Debug("MovePic: no window found for picture, using DrawingEntry fallback",
+			"dstID", dstID, "error", err)
+		gs.createDrawingEntryFallback(dstID, srcImg, dstX, dstY, width, height)
+		return
+	}
+
+	// ウィンドウ情報を取得
+	win, err := gs.windows.GetWin(winID)
+	if err != nil {
+		gs.log.Error("MovePic: failed to get window",
+			"winID", winID, "error", err)
+		gs.createDrawingEntryFallback(dstID, srcImg, dstX, dstY, width, height)
+		return
+	}
+
+	// ウィンドウサイズを決定（0の場合はピクチャーサイズを使用）
+	winWidth := win.Width
+	winHeight := win.Height
+	if winWidth <= 0 {
+		winWidth = dstPic.Width
+	}
+	if winHeight <= 0 {
+		winHeight = dstPic.Height
+	}
+
+	// WindowLayerSetを取得または作成
+	// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
+	wls := gs.layerManager.GetOrCreateWindowLayerSet(winID, winWidth, winHeight, win.BgColor)
+
+	// 要件 3.1: 最上位レイヤーのタイプを確認
+	topmost := wls.GetTopmostLayer()
+
+	var targetLayer *PictureLayer
+
+	if topmost == nil {
+		// 要件 3.4: レイヤースタックが空である場合、新しいPicture_Layerを作成
+		gs.log.Debug("MovePic: layer stack is empty, creating new PictureLayer",
+			"winID", winID)
+		targetLayer = gs.createPictureLayerForWindow(wls, winWidth, winHeight)
+	} else if topmost.GetLayerType() == LayerTypePicture {
+		// 要件 3.2: 最上位レイヤーがPicture_Layerである場合、そのレイヤーに画像を焼き付ける
+		var ok bool
+		targetLayer, ok = topmost.(*PictureLayer)
+		if !ok {
+			// 型アサーションに失敗した場合は新規作成
+			gs.log.Warn("MovePic: topmost layer is Picture type but not *PictureLayer, creating new",
+				"winID", winID)
+			targetLayer = gs.createPictureLayerForWindow(wls, winWidth, winHeight)
+		} else {
+			gs.log.Debug("MovePic: baking to existing PictureLayer",
+				"winID", winID, "layerID", targetLayer.GetID())
+		}
+	} else {
+		// 要件 3.3: 最上位レイヤーがCast_LayerまたはText_Layerである場合、新しいPicture_Layerを作成
+		gs.log.Debug("MovePic: topmost layer is not PictureLayer, creating new",
+			"winID", winID, "topmostType", topmost.GetLayerType())
+		targetLayer = gs.createPictureLayerForWindow(wls, winWidth, winHeight)
+	}
+
+	// 焼き付け
+	// 要件 3.6: 焼き付けが行われたとき、焼き付け先レイヤーをダーティとしてマークする
+	if transparent {
+		// 透明色処理付きで焼き付け
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(dstX), float64(dstY))
+		targetLayer.BakeWithOptions(srcImg, op)
+	} else {
+		targetLayer.Bake(srcImg, dstX, dstY)
+	}
+
+	gs.log.Debug("MovePic: baked to PictureLayer",
+		"winID", winID, "layerID", targetLayer.GetID(),
+		"dstX", dstX, "dstY", dstY,
+		"width", width, "height", height)
+}
+
+// createPictureLayerForWindow はウィンドウ用の新しいPictureLayerを作成する
+// 要件 3.5: Picture_Layerはウィンドウサイズの透明画像として初期化される
+func (gs *GraphicsSystem) createPictureLayerForWindow(wls *WindowLayerSet, winWidth, winHeight int) *PictureLayer {
+	layerID := gs.layerManager.GetNextLayerID()
+	layer := NewPictureLayer(layerID, winWidth, winHeight)
+	wls.AddLayer(layer)
+
+	gs.log.Debug("MovePic: created new PictureLayer",
+		"winID", wls.GetWinID(), "layerID", layerID,
+		"width", winWidth, "height", winHeight)
+
+	return layer
+}
+
+// createDrawingEntryFallback は従来のDrawingEntry方式にフォールバックする
+// ウィンドウが見つからない場合に使用
+func (gs *GraphicsSystem) createDrawingEntryFallback(
+	dstID int,
+	srcImg *ebiten.Image,
+	dstX, dstY, width, height int,
+) {
+	// PictureLayerSetを取得または作成
+	pls := gs.layerManager.GetOrCreatePictureLayerSet(dstID)
+
+	// ソース画像をコピー（DrawingEntryは独自の画像を持つ）
+	entryImg := ebiten.NewImage(width, height)
+	entryImg.DrawImage(srcImg, nil)
+
+	// DrawingEntryを作成
+	layerID := gs.layerManager.GetNextLayerID()
+	entry := NewDrawingEntry(layerID, dstID, entryImg, dstX, dstY, width, height, 0)
+
+	// LayerManagerに追加（操作順序に基づくZ順序が割り当てられる）
+	pls.AddDrawingEntry(entry)
+
+	gs.log.Debug("MovePic: created DrawingEntry (fallback)",
+		"layerID", layerID, "dstID", dstID,
+		"dstX", dstX, "dstY", dstY,
+		"width", width, "height", height,
+		"zOrder", entry.GetZOrder())
 }
 
 // TransPicInternal は指定した透明色を除いて転送する（内部実装）
@@ -468,11 +620,12 @@ func clipTransferRegion(
 
 // createDrawingEntry はDrawingEntryを作成してLayerManagerに追加し、ピクチャーに描画する
 // 要件 10.3, 10.4: MovePicでDrawingEntryを作成し、操作順序に基づくZ順序を割り当てる
+// 注意: この関数は後方互換性のために残されています。新しいコードはbakeToPictureLayerを使用してください。
 func (gs *GraphicsSystem) createDrawingEntry(
 	dstID int,
 	srcImg *ebiten.Image,
 	dstX, dstY, width, height int,
-	transparent bool,
+	_ bool, // transparent パラメータは未使用（後方互換性のために残す）
 ) {
 	// まず、実際のピクチャーに描画する（これがないと画面に表示されない）
 	dstPic, err := gs.pictures.GetPicWithoutLock(dstID)
@@ -509,6 +662,7 @@ func (gs *GraphicsSystem) createDrawingEntry(
 
 // createDrawingEntryWithTransparency は透明色処理付きでDrawingEntryを作成し、ピクチャーに描画する
 // 要件 10.3, 10.4: MovePicでDrawingEntryを作成し、操作順序に基づくZ順序を割り当てる
+// 注意: この関数は後方互換性のために残されています。新しいコードはbakeToPictureLayerを使用してください。
 func (gs *GraphicsSystem) createDrawingEntryWithTransparency(
 	dstID int,
 	srcImg *ebiten.Image,

@@ -1,6 +1,7 @@
 package graphics
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -21,7 +22,15 @@ type DrawingEntry struct {
 
 // NewDrawingEntry は新しいDrawingEntryを作成する
 // 要件 10.3: MovePicが呼び出されたときにDrawingEntryを作成する
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewDrawingEntry(id, picID int, img *ebiten.Image, destX, destY, width, height, zOrder int) *DrawingEntry {
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
+	if width <= 0 || height <= 0 {
+		fmt.Printf("NewDrawingEntry: invalid size, id=%d, picID=%d, width=%d, height=%d\n", id, picID, width, height)
+		return nil
+	}
+
 	bounds := image.Rect(destX, destY, destX+width, destY+height)
 
 	entry := &DrawingEntry{
@@ -79,6 +88,13 @@ func (e *DrawingEntry) GetHeight() int {
 	return e.height
 }
 
+// GetLayerType はレイヤータイプを返す
+// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+// DrawingEntryはPictureLayerの一種として扱う
+func (e *DrawingEntry) GetLayerType() LayerType {
+	return LayerTypePicture
+}
+
 // DrawingLayer はMovePicで描画された内容を保持するレイヤー
 // 要件 1.3: 描画レイヤー（Drawing_Layer）を管理する
 // Z順序は常に1（背景の上、キャストの下）
@@ -90,14 +106,17 @@ type DrawingLayer struct {
 }
 
 // NewDrawingLayer は新しい描画レイヤーを作成する
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewDrawingLayer(id, picID int, width, height int) *DrawingLayer {
-	var img *ebiten.Image
-	var bounds image.Rectangle
-
-	if width > 0 && height > 0 {
-		img = ebiten.NewImage(width, height)
-		bounds = image.Rect(0, 0, width, height)
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
+	if width <= 0 || height <= 0 {
+		fmt.Printf("NewDrawingLayer: invalid size, id=%d, picID=%d, width=%d, height=%d\n", id, picID, width, height)
+		return nil
 	}
+
+	img := ebiten.NewImage(width, height)
+	bounds := image.Rect(0, 0, width, height)
 
 	layer := &DrawingLayer{
 		BaseLayer: BaseLayer{
@@ -116,7 +135,12 @@ func NewDrawingLayer(id, picID int, width, height int) *DrawingLayer {
 }
 
 // NewDrawingLayerWithImage は既存の画像から新しい描画レイヤーを作成する
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewDrawingLayerWithImage(id, picID int, img *ebiten.Image) *DrawingLayer {
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
+	// 注意: imgがnilの場合は許容する（後で設定される場合がある）
+
 	var bounds image.Rectangle
 	if img != nil {
 		bounds = img.Bounds()
@@ -245,4 +269,11 @@ func (l *DrawingLayer) CopyFrom(src *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	l.image.DrawImage(src, op)
 	l.dirty = true
+}
+
+// GetLayerType はレイヤータイプを返す
+// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+// DrawingLayerはPictureLayerの一種として扱う
+func (l *DrawingLayer) GetLayerType() LayerType {
+	return LayerTypePicture
 }

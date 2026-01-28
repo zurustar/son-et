@@ -522,16 +522,11 @@ func TestCastLayerSourceImageOutOfBounds(t *testing.T) {
 }
 
 // TestCastLayerZeroSize はゼロサイズのレイヤーをテストする
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func TestCastLayerZeroSize(t *testing.T) {
+	// ゼロサイズの場合はnilが返される（要件 10.3）
 	layer := NewCastLayer(1, 10, 100, 200, 0, 0, 0, 0, 0, 0, 0)
-
-	// ソース画像を設定
-	srcImg := ebiten.NewImage(64, 64)
-	layer.SetSourceImage(srcImg)
-
-	// ゼロサイズの場合はnilを返す
-	img := layer.GetImage()
-	if img != nil {
-		t.Error("expected nil image for zero size layer")
+	if layer != nil {
+		t.Error("expected nil for zero size layer")
 	}
 }

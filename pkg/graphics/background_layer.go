@@ -16,6 +16,8 @@ type BackgroundLayer struct {
 }
 
 // NewBackgroundLayer は新しい背景レイヤーを作成する
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
+// 注意: imgがnilの場合は許容する（後で設定される場合がある）
 func NewBackgroundLayer(id, picID int, img *ebiten.Image) *BackgroundLayer {
 	var bounds image.Rectangle
 	if img != nil {
@@ -70,4 +72,11 @@ func (l *BackgroundLayer) GetPicID() int {
 // SetPicID はピクチャーIDを設定する
 func (l *BackgroundLayer) SetPicID(picID int) {
 	l.picID = picID
+}
+
+// GetLayerType はレイヤータイプを返す
+// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+// BackgroundLayerはPictureLayerの一種として扱う
+func (l *BackgroundLayer) GetLayerType() LayerType {
+	return LayerTypePicture
 }

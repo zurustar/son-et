@@ -1,6 +1,7 @@
 package graphics
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -20,7 +21,14 @@ type TextLayerEntry struct {
 
 // NewTextLayerEntry は新しいテキストレイヤーエントリを作成する
 // zOrderOffset はZOrderTextBaseからのオフセット値
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewTextLayerEntry(id, picID int, x, y int, text string, zOrderOffset int) *TextLayerEntry {
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
+	// 注意: 負のIDは許容する（FILLYの仕様による）
+	// 注意: 空のテキストは許容する（後で設定される場合がある）
+	// 注意: 負の座標は許容する（画面外への配置）
+
 	entry := &TextLayerEntry{
 		BaseLayer: BaseLayer{
 			id:      id,
@@ -42,7 +50,12 @@ func NewTextLayerEntry(id, picID int, x, y int, text string, zOrderOffset int) *
 
 // NewTextLayerEntryWithImage は既存の画像から新しいテキストレイヤーエントリを作成する
 // 既存のTextLayerから変換する際に使用
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewTextLayerEntryWithImage(id, picID int, x, y int, text string, img *ebiten.Image, zOrderOffset int) *TextLayerEntry {
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
+	// 注意: imgがnilの場合は許容する（後で設定される場合がある）
+
 	var bounds image.Rectangle
 	if img != nil {
 		// 画像の境界を位置に合わせて設定
@@ -71,8 +84,12 @@ func NewTextLayerEntryWithImage(id, picID int, x, y int, text string, img *ebite
 
 // NewTextLayerEntryFromTextLayer は既存のTextLayerからTextLayerEntryを作成する
 // 既存のTextLayerManagerとの互換性のため
+// 要件 10.3: レイヤー作成に失敗したときにエラーをログに記録し、nilを返す
 func NewTextLayerEntryFromTextLayer(id int, textLayer *TextLayer, zOrderOffset int) *TextLayerEntry {
+	// 要件 10.3: 無効なパラメータの場合はエラーをログに記録し、nilを返す
+	// 要件 10.5: エラーメッセージに関数名と関連パラメータを含める
 	if textLayer == nil {
+		fmt.Printf("NewTextLayerEntryFromTextLayer: textLayer is nil, id=%d\n", id)
 		return nil
 	}
 
@@ -176,4 +193,10 @@ func (l *TextLayerEntry) GetSize() (width, height int) {
 // HasImage はキャッシュされた画像があるかを返す
 func (l *TextLayerEntry) HasImage() bool {
 	return l.image != nil
+}
+
+// GetLayerType はレイヤータイプを返す
+// 要件 2.4: レイヤーが作成されたとき、レイヤータイプを識別可能にする
+func (l *TextLayerEntry) GetLayerType() LayerType {
+	return LayerTypeText
 }

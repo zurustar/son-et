@@ -390,3 +390,184 @@ func TestCapTitleAllEmptyString(t *testing.T) {
 		t.Errorf("Expected empty caption, got '%s'", win.Caption)
 	}
 }
+
+// TestGetWinByPicID tests the GetWinByPicID method
+// Validates: Requirements 7.5 - ピクチャーIDからウィンドウIDへの逆引きをサポートする
+func TestGetWinByPicID(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create a window with a specific picture ID
+	winID, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	// Get window ID by picture ID
+	foundWinID, err := wm.GetWinByPicID(42)
+	if err != nil {
+		t.Fatalf("GetWinByPicID failed: %v", err)
+	}
+	if foundWinID != winID {
+		t.Errorf("Expected window ID %d, got %d", winID, foundWinID)
+	}
+}
+
+// TestGetWinByPicIDNotFound tests GetWinByPicID with non-existent picture ID
+// Validates: Requirements 7.5
+func TestGetWinByPicIDNotFound(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create a window with a specific picture ID
+	_, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	// Try to get window ID by non-existent picture ID
+	_, err = wm.GetWinByPicID(999)
+	if err == nil {
+		t.Error("Expected error when getting window by non-existent picture ID, got nil")
+	}
+}
+
+// TestGetWinByPicIDMultipleWindows tests GetWinByPicID when multiple windows use the same picture
+// Validates: Requirements 7.5
+func TestGetWinByPicIDMultipleWindows(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create multiple windows with the same picture ID
+	// The implementation should return the window with the highest ZOrder (last opened)
+	winID1, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	winID2, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	// Get window ID by picture ID - should return the last opened window (highest ZOrder)
+	foundWinID, err := wm.GetWinByPicID(42)
+	if err != nil {
+		t.Fatalf("GetWinByPicID failed: %v", err)
+	}
+
+	// Verify that the second window (higher ZOrder) is returned
+	if foundWinID != winID2 {
+		t.Errorf("Expected window ID %d (last opened), got %d (first opened: %d)", winID2, foundWinID, winID1)
+	}
+}
+
+// TestGetWinByPicIDAfterClose tests GetWinByPicID after closing a window
+// Validates: Requirements 7.5
+func TestGetWinByPicIDAfterClose(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create a window
+	winID, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	// Verify we can find it
+	foundWinID, err := wm.GetWinByPicID(42)
+	if err != nil {
+		t.Fatalf("GetWinByPicID failed: %v", err)
+	}
+	if foundWinID != winID {
+		t.Errorf("Expected window ID %d, got %d", winID, foundWinID)
+	}
+
+	// Close the window
+	err = wm.CloseWin(winID)
+	if err != nil {
+		t.Fatalf("CloseWin failed: %v", err)
+	}
+
+	// Now GetWinByPicID should fail
+	_, err = wm.GetWinByPicID(42)
+	if err == nil {
+		t.Error("Expected error when getting window by picture ID after close, got nil")
+	}
+}
+
+// TestGetWinByPicIDMultipleWindowsAfterClose tests GetWinByPicID when one of multiple windows is closed
+// Validates: Requirements 7.5
+func TestGetWinByPicIDMultipleWindowsAfterClose(t *testing.T) {
+	wm := NewWindowManager()
+
+	// Create multiple windows with the same picture ID
+	winID1, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	winID2, err := wm.OpenWin(42)
+	if err != nil {
+		t.Fatalf("OpenWin failed: %v", err)
+	}
+
+	// Close the second window (higher ZOrder)
+	err = wm.CloseWin(winID2)
+	if err != nil {
+		t.Fatalf("CloseWin failed: %v", err)
+	}
+
+	// Now GetWinByPicID should return the first window
+	foundWinID, err := wm.GetWinByPicID(42)
+	if err != nil {
+		t.Fatalf("GetWinByPicID failed: %v", err)
+	}
+	if foundWinID != winID1 {
+		t.Errorf("Expected window ID %d (remaining window), got %d", winID1, foundWinID)
+	}
+}
+
+// TestCloseWinAllDeletesWindowLayerSets はCloseWinAllがすべてのWindowLayerSetを削除することをテストする
+// 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
+func TestCloseWinAllDeletesWindowLayerSets(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// Create pictures for windows
+	picID1, _ := gs.CreatePic(200, 150)
+	picID2, _ := gs.CreatePic(200, 150)
+	picID3, _ := gs.CreatePic(200, 150)
+
+	// Open multiple windows
+	winID1, _ := gs.OpenWin(picID1, 0, 0, 200, 150, 0, 0, 0)
+	winID2, _ := gs.OpenWin(picID2, 100, 100, 200, 150, 0, 0, 0)
+	winID3, _ := gs.OpenWin(picID3, 200, 200, 200, 150, 0, 0, 0)
+
+	// Verify WindowLayerSets exist
+	lm := gs.GetLayerManager()
+	if lm == nil {
+		t.Fatal("LayerManager is nil")
+	}
+
+	wls1 := lm.GetWindowLayerSet(winID1)
+	wls2 := lm.GetWindowLayerSet(winID2)
+	wls3 := lm.GetWindowLayerSet(winID3)
+
+	if wls1 == nil || wls2 == nil || wls3 == nil {
+		t.Fatal("Expected WindowLayerSets to exist for all windows")
+	}
+
+	// Close all windows
+	gs.CloseWinAll()
+
+	// Verify all WindowLayerSets are deleted
+	wls1After := lm.GetWindowLayerSet(winID1)
+	wls2After := lm.GetWindowLayerSet(winID2)
+	wls3After := lm.GetWindowLayerSet(winID3)
+
+	if wls1After != nil {
+		t.Errorf("Expected WindowLayerSet for window %d to be deleted after CloseWinAll", winID1)
+	}
+	if wls2After != nil {
+		t.Errorf("Expected WindowLayerSet for window %d to be deleted after CloseWinAll", winID2)
+	}
+	if wls3After != nil {
+		t.Errorf("Expected WindowLayerSet for window %d to be deleted after CloseWinAll", winID3)
+	}
+}
