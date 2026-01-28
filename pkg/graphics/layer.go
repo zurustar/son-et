@@ -88,6 +88,17 @@ func (lt LayerType) String() string {
 
 // Z順序の定数
 // 設計ドキュメントに基づくZ順序の割り当て
+//
+// ウインドウ内のZ順序（相対Z順序）:
+//   - ZOrderBackground (0): 背景レイヤー
+//   - ZOrderDrawing (1): 描画レイヤー（MovePic）
+//   - ZOrderCastBase (100) - ZOrderCastMax (999): キャストレイヤー
+//   - ZOrderTextBase (1000): テキストレイヤー
+//
+// グローバルZ順序（ウインドウ間の統一）:
+//   - 各ウインドウにZOrderWindowRangeの範囲を割り当て
+//   - ウインドウ内のスプライトはその範囲内でZ順序を持つ
+//   - 例: ウインドウ0は0-9999、ウインドウ1は10000-19999
 const (
 	// ZOrderBackground は背景レイヤーのZ順序（常に最背面）
 	ZOrderBackground = 0
@@ -103,7 +114,46 @@ const (
 
 	// ZOrderTextBase はテキストレイヤーのZ順序の開始値
 	ZOrderTextBase = 1000
+
+	// ZOrderWindowRange はウインドウごとのZ順序の範囲
+	// 各ウインドウはこの範囲内でスプライトのZ順序を管理する
+	// ウインドウ0: 0 - 9999
+	// ウインドウ1: 10000 - 19999
+	// ...
+	ZOrderWindowRange = 10000
+
+	// ZOrderWindowBase はウインドウスプライト自体のZ順序オフセット
+	// ウインドウスプライトはウインドウ範囲の先頭に配置される
+	ZOrderWindowBase = 0
 )
+
+// CalculateGlobalZOrder はウインドウのZ順序とウインドウ内の相対Z順序からグローバルZ順序を計算する
+// windowZOrder: ウインドウのZ順序（0, 1, 2, ...）
+// localZOrder: ウインドウ内の相対Z順序（ZOrderCastBase + offset など）
+// 戻り値: グローバルZ順序
+//
+// 例:
+//   - ウインドウ0のキャスト（localZOrder=100）: 0 * 10000 + 100 = 100
+//   - ウインドウ1のキャスト（localZOrder=100）: 1 * 10000 + 100 = 10100
+//   - ウインドウ0のテキスト（localZOrder=1000）: 0 * 10000 + 1000 = 1000
+//   - ウインドウ1のテキスト（localZOrder=1000）: 1 * 10000 + 1000 = 11000
+func CalculateGlobalZOrder(windowZOrder, localZOrder int) int {
+	return windowZOrder*ZOrderWindowRange + localZOrder
+}
+
+// CalculateWindowZOrderFromGlobal はグローバルZ順序からウインドウのZ順序を計算する
+// globalZOrder: グローバルZ順序
+// 戻り値: ウインドウのZ順序
+func CalculateWindowZOrderFromGlobal(globalZOrder int) int {
+	return globalZOrder / ZOrderWindowRange
+}
+
+// CalculateLocalZOrderFromGlobal はグローバルZ順序からウインドウ内の相対Z順序を計算する
+// globalZOrder: グローバルZ順序
+// 戻り値: ウインドウ内の相対Z順序
+func CalculateLocalZOrderFromGlobal(globalZOrder int) int {
+	return globalZOrder % ZOrderWindowRange
+}
 
 // BaseLayer はレイヤーの基本実装を提供する構造体
 // 各レイヤータイプはこの構造体を埋め込んで使用する

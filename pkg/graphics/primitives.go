@@ -11,6 +11,7 @@ import (
 
 // DrawLine は指定されたピクチャーに直線を描画する
 // 要件 6.1
+// スプライトシステム要件 9.1: 線を描画したスプライトを作成できる
 //
 // パラメータ:
 //   - picID: 描画先ピクチャーID
@@ -36,6 +37,18 @@ func (gs *GraphicsSystem) drawLineInternal(picID, x1, y1, x2, y2 int) error {
 		false, // アンチエイリアスなし
 	)
 
+	// スプライトシステム要件 9.1: ShapeSpriteを作成する
+	if gs.shapeSpriteManager != nil {
+		gs.shapeSpriteManager.CreateLineSprite(
+			picID,
+			x1, y1, x2, y2,
+			gs.paintColor,
+			gs.lineSize,
+			ZOrderDrawing,
+		)
+		gs.log.Debug("DrawLine: created ShapeSprite", "picID", picID)
+	}
+
 	gs.log.Debug("DrawLine: drew line",
 		"picID", picID,
 		"x1", x1, "y1", y1,
@@ -54,6 +67,7 @@ func (gs *GraphicsSystem) DrawLineOnPic(picID, x1, y1, x2, y2 int) error {
 
 // DrawRect は指定されたピクチャーに矩形を描画する
 // 要件 6.5
+// スプライトシステム要件 9.2, 9.3: 矩形を描画したスプライトを作成できる
 //
 // パラメータ:
 //   - picID: 描画先ピクチャーID
@@ -90,6 +104,17 @@ func (gs *GraphicsSystem) drawRectInternal(picID, x1, y1, x2, y2, fillMode int) 
 			gs.paintColor,
 			false, // アンチエイリアスなし
 		)
+
+		// スプライトシステム要件 9.3: 塗りつぶし矩形のShapeSpriteを作成する
+		if gs.shapeSpriteManager != nil {
+			gs.shapeSpriteManager.CreateFillRectSprite(
+				picID,
+				x1, y1, x2, y2,
+				gs.paintColor,
+				ZOrderDrawing,
+			)
+			gs.log.Debug("DrawRect: created FillRectSprite", "picID", picID)
+		}
 	} else {
 		// 輪郭のみ（4本の線で描画）
 		vector.StrokeRect(
@@ -100,6 +125,18 @@ func (gs *GraphicsSystem) drawRectInternal(picID, x1, y1, x2, y2, fillMode int) 
 			gs.paintColor,
 			false, // アンチエイリアスなし
 		)
+
+		// スプライトシステム要件 9.2: 矩形のShapeSpriteを作成する
+		if gs.shapeSpriteManager != nil {
+			gs.shapeSpriteManager.CreateRectSprite(
+				picID,
+				x1, y1, x2, y2,
+				gs.paintColor,
+				gs.lineSize,
+				ZOrderDrawing,
+			)
+			gs.log.Debug("DrawRect: created RectSprite", "picID", picID)
+		}
 	}
 
 	gs.log.Debug("DrawRect: drew rectangle",
@@ -120,6 +157,7 @@ func (gs *GraphicsSystem) DrawRectOnPic(picID, x1, y1, x2, y2, fillMode int) err
 
 // FillRectOnPic は指定されたピクチャーに指定色で矩形を塗りつぶす
 // 要件 6.6
+// スプライトシステム要件 9.3: 塗りつぶし矩形を描画したスプライトを作成できる
 //
 // パラメータ:
 //   - picID: 描画先ピクチャーID
@@ -156,6 +194,17 @@ func (gs *GraphicsSystem) fillRectInternal(picID, x1, y1, x2, y2 int, c color.Co
 		false, // アンチエイリアスなし
 	)
 
+	// スプライトシステム要件 9.3: 塗りつぶし矩形のShapeSpriteを作成する
+	if gs.shapeSpriteManager != nil {
+		gs.shapeSpriteManager.CreateFillRectSprite(
+			picID,
+			x1, y1, x2, y2,
+			c,
+			ZOrderDrawing,
+		)
+		gs.log.Debug("FillRect: created FillRectSprite", "picID", picID)
+	}
+
 	gs.log.Debug("FillRect: filled rectangle",
 		"picID", picID,
 		"x1", x1, "y1", y1,
@@ -173,6 +222,7 @@ func (gs *GraphicsSystem) FillRectOnPic(picID, x1, y1, x2, y2 int, c color.Color
 
 // DrawCircle は指定されたピクチャーに円を描画する
 // 要件 6.2, 6.3, 6.4
+// スプライトシステム要件 9: 円を描画したスプライトを作成できる
 //
 // パラメータ:
 //   - picID: 描画先ピクチャーID
@@ -203,6 +253,17 @@ func (gs *GraphicsSystem) drawCircleInternal(picID, x, y, radius, fillMode int) 
 			gs.paintColor,
 			false, // アンチエイリアスなし
 		)
+
+		// スプライトシステム要件 9: 塗りつぶし円のShapeSpriteを作成する
+		if gs.shapeSpriteManager != nil {
+			gs.shapeSpriteManager.CreateFillCircleSprite(
+				picID,
+				x, y, radius,
+				gs.paintColor,
+				ZOrderDrawing,
+			)
+			gs.log.Debug("DrawCircle: created FillCircleSprite", "picID", picID)
+		}
 	} else {
 		// 輪郭のみ
 		vector.StrokeCircle(
@@ -213,6 +274,18 @@ func (gs *GraphicsSystem) drawCircleInternal(picID, x, y, radius, fillMode int) 
 			gs.paintColor,
 			false, // アンチエイリアスなし
 		)
+
+		// スプライトシステム要件 9: 円のShapeSpriteを作成する
+		if gs.shapeSpriteManager != nil {
+			gs.shapeSpriteManager.CreateCircleSprite(
+				picID,
+				x, y, radius,
+				gs.paintColor,
+				gs.lineSize,
+				ZOrderDrawing,
+			)
+			gs.log.Debug("DrawCircle: created CircleSprite", "picID", picID)
+		}
 	}
 
 	gs.log.Debug("DrawCircle: drew circle",

@@ -41,22 +41,10 @@ type LayerManager struct {
 // PictureLayerSet はピクチャーに属するレイヤーのセット
 // 要件 1.6: 背景 → 描画 → キャスト → テキストの順で合成
 // 要件 10.1, 10.2: 操作順序に基づくZ順序管理
+// スプライトシステム移行: BackgroundLayer, CastLayer, DrawingLayerは削除された
 type PictureLayerSet struct {
 	// ピクチャーID
 	PicID int
-
-	// 背景レイヤー（常にZ=0、最背面）
-	// 要件 1.1: 背景レイヤー（Background_Layer）を管理する
-	Background *BackgroundLayer
-
-	// 描画レイヤー（後方互換性のために残す）
-	// 要件 1.3: 描画レイヤー（Drawing_Layer）を管理する
-	// 注意: 新しい実装ではDrawingEntriesを使用
-	Drawing *DrawingLayer
-
-	// キャストレイヤー（Z順序でソート）
-	// 要件 1.2: キャストレイヤー（Cast_Layer）をZ順序で管理する
-	Casts []*CastLayer
 
 	// テキストレイヤー
 	// 要件 1.4: テキストレイヤー（Text_Layer）を管理する
@@ -82,9 +70,6 @@ type PictureLayerSet struct {
 	// 要件 10.1, 10.2: 操作順序に基づくZ順序
 	// 背景は常にZ=0なので、カウンターは1から開始
 	nextZOrder int
-
-	// 次のキャストZ順序オフセット（後方互換性のために残す）
-	nextCastZOffset int
 
 	// 次のテキストZ順序オフセット（後方互換性のために残す）
 	nextTextZOffset int
@@ -214,115 +199,75 @@ func (lm *LayerManager) Clear() {
 }
 
 // NewPictureLayerSet は新しいPictureLayerSetを作成する
+// スプライトシステム移行: BackgroundLayer, CastLayer, DrawingLayerは削除された
 func NewPictureLayerSet(picID int) *PictureLayerSet {
 	return &PictureLayerSet{
 		PicID:           picID,
-		Background:      nil,
-		Drawing:         nil,
-		Casts:           make([]*CastLayer, 0),
 		Texts:           make([]*TextLayerEntry, 0),
 		DrawingEntries:  make([]*DrawingEntry, 0),
 		CompositeBuffer: nil,
 		DirtyRegion:     image.Rectangle{},
 		FullDirty:       true, // 初期状態はダーティ
 		nextZOrder:      1,    // 背景はZ=0なので、1から開始
-		nextCastZOffset: 0,
 		nextTextZOffset: 0,
 	}
 }
 
-// SetBackground は背景レイヤーを設定する
-// 要件 1.1: 背景レイヤー（Background_Layer）を管理する
-func (pls *PictureLayerSet) SetBackground(layer *BackgroundLayer) {
-	pls.Background = layer
+// SetBackground は背景レイヤーを設定する（後方互換性のために残す、何もしない）
+// Deprecated: スプライトシステム移行により不要になった
+func (pls *PictureLayerSet) SetBackground(layer interface{}) {
+	// スプライトシステム移行により、BackgroundLayerは不要になった
 	pls.FullDirty = true
 }
 
-// SetDrawing は描画レイヤーを設定する
-// 要件 1.3: 描画レイヤー（Drawing_Layer）を管理する
-func (pls *PictureLayerSet) SetDrawing(layer *DrawingLayer) {
-	pls.Drawing = layer
+// SetDrawing は描画レイヤーを設定する（後方互換性のために残す、何もしない）
+// Deprecated: スプライトシステム移行により不要になった
+func (pls *PictureLayerSet) SetDrawing(layer interface{}) {
+	// スプライトシステム移行により、DrawingLayerは不要になった
 	pls.FullDirty = true
 }
 
-// AddCastLayer はキャストレイヤーを追加する
-// 要件 1.2: キャストレイヤー（Cast_Layer）をZ順序で管理する
-// 要件 1.5: レイヤーが追加されたときに自動的にZ順序を割り当てる
-// 要件 10.1, 10.2: 操作順序に基づくZ順序
-func (pls *PictureLayerSet) AddCastLayer(layer *CastLayer) {
-	// 操作順序に基づくZ順序を割り当て
-	layer.SetZOrder(pls.nextZOrder)
+// AddCastLayer はキャストレイヤーを追加する（後方互換性のために残す、何もしない）
+// Deprecated: スプライトシステム移行により不要になった
+func (pls *PictureLayerSet) AddCastLayer(layer interface{}) {
+	// スプライトシステム移行により、CastLayerは不要になった
 	pls.nextZOrder++
-
-	pls.Casts = append(pls.Casts, layer)
-	pls.nextCastZOffset++
 	pls.FullDirty = true
 }
 
-// RemoveCastLayer はキャストレイヤーを削除する
-// 要件 2.3: DelCastが呼び出されたときに対応するCast_Layerを削除する
+// RemoveCastLayer はキャストレイヤーを削除する（後方互換性のために残す、常にfalseを返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (pls *PictureLayerSet) RemoveCastLayer(castID int) bool {
-	for i, cast := range pls.Casts {
-		if cast.GetCastID() == castID {
-			// 削除前の位置をダーティ領域に追加
-			pls.AddDirtyRegion(cast.GetBounds())
-
-			// スライスから削除
-			pls.Casts = append(pls.Casts[:i], pls.Casts[i+1:]...)
-			pls.FullDirty = true
-			return true
-		}
-	}
+	// スプライトシステム移行により、CastLayerは不要になった
 	return false
 }
 
-// RemoveCastLayerByID はレイヤーIDでキャストレイヤーを削除する
-// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録し、処理をスキップする
+// RemoveCastLayerByID はレイヤーIDでキャストレイヤーを削除する（後方互換性のために残す、常にfalseを返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (pls *PictureLayerSet) RemoveCastLayerByID(layerID int) bool {
-	for i, cast := range pls.Casts {
-		if cast.GetID() == layerID {
-			// 削除前の位置をダーティ領域に追加
-			pls.AddDirtyRegion(cast.GetBounds())
-
-			// スライスから削除
-			pls.Casts = append(pls.Casts[:i], pls.Casts[i+1:]...)
-			pls.FullDirty = true
-			return true
-		}
-	}
-	// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録
-	// 要件 10.5: エラーメッセージに関数名、ピクチャーID、レイヤーIDを含める
-	fmt.Printf("RemoveCastLayerByID: layer not found, picID=%d, layerID=%d\n", pls.PicID, layerID)
+	// スプライトシステム移行により、CastLayerは不要になった
 	return false
 }
 
-// GetCastLayer はキャストIDでキャストレイヤーを取得する
-func (pls *PictureLayerSet) GetCastLayer(castID int) *CastLayer {
-	for _, cast := range pls.Casts {
-		if cast.GetCastID() == castID {
-			return cast
-		}
-	}
+// GetCastLayer はキャストIDでキャストレイヤーを取得する（後方互換性のために残す、常にnilを返す）
+// Deprecated: スプライトシステム移行により不要になった
+func (pls *PictureLayerSet) GetCastLayer(castID int) interface{} {
+	// スプライトシステム移行により、CastLayerは不要になった
 	return nil
 }
 
-// GetCastLayerByID はレイヤーIDでキャストレイヤーを取得する
-// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録し、処理をスキップする
-func (pls *PictureLayerSet) GetCastLayerByID(layerID int) *CastLayer {
-	for _, cast := range pls.Casts {
-		if cast.GetID() == layerID {
-			return cast
-		}
-	}
-	// 要件 10.2: 存在しないレイヤーIDが指定されたときにエラーをログに記録
-	// 要件 10.5: エラーメッセージに関数名、ピクチャーID、レイヤーIDを含める
-	fmt.Printf("GetCastLayerByID: layer not found, picID=%d, layerID=%d\n", pls.PicID, layerID)
+// GetCastLayerByID はレイヤーIDでキャストレイヤーを取得する（後方互換性のために残す、常にnilを返す）
+// Deprecated: スプライトシステム移行により不要になった
+func (pls *PictureLayerSet) GetCastLayerByID(layerID int) interface{} {
+	// スプライトシステム移行により、CastLayerは不要になった
 	return nil
 }
 
-// GetCastLayerCount はキャストレイヤーの数を返す
+// GetCastLayerCount はキャストレイヤーの数を返す（後方互換性のために残す、常に0を返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (pls *PictureLayerSet) GetCastLayerCount() int {
-	return len(pls.Casts)
+	// スプライトシステム移行により、CastLayerは不要になった
+	return 0
 }
 
 // AddTextLayer はテキストレイヤーを追加する
@@ -412,17 +357,18 @@ func (pls *PictureLayerSet) ClearTextLayers() {
 	pls.FullDirty = true
 }
 
-// ClearCastLayers はすべてのキャストレイヤーをクリアする
+// ClearCastLayers はすべてのキャストレイヤーをクリアする（後方互換性のために残す、何もしない）
+// Deprecated: スプライトシステム移行により不要になった
 func (pls *PictureLayerSet) ClearCastLayers() {
-	pls.Casts = make([]*CastLayer, 0)
-	pls.nextCastZOffset = 0
+	// スプライトシステム移行により、CastLayerは不要になった
 	pls.FullDirty = true
 }
 
-// GetNextCastZOffset は次のキャストZ順序オフセットを返す
-// 要件 1.5: レイヤーが追加されたときに自動的にZ順序を割り当てる
+// GetNextCastZOffset は次のキャストZ順序オフセットを返す（後方互換性のために残す、常に0を返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (pls *PictureLayerSet) GetNextCastZOffset() int {
-	return pls.nextCastZOffset
+	// スプライトシステム移行により、CastLayerは不要になった
+	return 0
 }
 
 // GetNextTextZOffset は次のテキストZ順序オフセットを返す
@@ -455,6 +401,7 @@ func (pls *PictureLayerSet) ClearDirtyRegion() {
 }
 
 // IsDirty はダーティかどうかを返す
+// スプライトシステム移行: BackgroundLayer, CastLayer, DrawingLayerは削除された
 func (pls *PictureLayerSet) IsDirty() bool {
 	if pls.FullDirty {
 		return true
@@ -464,17 +411,6 @@ func (pls *PictureLayerSet) IsDirty() bool {
 	}
 
 	// 各レイヤーのダーティフラグをチェック
-	if pls.Background != nil && pls.Background.IsDirty() {
-		return true
-	}
-	if pls.Drawing != nil && pls.Drawing.IsDirty() {
-		return true
-	}
-	for _, cast := range pls.Casts {
-		if cast.IsDirty() {
-			return true
-		}
-	}
 	for _, text := range pls.Texts {
 		if text.IsDirty() {
 			return true
@@ -506,16 +442,8 @@ func (pls *PictureLayerSet) GetCompositeBuffer() *ebiten.Image {
 
 // ClearAllDirtyFlags はすべてのレイヤーのダーティフラグをクリアする
 // 要件 3.4: 合成処理が完了したときにすべてのDirty_Flagをクリアする
+// スプライトシステム移行: BackgroundLayer, CastLayer, DrawingLayerは削除された
 func (pls *PictureLayerSet) ClearAllDirtyFlags() {
-	if pls.Background != nil {
-		pls.Background.SetDirty(false)
-	}
-	if pls.Drawing != nil {
-		pls.Drawing.SetDirty(false)
-	}
-	for _, cast := range pls.Casts {
-		cast.SetDirty(false)
-	}
 	for _, text := range pls.Texts {
 		text.SetDirty(false)
 	}
@@ -585,30 +513,14 @@ func containsRect(rect1, rect2 image.Rectangle) bool {
 
 // GetUpperLayers は指定されたレイヤーより上位のレイヤーを取得する
 // 合成処理で上書きスキップ判定に使用
+// スプライトシステム移行: BackgroundLayer, CastLayer, DrawingLayerは削除された
 func (pls *PictureLayerSet) GetUpperLayers(targetZOrder int) []Layer {
 	var upperLayers []Layer
-
-	// 背景レイヤー（Z順序: 0）
-	if pls.Background != nil && pls.Background.GetZOrder() > targetZOrder {
-		upperLayers = append(upperLayers, pls.Background)
-	}
-
-	// 描画レイヤー（後方互換性）
-	if pls.Drawing != nil && pls.Drawing.GetZOrder() > targetZOrder {
-		upperLayers = append(upperLayers, pls.Drawing)
-	}
 
 	// 描画エントリ
 	for _, entry := range pls.DrawingEntries {
 		if entry.GetZOrder() > targetZOrder {
 			upperLayers = append(upperLayers, entry)
-		}
-	}
-
-	// キャストレイヤー
-	for _, cast := range pls.Casts {
-		if cast.GetZOrder() > targetZOrder {
-			upperLayers = append(upperLayers, cast)
 		}
 	}
 
@@ -624,27 +536,13 @@ func (pls *PictureLayerSet) GetUpperLayers(targetZOrder int) []Layer {
 
 // GetAllLayersSorted はすべてのレイヤーをZ順序でソートして返す
 // 要件 10.5: 合成時にすべてのレイヤーをZ順序でソートして描画
+// スプライトシステム移行: BackgroundLayer, CastLayer, DrawingLayerは削除された
 func (pls *PictureLayerSet) GetAllLayersSorted() []Layer {
 	var layers []Layer
-
-	// 背景レイヤー（Z順序: 0）
-	if pls.Background != nil {
-		layers = append(layers, pls.Background)
-	}
-
-	// 描画レイヤー（後方互換性）
-	if pls.Drawing != nil {
-		layers = append(layers, pls.Drawing)
-	}
 
 	// 描画エントリ
 	for _, entry := range pls.DrawingEntries {
 		layers = append(layers, entry)
-	}
-
-	// キャストレイヤー
-	for _, cast := range pls.Casts {
-		layers = append(layers, cast)
 	}
 
 	// テキストレイヤー

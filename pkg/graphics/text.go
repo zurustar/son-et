@@ -36,13 +36,13 @@ type TextSettings struct {
 }
 
 // TextRenderer はテキスト描画を管理する
+// スプライトシステム移行: LayerManagerは不要になった（TextSpriteで管理）
 type TextRenderer struct {
-	font         *FontSettings // 現在のフォント設定
-	settings     *TextSettings // 現在のテキスト設定
-	face         font.Face     // 現在のフォントフェイス
-	log          *slog.Logger  // ロガー
-	layerManager *LayerManager // 要件 8.3: LayerManagerとの統合
-	mu           sync.RWMutex  // 排他制御
+	font     *FontSettings // 現在のフォント設定
+	settings *TextSettings // 現在のテキスト設定
+	face     font.Face     // 現在のフォントフェイス
+	log      *slog.Logger  // ロガー
+	mu       sync.RWMutex  // 排他制御
 }
 
 // フォントマッピング（Windows → クロスプラットフォーム）
@@ -73,9 +73,8 @@ func NewTextRenderer() *TextRenderer {
 			BgColor:   color.RGBA{255, 255, 255, 255}, // デフォルトは白
 			BackMode:  0,                              // 透明
 		},
-		face:         basicfont.Face7x13, // デフォルトフォント
-		log:          slog.Default(),
-		layerManager: nil, // 後でSetLayerManagerで設定
+		face: basicfont.Face7x13, // デフォルトフォント
+		log:  slog.Default(),
 	}
 	return tr
 }
@@ -87,19 +86,18 @@ func NewTextRendererWithLogger(log *slog.Logger) *TextRenderer {
 	return tr
 }
 
-// SetLayerManager はLayerManagerを設定する
-// 要件 8.3: TextRendererとLayerManagerを統合する
+// SetLayerManager はLayerManagerを設定する（後方互換性のために残す、何もしない）
+// Deprecated: スプライトシステム移行により不要になった
 func (tr *TextRenderer) SetLayerManager(lm *LayerManager) {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	tr.layerManager = lm
+	// スプライトシステム移行により、LayerManagerは不要になった
+	// この関数は後方互換性のために残すが、何もしない
 }
 
-// GetLayerManager はLayerManagerを取得する
+// GetLayerManager はLayerManagerを取得する（後方互換性のために残す、nilを返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (tr *TextRenderer) GetLayerManager() *LayerManager {
-	tr.mu.RLock()
-	defer tr.mu.RUnlock()
-	return tr.layerManager
+	// スプライトシステム移行により、LayerManagerは不要になった
+	return nil
 }
 
 // SetFont はフォント設定を変更する
@@ -214,8 +212,7 @@ func (tr *TextRenderer) SetBackMode(mode int) {
 
 // TextWrite はピクチャーに文字列を描画する
 // 要件 5.2: TextWrite(pic_no, x, y, text)が呼ばれたとき、指定されたピクチャーに文字列を描画する
-// 要件 2.5: TextWriteが呼び出されたときに対応するText_Layerを作成する
-// 要件 8.3: TextRendererとLayerManagerを統合する
+// スプライトシステム: TextSpriteはGraphicsSystem.TextWrite()で作成される
 // レイヤー方式: 背景に文字を描画し、差分を取って文字部分だけを抽出
 // これにより、同じ位置に別の色で描画しても前の文字の影が残らない
 func (tr *TextRenderer) TextWrite(pic *Picture, x, y int, text string) error {
@@ -277,25 +274,8 @@ func (tr *TextRenderer) TextWrite(pic *Picture, x, y int, text string) error {
 		return nil
 	}
 
-	// 要件 2.5, 8.3: LayerManagerにTextLayerEntryを追加
-	if tr.layerManager != nil {
-		// PictureLayerSetを取得または作成
-		pls := tr.layerManager.GetOrCreatePictureLayerSet(pic.ID)
-
-		// TextLayerEntryを作成
-		layerID := tr.layerManager.GetNextLayerID()
-		textLayerEntry := NewTextLayerEntryFromTextLayer(layerID, layer, pls.GetNextTextZOffset())
-
-		// PictureLayerSetに追加
-		pls.AddTextLayer(textLayerEntry)
-
-		tr.log.Debug("TextLayerEntry added to LayerManager",
-			"layerID", layerID,
-			"picID", pic.ID,
-			"text", text,
-			"x", x,
-			"y", y)
-	}
+	// スプライトシステム: TextSpriteはGraphicsSystem.TextWrite()で作成される
+	// LayerManagerのTextLayerEntryは不要になった
 
 	// レイヤーを合成（draw.Over でアルファブレンディング）
 	// 注: 既存の「焼き付け」動作を維持（レガシー互換性のため）
@@ -338,6 +318,13 @@ func (tr *TextRenderer) GetTextSettings() TextSettings {
 	tr.mu.RLock()
 	defer tr.mu.RUnlock()
 	return *tr.settings
+}
+
+// GetFace は現在のフォントフェイスを返す
+func (tr *TextRenderer) GetFace() font.Face {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+	return tr.face
 }
 
 // loadFont はフォントを読み込む

@@ -234,3 +234,371 @@ func createTestImage(width, height int, c color.Color) *image.RGBA {
 	}
 	return img
 }
+
+// TestTextSpriteManager tests
+func TestTextSpriteManager_CreateTextSprite(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(
+		1,      // picID
+		10, 20, // x, y
+		"Hello",            // text
+		color.Black,        // textColor
+		color.White,        // bgColor
+		basicfont.Face7x13, // face
+		1000,               // zOrder
+	)
+
+	if ts == nil {
+		t.Fatal("expected non-nil TextSprite")
+	}
+
+	if ts.GetPicID() != 1 {
+		t.Errorf("expected picID 1, got %d", ts.GetPicID())
+	}
+
+	if ts.GetText() != "Hello" {
+		t.Errorf("expected text 'Hello', got '%s'", ts.GetText())
+	}
+
+	x, y := ts.GetPosition()
+	if x != 10 || y != 20 {
+		t.Errorf("expected position (10, 20), got (%d, %d)", x, y)
+	}
+
+	if tsm.Count() != 1 {
+		t.Errorf("expected count 1, got %d", tsm.Count())
+	}
+}
+
+func TestTextSpriteManager_CreateTextSprite_EmptyText(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(
+		1,      // picID
+		10, 20, // x, y
+		"",                 // empty text
+		color.Black,        // textColor
+		color.White,        // bgColor
+		basicfont.Face7x13, // face
+		1000,               // zOrder
+	)
+
+	if ts != nil {
+		t.Error("expected nil TextSprite for empty text")
+	}
+
+	if tsm.Count() != 0 {
+		t.Errorf("expected count 0, got %d", tsm.Count())
+	}
+}
+
+func TestTextSpriteManager_CreateTextSprite_NilFace(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(
+		1,      // picID
+		10, 20, // x, y
+		"Hello",     // text
+		color.Black, // textColor
+		color.White, // bgColor
+		nil,         // nil face
+		1000,        // zOrder
+	)
+
+	if ts != nil {
+		t.Error("expected nil TextSprite for nil face")
+	}
+
+	if tsm.Count() != 0 {
+		t.Errorf("expected count 0, got %d", tsm.Count())
+	}
+}
+
+func TestTextSpriteManager_GetTextSprites(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	// 同じピクチャに複数のテキストを追加
+	tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+	tsm.CreateTextSprite(1, 10, 40, "World", color.Black, color.White, basicfont.Face7x13, 1001)
+	tsm.CreateTextSprite(2, 10, 20, "Other", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	sprites := tsm.GetTextSprites(1)
+	if len(sprites) != 2 {
+		t.Errorf("expected 2 sprites for picID 1, got %d", len(sprites))
+	}
+
+	sprites = tsm.GetTextSprites(2)
+	if len(sprites) != 1 {
+		t.Errorf("expected 1 sprite for picID 2, got %d", len(sprites))
+	}
+
+	sprites = tsm.GetTextSprites(999)
+	if sprites != nil && len(sprites) != 0 {
+		t.Errorf("expected 0 sprites for non-existent picID, got %d", len(sprites))
+	}
+}
+
+func TestTextSpriteManager_RemoveTextSprite(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	if tsm.Count() != 1 {
+		t.Errorf("expected count 1, got %d", tsm.Count())
+	}
+
+	tsm.RemoveTextSprite(ts)
+
+	if tsm.Count() != 0 {
+		t.Errorf("expected count 0 after removal, got %d", tsm.Count())
+	}
+}
+
+func TestTextSpriteManager_RemoveTextSpritesByPicID(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+	tsm.CreateTextSprite(1, 10, 40, "World", color.Black, color.White, basicfont.Face7x13, 1001)
+	tsm.CreateTextSprite(2, 10, 20, "Other", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	if tsm.Count() != 3 {
+		t.Errorf("expected count 3, got %d", tsm.Count())
+	}
+
+	tsm.RemoveTextSpritesByPicID(1)
+
+	if tsm.Count() != 1 {
+		t.Errorf("expected count 1 after removal, got %d", tsm.Count())
+	}
+
+	sprites := tsm.GetTextSprites(1)
+	if sprites != nil && len(sprites) != 0 {
+		t.Errorf("expected 0 sprites for picID 1 after removal, got %d", len(sprites))
+	}
+}
+
+func TestTextSpriteManager_Clear(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+	tsm.CreateTextSprite(2, 10, 20, "World", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	if tsm.Count() != 2 {
+		t.Errorf("expected count 2, got %d", tsm.Count())
+	}
+
+	tsm.Clear()
+
+	if tsm.Count() != 0 {
+		t.Errorf("expected count 0 after clear, got %d", tsm.Count())
+	}
+}
+
+func TestTextSprite_SetPosition(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	ts.SetPosition(50, 60)
+
+	x, y := ts.GetPosition()
+	if x != 50 || y != 60 {
+		t.Errorf("expected position (50, 60), got (%d, %d)", x, y)
+	}
+
+	// スプライトの位置も更新されていることを確認
+	sprite := ts.GetSprite()
+	sx, sy := sprite.Position()
+	if sx != 50 || sy != 60 {
+		t.Errorf("expected sprite position (50, 60), got (%f, %f)", sx, sy)
+	}
+}
+
+func TestTextSprite_SetZOrder(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	ts.SetZOrder(2000)
+
+	sprite := ts.GetSprite()
+	if sprite.ZOrder() != 2000 {
+		t.Errorf("expected zOrder 2000, got %d", sprite.ZOrder())
+	}
+}
+
+func TestTextSprite_SetVisible(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	ts.SetVisible(false)
+
+	sprite := ts.GetSprite()
+	if sprite.Visible() {
+		t.Error("expected sprite to be invisible")
+	}
+
+	ts.SetVisible(true)
+
+	if !sprite.Visible() {
+		t.Error("expected sprite to be visible")
+	}
+}
+
+func TestTextSprite_SetParent(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts := tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
+
+	// 親スプライトを作成
+	parent := sm.CreateSpriteWithSize(100, 100)
+	parent.SetPosition(50, 50)
+
+	ts.SetParent(parent)
+
+	sprite := ts.GetSprite()
+	if sprite.Parent() != parent {
+		t.Error("expected parent to be set")
+	}
+
+	// 絶対位置が親の位置を考慮していることを確認
+	absX, absY := sprite.AbsolutePosition()
+	if absX != 60 || absY != 70 { // 10+50, 20+50
+		t.Errorf("expected absolute position (60, 70), got (%f, %f)", absX, absY)
+	}
+}
+
+func TestSortTextSpritesByZOrder(t *testing.T) {
+	sm := NewSpriteManager()
+	tsm := NewTextSpriteManager(sm)
+
+	ts1 := tsm.CreateTextSprite(1, 10, 20, "A", color.Black, color.White, basicfont.Face7x13, 1002)
+	ts2 := tsm.CreateTextSprite(1, 10, 40, "B", color.Black, color.White, basicfont.Face7x13, 1000)
+	ts3 := tsm.CreateTextSprite(1, 10, 60, "C", color.Black, color.White, basicfont.Face7x13, 1001)
+
+	sprites := []*TextSprite{ts1, ts2, ts3}
+	sortTextSpritesByZOrder(sprites)
+
+	// Z順序でソートされていることを確認
+	if sprites[0].GetSprite().ZOrder() != 1000 {
+		t.Errorf("expected first sprite zOrder 1000, got %d", sprites[0].GetSprite().ZOrder())
+	}
+	if sprites[1].GetSprite().ZOrder() != 1001 {
+		t.Errorf("expected second sprite zOrder 1001, got %d", sprites[1].GetSprite().ZOrder())
+	}
+	if sprites[2].GetSprite().ZOrder() != 1002 {
+		t.Errorf("expected third sprite zOrder 1002, got %d", sprites[2].GetSprite().ZOrder())
+	}
+}
+
+func TestGetFontHeight(t *testing.T) {
+	height := getFontHeight(basicfont.Face7x13)
+	if height <= 0 {
+		t.Errorf("expected positive font height, got %d", height)
+	}
+
+	// nilフェイスの場合はデフォルト値
+	height = getFontHeight(nil)
+	if height != 13 {
+		t.Errorf("expected default font height 13, got %d", height)
+	}
+}
+
+// GraphicsSystem integration tests
+func TestGraphicsSystem_TextSpriteManager_Integration(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	tsm := gs.GetTextSpriteManager()
+	if tsm == nil {
+		t.Fatal("expected non-nil TextSpriteManager")
+	}
+
+	// 初期状態では空
+	if tsm.Count() != 0 {
+		t.Errorf("expected count 0, got %d", tsm.Count())
+	}
+}
+
+func TestGraphicsSystem_TextWrite_CreatesTextSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャを作成
+	picID, err := gs.CreatePic(200, 100)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// テキストを描画
+	err = gs.TextWrite(picID, 10, 20, "Hello")
+	if err != nil {
+		t.Fatalf("TextWrite failed: %v", err)
+	}
+
+	// TextSpriteが作成されたことを確認
+	tsm := gs.GetTextSpriteManager()
+	if tsm.Count() != 1 {
+		t.Errorf("expected TextSprite count 1, got %d", tsm.Count())
+	}
+
+	sprites := tsm.GetTextSprites(picID)
+	if len(sprites) != 1 {
+		t.Errorf("expected 1 sprite for picID %d, got %d", picID, len(sprites))
+	}
+}
+
+func TestGraphicsSystem_MultipleTextWrite_CreatesMultipleTextSprites(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャを作成
+	picID, err := gs.CreatePic(200, 100)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 複数のテキストを描画
+	gs.TextWrite(picID, 10, 20, "Hello")
+	gs.TextWrite(picID, 10, 40, "World")
+	gs.TextWrite(picID, 10, 60, "Test")
+
+	// TextSpriteが作成されたことを確認
+	tsm := gs.GetTextSpriteManager()
+	if tsm.Count() != 3 {
+		t.Errorf("expected TextSprite count 3, got %d", tsm.Count())
+	}
+}
+
+func TestGraphicsSystem_CloseWinAll_ClearsTextSprites(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャを作成
+	picID, _ := gs.CreatePic(200, 100)
+
+	// テキストを描画
+	gs.TextWrite(picID, 10, 20, "Hello")
+
+	tsm := gs.GetTextSpriteManager()
+	if tsm.Count() != 1 {
+		t.Errorf("expected TextSprite count 1, got %d", tsm.Count())
+	}
+
+	// すべてのウィンドウを閉じる
+	gs.CloseWinAll()
+
+	// TextSpriteがクリアされたことを確認
+	if tsm.Count() != 0 {
+		t.Errorf("expected TextSprite count 0 after CloseWinAll, got %d", tsm.Count())
+	}
+}

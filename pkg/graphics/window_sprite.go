@@ -43,6 +43,7 @@ func NewWindowSpriteManager(sm *SpriteManager) *WindowSpriteManager {
 
 // CreateWindowSprite はウインドウからWindowSpriteを作成する
 // 要件 7.1: 指定サイズ・背景色のウインドウスプライトを作成できる
+// 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
 func (wsm *WindowSpriteManager) CreateWindowSprite(win *Window, pic *Picture) *WindowSprite {
 	wsm.mu.Lock()
 	defer wsm.mu.Unlock()
@@ -75,7 +76,10 @@ func (wsm *WindowSpriteManager) CreateWindowSprite(win *Window, pic *Picture) *W
 	// スプライトを作成
 	sprite := wsm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(win.X), float64(win.Y))
-	sprite.SetZOrder(win.ZOrder)
+	// 要件 14.3: グローバルZ順序を使用
+	// ウインドウスプライト自体はウインドウ範囲の先頭に配置
+	globalZOrder := CalculateGlobalZOrder(win.ZOrder, ZOrderWindowBase)
+	sprite.SetZOrder(globalZOrder)
 	sprite.SetVisible(win.Visible)
 
 	ws := &WindowSprite{
@@ -95,6 +99,18 @@ func (wsm *WindowSpriteManager) GetWindowSprite(winID int) *WindowSprite {
 	wsm.mu.RLock()
 	defer wsm.mu.RUnlock()
 	return wsm.windowSprites[winID]
+}
+
+// GetWindowSpriteSprite はウインドウIDからWindowSpriteの基盤スプライトを取得する
+// 子スプライトの親として使用する
+func (wsm *WindowSpriteManager) GetWindowSpriteSprite(winID int) *Sprite {
+	wsm.mu.RLock()
+	defer wsm.mu.RUnlock()
+	ws := wsm.windowSprites[winID]
+	if ws == nil {
+		return nil
+	}
+	return ws.sprite
 }
 
 // RemoveWindowSprite はWindowSpriteを削除する
@@ -152,6 +168,22 @@ func (ws *WindowSprite) GetContentOffset() (int, int) {
 	return ws.borderThickness, ws.borderThickness + ws.titleBarHeight
 }
 
+// GetContentSprite はコンテンツ領域用の仮想スプライトを返す
+// 子スプライトはこのスプライトを親として設定することで、
+// コンテンツ領域内の相対位置で描画される
+// 注意: この関数は将来の完全移行のための準備として実装されている
+func (ws *WindowSprite) GetContentSprite() *Sprite {
+	return ws.sprite
+}
+
+// GetPicOffset はピクチャーのオフセット（PicX, PicY）を返す
+func (ws *WindowSprite) GetPicOffset() (int, int) {
+	if ws.window == nil {
+		return 0, 0
+	}
+	return ws.window.PicX, ws.window.PicY
+}
+
 // AddChild は子スプライトを追加する
 // 要件 7.2: ウインドウスプライトを親として子スプライトを追加できる
 func (ws *WindowSprite) AddChild(child *Sprite) {
@@ -194,9 +226,12 @@ func (ws *WindowSprite) UpdatePosition(x, y int) {
 }
 
 // UpdateZOrder はZ順序を更新する
+// 要件 14.3: グローバルZ順序を使用
 func (ws *WindowSprite) UpdateZOrder(z int) {
 	ws.window.ZOrder = z
-	ws.sprite.SetZOrder(z)
+	// グローバルZ順序を計算
+	globalZOrder := CalculateGlobalZOrder(z, ZOrderWindowBase)
+	ws.sprite.SetZOrder(globalZOrder)
 }
 
 // UpdateVisible は可視性を更新する

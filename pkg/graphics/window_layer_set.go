@@ -289,58 +289,32 @@ func (wls *WindowLayerSet) IsFullDirty() bool {
 	return wls.FullDirty
 }
 
-// GetCastLayer はキャストIDでCastLayerを取得する
-// 要件 4.2: MoveCastが呼び出されたときにCast_Layerの位置を更新する
-func (wls *WindowLayerSet) GetCastLayer(castID int) *CastLayer {
-	for _, layer := range wls.Layers {
-		if castLayer, ok := layer.(*CastLayer); ok {
-			if castLayer.GetCastID() == castID {
-				return castLayer
-			}
-		}
-	}
+// GetCastLayer はキャストIDでCastLayerを取得する（後方互換性のために残す、常にnilを返す）
+// Deprecated: スプライトシステム移行により不要になった
+func (wls *WindowLayerSet) GetCastLayer(castID int) interface{} {
+	// スプライトシステム移行により、CastLayerは不要になった
 	return nil
 }
 
-// RemoveCastLayer はキャストIDでCastLayerを削除する
-// 要件 4.3: DelCastが呼び出されたときにCast_Layerを削除する
+// RemoveCastLayer はキャストIDでCastLayerを削除する（後方互換性のために残す、常にfalseを返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (wls *WindowLayerSet) RemoveCastLayer(castID int) bool {
-	for i, layer := range wls.Layers {
-		if castLayer, ok := layer.(*CastLayer); ok {
-			if castLayer.GetCastID() == castID {
-				// 削除前の位置をダーティ領域に追加
-				wls.AddDirtyRegion(layer.GetBounds())
-
-				// スライスから削除
-				wls.Layers = append(wls.Layers[:i], wls.Layers[i+1:]...)
-				wls.FullDirty = true
-				return true
-			}
-		}
-	}
+	// スプライトシステム移行により、CastLayerは不要になった
 	return false
 }
 
-// GetCastLayerCount はCastLayerの数を返す
+// GetCastLayerCount はCastLayerの数を返す（後方互換性のために残す、常に0を返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (wls *WindowLayerSet) GetCastLayerCount() int {
-	count := 0
-	for _, layer := range wls.Layers {
-		if _, ok := layer.(*CastLayer); ok {
-			count++
-		}
-	}
-	return count
+	// スプライトシステム移行により、CastLayerは不要になった
+	return 0
 }
 
-// GetAllCastLayers はすべてのCastLayerを返す
-func (wls *WindowLayerSet) GetAllCastLayers() []*CastLayer {
-	var casts []*CastLayer
-	for _, layer := range wls.Layers {
-		if castLayer, ok := layer.(*CastLayer); ok {
-			casts = append(casts, castLayer)
-		}
-	}
-	return casts
+// GetAllCastLayers はすべてのCastLayerを返す（後方互換性のために残す、常に空のスライスを返す）
+// Deprecated: スプライトシステム移行により不要になった
+func (wls *WindowLayerSet) GetAllCastLayers() []interface{} {
+	// スプライトシステム移行により、CastLayerは不要になった
+	return nil
 }
 
 // ClearDirty はダーティフラグをクリアする

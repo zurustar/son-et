@@ -12,17 +12,21 @@ import (
 )
 
 // GraphicsSystem は描画システム全体を管理する
+// スプライトシステム移行: LayerManagerは不要になった
 type GraphicsSystem struct {
-	pictures            *PictureManager
-	windows             *WindowManager
-	casts               *CastManager
-	textRenderer        *TextRenderer
-	cmdQueue            *CommandQueue
-	sceneChanges        *SceneChangeManager
-	debugOverlay        *DebugOverlay
-	layerManager        *LayerManager        // 要件 8.1: LayerManagerを統合
-	spriteManager       *SpriteManager       // スプライトシステム要件 3.1〜3.6: SpriteManagerを統合
-	windowSpriteManager *WindowSpriteManager // スプライトシステム要件 7.1〜7.3: WindowSpriteManagerを統合
+	pictures             *PictureManager
+	windows              *WindowManager
+	casts                *CastManager
+	textRenderer         *TextRenderer
+	cmdQueue             *CommandQueue
+	sceneChanges         *SceneChangeManager
+	debugOverlay         *DebugOverlay
+	spriteManager        *SpriteManager        // スプライトシステム要件 3.1〜3.6: SpriteManagerを統合
+	windowSpriteManager  *WindowSpriteManager  // スプライトシステム要件 7.1〜7.3: WindowSpriteManagerを統合
+	pictureSpriteManager *PictureSpriteManager // スプライトシステム要件 6.1〜6.3: PictureSpriteManagerを統合
+	castSpriteManager    *CastSpriteManager    // スプライトシステム要件 8.1〜8.4: CastSpriteManagerを統合
+	textSpriteManager    *TextSpriteManager    // スプライトシステム要件 5.1〜5.5: TextSpriteManagerを統合
+	shapeSpriteManager   *ShapeSpriteManager   // スプライトシステム要件 9.1〜9.3: ShapeSpriteManagerを統合
 
 	// 仮想デスクトップ
 	virtualWidth  int
@@ -90,15 +94,15 @@ func NewGraphicsSystem(basePath string, opts ...Option) *GraphicsSystem {
 	gs.cmdQueue = NewCommandQueue()
 	gs.sceneChanges = NewSceneChangeManager()
 	gs.debugOverlay = NewDebugOverlay()
-	gs.layerManager = NewLayerManager()                               // 要件 8.1: LayerManagerを初期化
-	gs.spriteManager = NewSpriteManager()                             // スプライトシステム要件 3.1〜3.6: SpriteManagerを初期化
-	gs.windowSpriteManager = NewWindowSpriteManager(gs.spriteManager) // スプライトシステム要件 7.1〜7.3: WindowSpriteManagerを初期化
+	gs.spriteManager = NewSpriteManager()                               // スプライトシステム要件 3.1〜3.6: SpriteManagerを初期化
+	gs.windowSpriteManager = NewWindowSpriteManager(gs.spriteManager)   // スプライトシステム要件 7.1〜7.3: WindowSpriteManagerを初期化
+	gs.pictureSpriteManager = NewPictureSpriteManager(gs.spriteManager) // スプライトシステム要件 6.1〜6.3: PictureSpriteManagerを初期化
+	gs.castSpriteManager = NewCastSpriteManager(gs.spriteManager)       // スプライトシステム要件 8.1〜8.4: CastSpriteManagerを初期化
+	gs.textSpriteManager = NewTextSpriteManager(gs.spriteManager)       // スプライトシステム要件 5.1〜5.5: TextSpriteManagerを初期化
+	gs.shapeSpriteManager = NewShapeSpriteManager(gs.spriteManager)     // スプライトシステム要件 9.1〜9.3: ShapeSpriteManagerを初期化
 
-	// 要件 8.2: CastManagerとLayerManagerを統合
-	gs.casts.SetLayerManager(gs.layerManager)
-
-	// 要件 8.3: TextRendererとLayerManagerを統合
-	gs.textRenderer.SetLayerManager(gs.layerManager)
+	// スプライトシステム移行: LayerManagerは不要になった
+	// CastManagerとTextRendererへのLayerManager設定は不要
 
 	// オプションを適用
 	for _, opt := range opts {
@@ -203,6 +207,8 @@ func (gs *GraphicsSystem) executeCommand(cmd Command) error {
 // 要件 15.1-15.8: デバッグオーバーレイの描画
 // 要件 10.1, 10.2: PutCast、MovePic、TextWriteの操作順序に基づくZ順序で描画
 // スプライトシステム要件 7.1〜7.3: WindowSpriteを使用した描画
+// スプライトシステム要件 6.1〜6.3: PictureSpriteを使用した描画
+// スプライトシステム要件 14.1: SpriteManager.Draw()ベースの描画
 func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
@@ -251,6 +257,21 @@ func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 		// デバッグオーバーレイを描画（要件 15.1-15.8）
 		gs.drawDebugOverlayForWindow(screen, win, pic)
 	}
+
+	// スプライトシステム要件 14.1: SpriteManager.Draw()ベースの描画
+	// 注意: 現在は移行期間中なので、以下の描画は行わない
+	// - WindowSprite: 上記のループで個別に描画済み
+	// - CastSprite: drawLayersForWindow()で描画済み（透明色処理のため）
+	// - TextSprite: 従来のTextRendererで描画済み
+	// - ShapeSprite: 従来のプリミティブ描画で描画済み
+	//
+	// 将来的には、すべてのスプライトの親子関係を適切に設定し、
+	// SpriteManager.Draw()のみで描画を行う予定
+	// 現時点では、スプライトシステムへの移行を段階的に行うため、
+	// 従来の描画ロジックを維持している
+	//
+	// 移行完了後は以下のコードのみで描画が完了する:
+	// gs.spriteManager.Draw(screen)
 }
 
 // drawCastsForWindow はウィンドウに属するキャストを描画する
@@ -357,10 +378,8 @@ func (gs *GraphicsSystem) drawCastWithTransparency(screen *ebiten.Image, src *eb
 	}
 }
 
-// drawLayersForWindow はウィンドウに属するすべてのレイヤーをZ順序で描画する
-// 要件 10.1, 10.2: PutCast、MovePic、TextWriteの操作順序に基づくZ順序で描画
-// 要件 6.1: ウィンドウの背景色を最初に描画する
-// キャスト、描画エントリ（MovePic）、テキストを統一したZ順序で描画する
+// drawLayersForWindow はウィンドウに属するすべての描画要素をZ順序で描画する
+// スプライトシステム: キャストはCastSpriteを使用して描画する
 func (gs *GraphicsSystem) drawLayersForWindow(screen *ebiten.Image, win *Window) {
 	const (
 		borderThickness = 4
@@ -371,117 +390,104 @@ func (gs *GraphicsSystem) drawLayersForWindow(screen *ebiten.Image, win *Window)
 	contentX := win.X + borderThickness
 	contentY := win.Y + borderThickness + titleBarHeight
 
-	// レイヤーの位置はピクチャー座標系で指定される
-	// PicX/PicYはピクチャーの表示オフセットなので、レイヤーの位置にも適用する
+	// 位置オフセット（ピクチャー座標系）
 	offsetX := -win.PicX
 	offsetY := -win.PicY
 
-	// LayerManagerがない場合は従来のキャスト描画にフォールバック
-	if gs.layerManager == nil {
-		gs.drawCastsForWindow(screen, win)
-		return
-	}
-
-	// ウィンドウIDに関連付けられたレイヤーを取得
-	// 要件 7.4: drawLayersForWindowはウィンドウIDでレイヤーを検索する
-	wls := gs.layerManager.GetWindowLayerSet(win.ID)
-	if wls == nil {
-		// WindowLayerSetがない場合は従来のキャスト描画にフォールバック
-		gs.drawCastsForWindow(screen, win)
-		return
-	}
-
-	// 注意: 要件 6.1の背景色描画はdrawWindowDecoration()で既に行われている
-	// drawWindowDecoration()は背景色を描画した後、ピクチャー画像を描画する
-	// ここで再度背景色を描画するとピクチャー画像が覆われてしまうため、
-	// drawWindowBackground()の呼び出しは削除した
-
-	// すべてのレイヤーをZ順序でソートして取得
-	layers := wls.GetLayersSorted()
-
-	// レイヤーがない場合は背景色のみ描画して終了
-	if len(layers) == 0 {
-		return
-	}
-
-	// Z順序順に描画
-	for _, layer := range layers {
-		if layer == nil || !layer.IsVisible() {
-			continue
-		}
-
-		// レイヤーの種類に応じて描画
-		switch l := layer.(type) {
-		case *CastLayer:
-			// キャストレイヤーの描画
-			gs.drawCastLayerOnScreen(screen, l, contentX, contentY, offsetX, offsetY)
-
-		case *DrawingEntry:
-			// 描画エントリの描画（MovePicで作成）
-			gs.drawDrawingEntryOnScreen(screen, l, contentX, contentY, offsetX, offsetY)
-
-		case *TextLayerEntry:
-			// テキストレイヤーの描画
-			gs.drawTextLayerOnScreen(screen, l, contentX, contentY, offsetX, offsetY)
-		}
-	}
-
-	// 要件 9.3: 合成処理完了後にダーティフラグをクリアする
-	// これにより、変更のないフレームでは不要な再レンダリングがスキップされる
-	wls.ClearDirty()
+	// キャストスプライトを描画
+	gs.drawCastSpritesForWindow(screen, win, contentX, contentY, offsetX, offsetY)
 }
 
-// drawCastLayerOnScreen はキャストレイヤーをスクリーンに描画する
-func (gs *GraphicsSystem) drawCastLayerOnScreen(screen *ebiten.Image, castLayer *CastLayer, contentX, contentY, offsetX, offsetY int) {
-	// キャストのピクチャーを取得
-	castPic, err := gs.pictures.GetPicWithoutLock(castLayer.GetSrcPicID())
-	if err != nil {
-		gs.log.Warn("Failed to get picture for cast layer",
-			"castID", castLayer.GetCastID(),
-			"pictureID", castLayer.GetSrcPicID(),
-			"error", err)
+// drawCastSpritesForWindow はウィンドウに属するすべてのCastSpriteを描画する
+func (gs *GraphicsSystem) drawCastSpritesForWindow(screen *ebiten.Image, win *Window, contentX, contentY, offsetX, offsetY int) {
+	if gs.castSpriteManager == nil {
 		return
 	}
 
-	// キャストのソース領域を取得
-	srcX, srcY, srcW, srcH := castLayer.GetSourceRect()
-
-	// ソース領域のクリッピング
-	if srcX < 0 {
-		srcW += srcX
-		srcX = 0
-	}
-	if srcY < 0 {
-		srcH += srcY
-		srcY = 0
-	}
-	if srcX+srcW > castPic.Width {
-		srcW = castPic.Width - srcX
-	}
-	if srcY+srcH > castPic.Height {
-		srcH = castPic.Height - srcY
-	}
-
-	// サイズが0以下なら描画しない
-	if srcW <= 0 || srcH <= 0 {
+	// このウィンドウに属するCastSpriteを取得
+	castSprites := gs.castSpriteManager.GetCastSpritesByWindow(win.ID)
+	if len(castSprites) == 0 {
 		return
 	}
 
-	// ソース領域を切り出す
-	srcRect := image.Rect(srcX, srcY, srcX+srcW, srcY+srcH)
-	subImg := castPic.Image.SubImage(srcRect).(*ebiten.Image)
+	// Z順序でソート
+	sortCastSpritesByZOrder(castSprites)
+
+	// 描画
+	for _, cs := range castSprites {
+		gs.drawCastSpriteOnScreen(screen, cs, contentX, contentY, offsetX, offsetY)
+	}
+}
+
+// sortCastSpritesByZOrder はCastSpriteをZ順序でソートする
+func sortCastSpritesByZOrder(sprites []*CastSprite) {
+	for i := 1; i < len(sprites); i++ {
+		key := sprites[i]
+		keyZOrder := 0
+		if key.GetSprite() != nil {
+			keyZOrder = key.GetSprite().ZOrder()
+		}
+		j := i - 1
+		for j >= 0 {
+			jZOrder := 0
+			if sprites[j].GetSprite() != nil {
+				jZOrder = sprites[j].GetSprite().ZOrder()
+			}
+			if jZOrder <= keyZOrder {
+				break
+			}
+			sprites[j+1] = sprites[j]
+			j--
+		}
+		sprites[j+1] = key
+	}
+}
+
+// drawCastSpriteOnScreen はCastSpriteをスクリーンに描画する
+// スプライトシステム要件 8.1〜8.4: CastSpriteを使用した描画
+func (gs *GraphicsSystem) drawCastSpriteOnScreen(screen *ebiten.Image, cs *CastSprite, contentX, contentY, offsetX, offsetY int) {
+	sprite := cs.GetSprite()
+	if sprite == nil || sprite.Image() == nil {
+		return
+	}
+
+	// 可視性チェック
+	if !sprite.IsEffectivelyVisible() {
+		return
+	}
 
 	// キャストの描画位置を計算（ピクチャー座標系 → スクリーン座標）
-	x, y := castLayer.GetPosition()
-	screenX := contentX + offsetX + x
-	screenY := contentY + offsetY + y
+	x, y := sprite.Position()
+	screenX := float64(contentX+offsetX) + x
+	screenY := float64(contentY+offsetY) + y
 
-	// キャストを描画（透明色処理）
-	gs.drawCastWithTransparency(screen, subImg, screenX, screenY, castLayer.GetTransColor(), castLayer.HasTransColor())
+	// 透明色処理が必要な場合
+	if cs.HasTransColor() {
+		// 透明色処理を適用して描画
+		gs.drawCastWithTransparency(screen, sprite.Image(), int(screenX), int(screenY), cs.GetTransColor(), true)
+		return
+	}
+
+	// 透明色処理が不要な場合は通常描画
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(screenX, screenY)
+
+	alpha := sprite.EffectiveAlpha()
+	if alpha < 1.0 {
+		op.ColorScale.ScaleAlpha(float32(alpha))
+	}
+
+	screen.DrawImage(sprite.Image(), op)
 }
 
 // drawDrawingEntryOnScreen は描画エントリをスクリーンに描画する
+// スプライトシステム要件 6.1〜6.3: PictureSpriteが存在する場合はスプライトベースで描画
+// 注意: スプライトシステムが完全に統合された後は、この関数は不要になる
 func (gs *GraphicsSystem) drawDrawingEntryOnScreen(screen *ebiten.Image, entry *DrawingEntry, contentX, contentY, offsetX, offsetY int) {
+	// スプライトシステムが有効な場合、PictureSpriteで描画されるためスキップ
+	// 注意: 現在は移行期間中なので、スプライトシステムが有効でも従来の描画を行う
+	// 将来的には、スプライトシステムが完全に統合された後、この関数は削除される
+
 	img := entry.GetImage()
 	if img == nil {
 		return
@@ -498,6 +504,7 @@ func (gs *GraphicsSystem) drawDrawingEntryOnScreen(screen *ebiten.Image, entry *
 }
 
 // drawTextLayerOnScreen はテキストレイヤーをスクリーンに描画する
+// スプライトシステム要件 5.1〜5.5: TextSpriteを使用した描画
 func (gs *GraphicsSystem) drawTextLayerOnScreen(screen *ebiten.Image, textLayer *TextLayerEntry, contentX, contentY, offsetX, offsetY int) {
 	img := textLayer.GetImage()
 	if img == nil {
@@ -515,52 +522,83 @@ func (gs *GraphicsSystem) drawTextLayerOnScreen(screen *ebiten.Image, textLayer 
 	screen.DrawImage(img, opts)
 }
 
-// drawWindowBackground はウィンドウの背景色を描画する
-// 要件 6.1: ウィンドウの背景色を最初に描画する
-func (gs *GraphicsSystem) drawWindowBackground(screen *ebiten.Image, win *Window, wls *WindowLayerSet) {
-	const (
-		borderThickness = 4
-		titleBarHeight  = 20
-	)
-
-	// 背景色を取得（WindowLayerSetの背景色を優先、なければWindowの背景色を使用）
-	bgColor := wls.GetBgColor()
-	if bgColor == nil {
-		bgColor = win.BgColor
-	}
-
-	// 背景色がnilまたは完全に透明な場合は描画しない
-	if bgColor == nil {
+// drawTextSpriteOnScreen はTextSpriteをスクリーンに描画する
+// スプライトシステム要件 5.1〜5.5: TextSpriteを使用した描画
+func (gs *GraphicsSystem) drawTextSpriteOnScreen(screen *ebiten.Image, ts *TextSprite, contentX, contentY, offsetX, offsetY int) {
+	sprite := ts.GetSprite()
+	if sprite == nil || sprite.Image() == nil {
 		return
 	}
 
-	// 背景色のアルファ値を確認
-	_, _, _, a := bgColor.RGBA()
-	if a == 0 {
+	// 可視性チェック
+	if !sprite.IsEffectivelyVisible() {
 		return
 	}
 
-	// コンテンツ領域の開始位置を計算
-	contentX := float32(win.X + borderThickness)
-	contentY := float32(win.Y + borderThickness + titleBarHeight)
+	// テキストの描画位置を計算（ピクチャー座標系 → スクリーン座標）
+	x, y := sprite.Position()
+	screenX := float64(contentX+offsetX) + x
+	screenY := float64(contentY+offsetY) + y
 
-	// ウィンドウのコンテンツ領域のサイズを取得
-	contentWidth := float32(wls.Width)
-	contentHeight := float32(wls.Height)
+	// 描画
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(screenX, screenY)
 
-	// WindowLayerSetのサイズが0の場合はWindowのサイズを使用
-	if contentWidth <= 0 || contentHeight <= 0 {
-		contentWidth = float32(win.Width)
-		contentHeight = float32(win.Height)
+	alpha := sprite.EffectiveAlpha()
+	if alpha < 1.0 {
+		op.ColorScale.ScaleAlpha(float32(alpha))
 	}
 
-	// サイズが0以下の場合は描画しない
-	if contentWidth <= 0 || contentHeight <= 0 {
+	screen.DrawImage(sprite.Image(), op)
+}
+
+// drawTextSpritesForWindow はウィンドウに属するすべてのTextSpriteを描画する
+// スプライトシステム要件 5.1〜5.5: TextSpriteを使用した描画
+func (gs *GraphicsSystem) drawTextSpritesForWindow(screen *ebiten.Image, win *Window, contentX, contentY, offsetX, offsetY int) {
+	if gs.textSpriteManager == nil {
 		return
 	}
 
-	// 背景色で矩形を塗りつぶす
-	vector.DrawFilledRect(screen, contentX, contentY, contentWidth, contentHeight, bgColor, false)
+	// ウィンドウに関連するピクチャーIDを取得
+	picID := win.PicID
+
+	// このピクチャーに属するTextSpriteを取得
+	textSprites := gs.textSpriteManager.GetTextSprites(picID)
+	if len(textSprites) == 0 {
+		return
+	}
+
+	// Z順序でソート
+	sortTextSpritesByZOrder(textSprites)
+
+	// 描画
+	for _, ts := range textSprites {
+		gs.drawTextSpriteOnScreen(screen, ts, contentX, contentY, offsetX, offsetY)
+	}
+}
+
+// sortTextSpritesByZOrder はTextSpriteをZ順序でソートする
+func sortTextSpritesByZOrder(sprites []*TextSprite) {
+	for i := 1; i < len(sprites); i++ {
+		key := sprites[i]
+		keyZOrder := 0
+		if key.GetSprite() != nil {
+			keyZOrder = key.GetSprite().ZOrder()
+		}
+		j := i - 1
+		for j >= 0 {
+			jZOrder := 0
+			if sprites[j].GetSprite() != nil {
+				jZOrder = sprites[j].GetSprite().ZOrder()
+			}
+			if jZOrder <= keyZOrder {
+				break
+			}
+			sprites[j+1] = sprites[j]
+			j--
+		}
+		sprites[j+1] = key
+	}
 }
 
 // drawDebugOverlayForWindow はウィンドウのデバッグオーバーレイを描画する
@@ -679,10 +717,11 @@ func (gs *GraphicsSystem) IsDebugOverlayEnabled() bool {
 	return false
 }
 
-// GetLayerManager はLayerManagerを返す
-// 要件 8.1: GraphicsSystemにLayerManagerを統合する
+// GetLayerManager はLayerManagerを返す（後方互換性のために残す、nilを返す）
+// Deprecated: スプライトシステム移行により不要になった
 func (gs *GraphicsSystem) GetLayerManager() *LayerManager {
-	return gs.layerManager
+	// スプライトシステム移行により、LayerManagerは不要になった
+	return nil
 }
 
 // GetSpriteManager はSpriteManagerを返す
@@ -695,6 +734,30 @@ func (gs *GraphicsSystem) GetSpriteManager() *SpriteManager {
 // スプライトシステム要件 7.1〜7.3: GraphicsSystemにWindowSpriteManagerを統合する
 func (gs *GraphicsSystem) GetWindowSpriteManager() *WindowSpriteManager {
 	return gs.windowSpriteManager
+}
+
+// GetPictureSpriteManager はPictureSpriteManagerを返す
+// スプライトシステム要件 6.1〜6.3: GraphicsSystemにPictureSpriteManagerを統合する
+func (gs *GraphicsSystem) GetPictureSpriteManager() *PictureSpriteManager {
+	return gs.pictureSpriteManager
+}
+
+// GetCastSpriteManager はCastSpriteManagerを返す
+// スプライトシステム要件 8.1〜8.4: GraphicsSystemにCastSpriteManagerを統合する
+func (gs *GraphicsSystem) GetCastSpriteManager() *CastSpriteManager {
+	return gs.castSpriteManager
+}
+
+// GetTextSpriteManager はTextSpriteManagerを返す
+// スプライトシステム要件 5.1〜5.5: GraphicsSystemにTextSpriteManagerを統合する
+func (gs *GraphicsSystem) GetTextSpriteManager() *TextSpriteManager {
+	return gs.textSpriteManager
+}
+
+// GetShapeSpriteManager はShapeSpriteManagerを返す
+// スプライトシステム要件 9.1〜9.3: GraphicsSystemにShapeSpriteManagerを統合する
+func (gs *GraphicsSystem) GetShapeSpriteManager() *ShapeSpriteManager {
+	return gs.shapeSpriteManager
 }
 
 // VM Interface Implementation
@@ -767,7 +830,6 @@ func (gs *GraphicsSystem) GetVirtualHeight() int {
 }
 
 // OpenWin opens a window
-// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
 // スプライトシステム要件 7.1: ウィンドウが開かれたときにWindowSpriteを作成する
 func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 	gs.mu.Lock()
@@ -782,8 +844,7 @@ func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 		return -1, err
 	}
 
-	// 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
-	// ウィンドウの情報を取得してWindowLayerSetを作成
+	// ウィンドウの情報を取得
 	win, err := gs.windows.GetWin(winID)
 	if err != nil {
 		// ウィンドウが作成されたが取得できない場合はエラー
@@ -811,16 +872,13 @@ func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 		pic, _ = gs.pictures.GetPicWithoutLock(picID)
 	}
 
-	// WindowLayerSetを作成
-	gs.layerManager.GetOrCreateWindowLayerSet(winID, width, height, win.BgColor)
-
 	// スプライトシステム要件 7.1: WindowSpriteを作成する
 	if pic != nil && gs.windowSpriteManager != nil {
 		gs.windowSpriteManager.CreateWindowSprite(win, pic)
 		gs.log.Debug("OpenWin: created WindowSprite", "winID", winID)
 	}
 
-	gs.log.Debug("OpenWin: created WindowLayerSet", "winID", winID, "width", width, "height", height)
+	gs.log.Debug("OpenWin: window opened", "winID", winID, "width", width, "height", height)
 
 	return winID, nil
 }
@@ -901,20 +959,21 @@ func (gs *GraphicsSystem) MoveWin(id int, opts ...any) error {
 }
 
 // CloseWin closes a window
-// 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
+// CloseWin closes a window
 // スプライトシステム要件 7.3: ウィンドウが閉じられたときにWindowSpriteを削除する
+// スプライトシステム要件 8.3: ウィンドウが閉じられたときにCastSpriteを削除する
 func (gs *GraphicsSystem) CloseWin(id int) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
+	// スプライトシステム要件 8.3: CastSpriteを削除する
+	if gs.castSpriteManager != nil {
+		gs.castSpriteManager.RemoveCastSpritesByWindow(id)
+		gs.log.Debug("CloseWin: deleted CastSprites", "winID", id)
+	}
+
 	// Delete casts belonging to this window (要件 9.2)
 	gs.casts.DeleteCastsByWindow(id)
-
-	// 要件 1.3: ウィンドウが閉じられたときにWindowLayerSetを削除する
-	if gs.layerManager != nil {
-		gs.layerManager.DeleteWindowLayerSet(id)
-		gs.log.Debug("CloseWin: deleted WindowLayerSet", "winID", id)
-	}
 
 	// スプライトシステム要件 7.3: WindowSpriteを削除する
 	if gs.windowSpriteManager != nil {
@@ -926,27 +985,39 @@ func (gs *GraphicsSystem) CloseWin(id int) error {
 }
 
 // CloseWinAll closes all windows
-// 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
 // スプライトシステム要件 7.3: ウィンドウが閉じられたときにWindowSpriteを削除する
+// スプライトシステム要件 8.3: ウィンドウが閉じられたときにCastSpriteを削除する
 func (gs *GraphicsSystem) CloseWinAll() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// Get all windows and delete their casts and WindowLayerSets
+	// Get all windows and delete their casts
 	windows := gs.windows.GetWindowsOrdered()
 	for _, win := range windows {
-		gs.casts.DeleteCastsByWindow(win.ID)
-
-		// 要件 1.3: WindowLayerSetを削除する
-		if gs.layerManager != nil {
-			gs.layerManager.DeleteWindowLayerSet(win.ID)
+		// スプライトシステム要件 8.3: CastSpriteを削除する
+		if gs.castSpriteManager != nil {
+			gs.castSpriteManager.RemoveCastSpritesByWindow(win.ID)
 		}
+
+		gs.casts.DeleteCastsByWindow(win.ID)
 	}
 
 	// スプライトシステム要件 7.3: すべてのWindowSpriteを削除する
 	if gs.windowSpriteManager != nil {
 		gs.windowSpriteManager.Clear()
 		gs.log.Debug("CloseWinAll: deleted all WindowSprites")
+	}
+
+	// スプライトシステム要件 8.3: すべてのCastSpriteを削除する
+	if gs.castSpriteManager != nil {
+		gs.castSpriteManager.Clear()
+		gs.log.Debug("CloseWinAll: deleted all CastSprites")
+	}
+
+	// スプライトシステム要件 5.1〜5.5: すべてのTextSpriteを削除する
+	if gs.textSpriteManager != nil {
+		gs.textSpriteManager.Clear()
+		gs.log.Debug("CloseWinAll: deleted all TextSprites")
 	}
 
 	gs.windows.CloseWinAll()
@@ -986,21 +1057,121 @@ func (gs *GraphicsSystem) GetWinByPicID(picID int) (int, error) {
 // Cast management
 
 // PutCast places a cast on a window
+// スプライトシステム要件 8.1: キャストをスプライトとして作成する
+// 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
 func (gs *GraphicsSystem) PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	return gs.casts.PutCast(winID, picID, x, y, srcX, srcY, w, h)
+
+	// キャストを作成
+	castID, err := gs.casts.PutCast(winID, picID, x, y, srcX, srcY, w, h)
+	if err != nil {
+		return -1, err
+	}
+
+	// スプライトシステム要件 8.1: CastSpriteを作成する
+	// 要件 14.2: WindowSpriteを親として設定する
+	// 要件 14.3: グローバルZ順序を使用
+	if gs.castSpriteManager != nil {
+		cast, err := gs.casts.GetCast(castID)
+		if err == nil && cast != nil {
+			// ソース画像を取得
+			srcPic, err := gs.pictures.GetPicWithoutLock(picID)
+			if err == nil && srcPic != nil && srcPic.Image != nil {
+				// ウインドウのZ順序を取得
+				win, winErr := gs.windows.GetWin(winID)
+				windowZOrder := 0
+				if winErr == nil && win != nil {
+					windowZOrder = win.ZOrder
+				}
+
+				// Z順序を計算（グローバルZ順序）
+				localZOrder := ZOrderCastBase + cast.ZOrder
+				zOrder := CalculateGlobalZOrder(windowZOrder, localZOrder)
+
+				// WindowSpriteを親として取得
+				var parentSprite *Sprite
+				if gs.windowSpriteManager != nil {
+					parentSprite = gs.windowSpriteManager.GetWindowSpriteSprite(winID)
+				}
+
+				// CastSpriteを作成（親スプライト付き）
+				cs := gs.castSpriteManager.CreateCastSpriteWithParent(cast, srcPic.Image, zOrder, parentSprite)
+				if cs != nil && parentSprite != nil {
+					// WindowSpriteの子として登録
+					ws := gs.windowSpriteManager.GetWindowSprite(winID)
+					if ws != nil {
+						ws.AddChild(cs.GetSprite())
+					}
+				}
+				gs.log.Debug("PutCast: created CastSprite", "castID", castID, "winID", winID, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
+			}
+		}
+	}
+
+	return castID, nil
 }
 
 // PutCastWithTransColor places a cast on a window with transparent color
+// スプライトシステム要件 8.1, 8.4: キャストをスプライトとして作成し、透明色処理をサポートする
+// 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
 func (gs *GraphicsSystem) PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h int, transColor color.Color) (int, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	return gs.casts.PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h, transColor)
+	// キャストを作成
+	castID, err := gs.casts.PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h, transColor)
+	if err != nil {
+		return -1, err
+	}
+
+	// スプライトシステム要件 8.1, 8.4: CastSpriteを作成する（透明色付き）
+	// 要件 14.2: WindowSpriteを親として設定する
+	// 要件 14.3: グローバルZ順序を使用
+	if gs.castSpriteManager != nil {
+		cast, err := gs.casts.GetCast(castID)
+		if err == nil && cast != nil {
+			// ソース画像を取得
+			srcPic, err := gs.pictures.GetPicWithoutLock(picID)
+			if err == nil && srcPic != nil && srcPic.Image != nil {
+				// ウインドウのZ順序を取得
+				win, winErr := gs.windows.GetWin(winID)
+				windowZOrder := 0
+				if winErr == nil && win != nil {
+					windowZOrder = win.ZOrder
+				}
+
+				// Z順序を計算（グローバルZ順序）
+				localZOrder := ZOrderCastBase + cast.ZOrder
+				zOrder := CalculateGlobalZOrder(windowZOrder, localZOrder)
+
+				// WindowSpriteを親として取得
+				var parentSprite *Sprite
+				if gs.windowSpriteManager != nil {
+					parentSprite = gs.windowSpriteManager.GetWindowSpriteSprite(winID)
+				}
+
+				// CastSpriteを作成（親スプライト付き、透明色付き）
+				cs := gs.castSpriteManager.CreateCastSpriteWithTransColorAndParent(cast, srcPic.Image, zOrder, transColor, parentSprite)
+				if cs != nil && parentSprite != nil {
+					// WindowSpriteの子として登録
+					ws := gs.windowSpriteManager.GetWindowSprite(winID)
+					if ws != nil {
+						ws.AddChild(cs.GetSprite())
+					}
+				}
+				gs.log.Debug("PutCastWithTransColor: created CastSprite", "castID", castID, "winID", winID, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
+			}
+		}
+	}
+
+	return castID, nil
 }
 
 // MoveCast moves a cast
+// スプライトシステム要件 8.2: キャストの位置を移動できる（残像なし）
 func (gs *GraphicsSystem) MoveCast(id int, opts ...any) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -1042,12 +1213,21 @@ func (gs *GraphicsSystem) MoveCast(id int, opts ...any) error {
 		}
 	}
 
-	return gs.casts.MoveCast(id, castOpts...)
+	// キャストを更新
+	if err := gs.casts.MoveCast(id, castOpts...); err != nil {
+		return err
+	}
+
+	// スプライトシステム要件 8.2: CastSpriteを更新する
+	gs.updateCastSprite(id)
+
+	return nil
 }
 
 // MoveCastWithOptions moves a cast with explicit options
 // キャストはスプライトとして動作し、位置/ソースの更新のみを行う
 // 実際の描画は毎フレームdrawCastsForWindowで行われる
+// スプライトシステム要件 8.2: キャストの位置を移動できる（残像なし）
 func (gs *GraphicsSystem) MoveCastWithOptions(id int, opts ...CastOption) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -1057,19 +1237,75 @@ func (gs *GraphicsSystem) MoveCastWithOptions(id int, opts ...CastOption) error 
 		return err
 	}
 
+	// スプライトシステム要件 8.2: CastSpriteを更新する
+	gs.updateCastSprite(id)
+
 	return nil
 }
 
+// updateCastSprite はCastSpriteを更新する（内部用）
+func (gs *GraphicsSystem) updateCastSprite(castID int) {
+	if gs.castSpriteManager == nil {
+		return
+	}
+
+	cs := gs.castSpriteManager.GetCastSprite(castID)
+	if cs == nil {
+		return
+	}
+
+	cast, err := gs.casts.GetCast(castID)
+	if err != nil || cast == nil {
+		return
+	}
+
+	// 位置を更新
+	cs.UpdatePosition(cast.X, cast.Y)
+
+	// ソース領域が変更された場合はキャッシュを再構築
+	if cs.IsDirty() {
+		srcPic, err := gs.pictures.GetPicWithoutLock(cast.PicID)
+		if err == nil && srcPic != nil && srcPic.Image != nil {
+			cs.RebuildCache(srcPic.Image)
+		}
+	}
+
+	// 可視性を更新
+	cs.UpdateVisible(cast.Visible)
+}
+
 // DelCast deletes a cast
+// スプライトシステム要件 8.3: キャストを削除できる
+// 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
 func (gs *GraphicsSystem) DelCast(id int) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
+
+	// スプライトシステム要件 8.3: CastSpriteを削除する
+	// 要件 14.2: WindowSpriteの子リストからも削除する
+	if gs.castSpriteManager != nil {
+		cs := gs.castSpriteManager.GetCastSprite(id)
+		if cs != nil && gs.windowSpriteManager != nil {
+			cast := cs.GetCast()
+			if cast != nil {
+				ws := gs.windowSpriteManager.GetWindowSprite(cast.WinID)
+				if ws != nil {
+					ws.RemoveChild(cs.GetSprite().ID())
+				}
+			}
+		}
+		gs.castSpriteManager.RemoveCastSprite(id)
+	}
+
 	return gs.casts.DelCast(id)
 }
 
 // Text rendering
 
 // TextWrite writes text to a picture
+// スプライトシステム要件 5.1〜5.5: TextSpriteを作成する
+// 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
 func (gs *GraphicsSystem) TextWrite(picID, x, y int, text string) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -1080,7 +1316,66 @@ func (gs *GraphicsSystem) TextWrite(picID, x, y int, text string) error {
 		return err
 	}
 
-	return gs.textRenderer.TextWrite(pic, x, y, text)
+	// 従来のTextRendererでテキストを描画（レガシー互換性のため）
+	if err := gs.textRenderer.TextWrite(pic, x, y, text); err != nil {
+		return err
+	}
+
+	// スプライトシステム要件 5.1〜5.5: TextSpriteを作成する
+	// 要件 14.2: WindowSpriteを親として設定する
+	// 要件 14.3: グローバルZ順序を使用
+	if gs.textSpriteManager != nil {
+		// テキスト設定を取得
+		textSettings := gs.textRenderer.GetTextSettings()
+
+		// ローカルZ順序を計算（TextSpriteManagerのカウンターを使用）
+		localZOrder := ZOrderTextBase + gs.textSpriteManager.GetNextZOffset(picID)
+
+		// フォントフェイスを取得（TextRendererから）
+		face := gs.textRenderer.GetFace()
+
+		// WindowSpriteを親として取得（picIDからwinIDを取得）
+		var parentSprite *Sprite
+		var winID int = -1
+		windowZOrder := 0
+		if gs.windowSpriteManager != nil {
+			// picIDに関連するウインドウを検索
+			winID, _ = gs.windows.GetWinByPicID(picID)
+			if winID >= 0 {
+				parentSprite = gs.windowSpriteManager.GetWindowSpriteSprite(winID)
+				// ウインドウのZ順序を取得
+				win, winErr := gs.windows.GetWin(winID)
+				if winErr == nil && win != nil {
+					windowZOrder = win.ZOrder
+				}
+			}
+		}
+
+		// グローバルZ順序を計算
+		zOrder := CalculateGlobalZOrder(windowZOrder, localZOrder)
+
+		// TextSpriteを作成（親スプライト付き）
+		ts := gs.textSpriteManager.CreateTextSpriteWithParent(
+			picID,
+			x, y,
+			text,
+			textSettings.TextColor,
+			textSettings.BgColor,
+			face,
+			zOrder,
+			parentSprite,
+		)
+		if ts != nil && parentSprite != nil && winID >= 0 {
+			// WindowSpriteの子として登録
+			ws := gs.windowSpriteManager.GetWindowSprite(winID)
+			if ws != nil {
+				ws.AddChild(ts.GetSprite())
+			}
+		}
+		gs.log.Debug("TextWrite: created TextSprite", "picID", picID, "text", text, "x", x, "y", y, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
+	}
+
+	return nil
 }
 
 // SetFont sets the font
@@ -1487,6 +1782,24 @@ func (gs *GraphicsSystem) GetScaleAndOffset(screenW, screenH int) (scale, offset
 	offsetY = (float64(screenH) - float64(gs.virtualHeight)*scale) / 2
 
 	return scale, offsetX, offsetY
+}
+
+// DrawWithSpriteManager はSpriteManager.Draw()を使用して描画する
+// スプライトシステム要件 14.1: SpriteManager.Draw()ベースの描画
+// 注意: この関数は将来の完全移行のための準備として実装されている
+// 現在は、すべてのスプライトの親子関係が適切に設定されていないため、
+// 直接使用すると描画位置がずれる可能性がある
+// 完全移行後は、Draw()メソッドからこの関数を呼び出すようになる
+func (gs *GraphicsSystem) DrawWithSpriteManager(screen *ebiten.Image) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	if gs.spriteManager == nil {
+		return
+	}
+
+	// SpriteManagerに登録されているすべてのスプライトをZ順序で描画
+	gs.spriteManager.Draw(screen)
 }
 
 // DrawScaled は仮想デスクトップをスケーリングして描画する

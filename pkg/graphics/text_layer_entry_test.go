@@ -351,27 +351,24 @@ func TestTextLayerEntryImplementsLayerInterface(t *testing.T) {
 // TestTextLayerEntryZOrderRelationship はZ順序の関係をテストする
 // 要件 1.6: 背景 → 描画 → キャスト → テキストの順序
 func TestTextLayerEntryZOrderRelationship(t *testing.T) {
-	bgLayer := NewBackgroundLayer(1, 100, nil)
-	drawingLayer := NewDrawingLayer(2, 100, 640, 480)
-	castLayer := NewCastLayer(3, 10, 100, 200, 0, 0, 0, 0, 32, 32, 0)
-	textEntry := NewTextLayerEntry(4, 100, 0, 0, "Test", 0)
+	textEntry := NewTextLayerEntry(1, 100, 0, 0, "Test", 0)
 
-	// テキストレイヤーは背景レイヤーより前面にあることを確認
-	if textEntry.GetZOrder() <= bgLayer.GetZOrder() {
-		t.Errorf("expected TextLayerEntry ZOrder > BackgroundLayer ZOrder, got %d <= %d",
-			textEntry.GetZOrder(), bgLayer.GetZOrder())
+	// テキストレイヤーは背景レイヤー（ZOrderBackground=0）より前面にあることを確認
+	if textEntry.GetZOrder() <= ZOrderBackground {
+		t.Errorf("expected TextLayerEntry ZOrder > ZOrderBackground, got %d <= %d",
+			textEntry.GetZOrder(), ZOrderBackground)
 	}
 
-	// テキストレイヤーは描画レイヤーより前面にあることを確認
-	if textEntry.GetZOrder() <= drawingLayer.GetZOrder() {
-		t.Errorf("expected TextLayerEntry ZOrder > DrawingLayer ZOrder, got %d <= %d",
-			textEntry.GetZOrder(), drawingLayer.GetZOrder())
+	// テキストレイヤーは描画レイヤー（ZOrderDrawing=100）より前面にあることを確認
+	if textEntry.GetZOrder() <= ZOrderDrawing {
+		t.Errorf("expected TextLayerEntry ZOrder > ZOrderDrawing, got %d <= %d",
+			textEntry.GetZOrder(), ZOrderDrawing)
 	}
 
-	// テキストレイヤーはキャストレイヤーより前面にあることを確認
-	if textEntry.GetZOrder() <= castLayer.GetZOrder() {
-		t.Errorf("expected TextLayerEntry ZOrder > CastLayer ZOrder, got %d <= %d",
-			textEntry.GetZOrder(), castLayer.GetZOrder())
+	// テキストレイヤーはキャストレイヤー（ZOrderCastMax=999）より前面にあることを確認
+	if textEntry.GetZOrder() <= ZOrderCastMax {
+		t.Errorf("expected TextLayerEntry ZOrder > ZOrderCastMax, got %d <= %d",
+			textEntry.GetZOrder(), ZOrderCastMax)
 	}
 }
 

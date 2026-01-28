@@ -101,6 +101,109 @@ func (s *Sprite) IsEffectivelyVisible() bool {
 }
 ```
 
+### ウインドウ内スプライトの親子関係管理
+
+ウインドウ内のスプライト（キャスト、テキスト、ピクチャ、図形）は、WindowSpriteを親として設定される。
+これにより、以下の利点がある：
+
+1. **位置計算の自動化**: 子スプライトの位置はウインドウ相対座標で指定でき、絶対位置は親子関係から自動計算される
+2. **可視性の継承**: ウインドウが非表示になると、子スプライトも自動的に非表示になる
+3. **透明度の継承**: ウインドウの透明度が子スプライトにも適用される
+4. **一括削除**: ウインドウが閉じられると、子スプライトも自動的に削除される
+
+#### 親子関係の設定
+
+各スプライトマネージャーには`WithParent`サフィックスを持つ作成メソッドが用意されている：
+
+```go
+// CastSpriteの作成（親スプライト付き）
+csm.CreateCastSpriteWithParent(cast, srcImage, zOrder, parentSprite)
+
+// TextSpriteの作成（親スプライト付き）
+tsm.CreateTextSpriteWithParent(picID, x, y, text, textColor, bgColor, face, zOrder, parentSprite)
+
+// PictureSpriteの作成（親スプライト付き）
+psm.CreatePictureSpriteWithParent(srcImg, picID, srcX, srcY, width, height, destX, destY, zOrder, transparent, parentSprite)
+
+// ShapeSpriteの作成（親スプライト付き）
+ssm.CreateLineSpriteWithParent(picID, x1, y1, x2, y2, lineColor, lineSize, zOrder, parentSprite)
+ssm.CreateRectSpriteWithParent(picID, x1, y1, x2, y2, rectColor, lineSize, zOrder, parentSprite)
+ssm.CreateFillRectSpriteWithParent(picID, x1, y1, x2, y2, fillColor, zOrder, parentSprite)
+ssm.CreateCircleSpriteWithParent(picID, cx, cy, radius, circleColor, lineSize, zOrder, parentSprite)
+ssm.CreateFillCircleSpriteWithParent(picID, cx, cy, radius, fillColor, zOrder, parentSprite)
+```
+
+#### WindowSpriteの子スプライト管理
+
+WindowSpriteは子スプライトのリストを管理し、以下のメソッドを提供する：
+
+```go
+// 子スプライトを追加
+ws.AddChild(child *Sprite)
+
+// 子スプライトを削除
+ws.RemoveChild(childID int)
+
+// 子スプライトのリストを取得
+ws.GetChildren() []*Sprite
+```
+
+## Z順序の統一（ウインドウ間、ウインドウ内）
+
+### 概要
+
+スプライトシステムでは、ウインドウ間のZ順序とウインドウ内のZ順序を統一的に管理する。
+これにより、将来的に`SpriteManager.Draw()`のみで正しい描画順序を実現できる。
+
+### Z順序の定数
+
+```go
+const (
+    // ウインドウ内の相対Z順序
+    ZOrderBackground = 0      // 背景レイヤー
+    ZOrderDrawing = 1         // 描画レイヤー（MovePic）
+    ZOrderCastBase = 100      // キャストレイヤーの開始値
+    ZOrderCastMax = 999       // キャストレイヤーの最大値
+    ZOrderTextBase = 1000     // テキストレイヤーの開始値
+
+    // グローバルZ順序の計算用
+    ZOrderWindowRange = 10000 // ウインドウごとのZ順序の範囲
+    ZOrderWindowBase = 0      // ウインドウスプライト自体のZ順序オフセット
+)
+```
+
+### グローバルZ順序の計算
+
+各ウインドウには`ZOrderWindowRange`（10000）の範囲が割り当てられる。
+ウインドウ内のスプライトのZ順序は、この範囲内で計算される。
+
+```go
+// グローバルZ順序 = ウインドウZ順序 × ZOrderWindowRange + ローカルZ順序
+func CalculateGlobalZOrder(windowZOrder, localZOrder int) int {
+    return windowZOrder * ZOrderWindowRange + localZOrder
+}
+```
+
+### 例
+
+| ウインドウ | 要素 | ローカルZ順序 | グローバルZ順序 |
+|------------|------|---------------|-----------------|
+| ウインドウ0 | 背景 | 0 | 0 |
+| ウインドウ0 | キャスト | 100 | 100 |
+| ウインドウ0 | テキスト | 1000 | 1000 |
+| ウインドウ1 | 背景 | 0 | 10000 |
+| ウインドウ1 | キャスト | 100 | 10100 |
+| ウインドウ1 | テキスト | 1000 | 11000 |
+| ウインドウ2 | 背景 | 0 | 20000 |
+
+### 描画順序の保証
+
+この設計により、以下の描画順序が保証される：
+
+1. **ウインドウ間**: 後から開かれたウインドウ（Z順序が大きい）が前面に描画される
+2. **ウインドウ内**: 背景 → 描画 → キャスト → テキストの順序で描画される
+3. **統一性**: すべてのスプライトが単一のZ順序空間で管理される
+
 
 ## テキストスプライト（差分抽出方式）
 
@@ -143,6 +246,54 @@ func CreateTextSprite(bg color.Color, text string, textColor color.Color, face f
 ```
 
 ## 描画処理
+
+### GraphicsSystem.Draw()の移行計画
+
+GraphicsSystem.Draw()メソッドは、段階的にSpriteManager.Draw()ベースに移行する。
+
+#### 現在の実装（移行期間中）
+
+```go
+func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
+    // 1. ウィンドウをZ順序で取得
+    windows := gs.windows.GetWindowsOrdered()
+    
+    // 2. 各ウィンドウを描画
+    for _, win := range windows {
+        // WindowSpriteを使用してウィンドウ装飾を描画
+        gs.drawWindowSpriteDecoration(screen, ws, pic)
+        
+        // CastSpriteを描画（透明色処理のため個別に描画）
+        gs.drawLayersForWindow(screen, win)
+    }
+    
+    // 注意: 現在は移行期間中なので、SpriteManager.Draw()は呼び出さない
+    // 将来的には、すべてのスプライトの親子関係を適切に設定し、
+    // SpriteManager.Draw()のみで描画を行う予定
+}
+```
+
+#### 将来の実装（完全移行後）
+
+```go
+func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
+    // すべてのスプライトをZ順序で描画
+    gs.spriteManager.Draw(screen)
+}
+```
+
+#### DrawWithSpriteManager()メソッド
+
+将来の完全移行のための準備として、DrawWithSpriteManager()メソッドを提供する。
+
+```go
+func (gs *GraphicsSystem) DrawWithSpriteManager(screen *ebiten.Image) {
+    if gs.spriteManager == nil {
+        return
+    }
+    gs.spriteManager.Draw(screen)
+}
+```
 
 ### Z順序ソート
 

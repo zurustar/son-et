@@ -44,11 +44,6 @@ func TestNewGraphicsSystem(t *testing.T) {
 		t.Error("CommandQueue not initialized")
 	}
 
-	// 要件 8.1: LayerManagerが初期化されていることを確認
-	if gs.layerManager == nil {
-		t.Error("LayerManager not initialized")
-	}
-
 	// スプライトシステム要件 3.1〜3.6: SpriteManagerが初期化されていることを確認
 	if gs.spriteManager == nil {
 		t.Error("SpriteManager not initialized")
@@ -121,99 +116,6 @@ func TestGraphicsSystemShutdown(t *testing.T) {
 	// キューが空になっているはず
 	if gs.cmdQueue.Len() != 0 {
 		t.Errorf("Expected empty queue after Shutdown, got %d commands", gs.cmdQueue.Len())
-	}
-}
-
-// TestGraphicsSystem_GetLayerManager はGetLayerManagerメソッドをテストする
-// 要件 8.1: GraphicsSystemにLayerManagerを統合する
-func TestGraphicsSystem_GetLayerManager(t *testing.T) {
-	gs := NewGraphicsSystem("")
-
-	// GetLayerManagerがnilでないことを確認
-	lm := gs.GetLayerManager()
-	if lm == nil {
-		t.Fatal("GetLayerManager returned nil")
-	}
-
-	// LayerManagerが正しく動作することを確認
-	// PictureLayerSetを作成
-	pls := lm.GetOrCreatePictureLayerSet(1)
-	if pls == nil {
-		t.Fatal("GetOrCreatePictureLayerSet returned nil")
-	}
-
-	if pls.PicID != 1 {
-		t.Errorf("Expected PicID 1, got %d", pls.PicID)
-	}
-
-	// 同じPictureLayerSetを取得できることを確認
-	pls2 := lm.GetPictureLayerSet(1)
-	if pls2 != pls {
-		t.Error("GetPictureLayerSet returned different instance")
-	}
-
-	// LayerManagerのカウントを確認
-	if lm.GetPictureLayerSetCount() != 1 {
-		t.Errorf("Expected 1 PictureLayerSet, got %d", lm.GetPictureLayerSetCount())
-	}
-}
-
-// TestGraphicsSystem_CastManagerLayerManagerIntegration はCastManagerとLayerManagerの統合をテストする
-// 要件 8.2: CastManagerとLayerManagerを統合する
-func TestGraphicsSystem_CastManagerLayerManagerIntegration(t *testing.T) {
-	gs := NewGraphicsSystem("")
-
-	// CastManagerがLayerManagerと統合されていることを確認
-	lm := gs.GetLayerManager()
-	if lm == nil {
-		t.Fatal("LayerManager is nil")
-	}
-
-	// PutCastを呼び出してCastLayerが作成されることを確認
-	// 要件 2.1: PutCastが呼び出されたときに対応するCast_Layerを作成する
-	castID, err := gs.PutCast(0, 1, 10, 20, 0, 0, 32, 32)
-	if err != nil {
-		t.Fatalf("PutCast failed: %v", err)
-	}
-
-	// CastLayerが作成されていることを確認
-	pls := lm.GetPictureLayerSet(0)
-	if pls == nil {
-		t.Fatal("PictureLayerSet not created")
-	}
-
-	castLayer := pls.GetCastLayer(castID)
-	if castLayer == nil {
-		t.Fatal("CastLayer not created")
-	}
-
-	// CastLayerの位置を確認
-	x, y := castLayer.GetPosition()
-	if x != 10 || y != 20 {
-		t.Errorf("Expected position (10, 20), got (%d, %d)", x, y)
-	}
-
-	// MoveCastを呼び出してCastLayerが更新されることを確認
-	// 要件 2.2: MoveCastが呼び出されたときに対応するCast_Layerの位置を更新する
-	err = gs.MoveCast(castID, 100, 200)
-	if err != nil {
-		t.Fatalf("MoveCast failed: %v", err)
-	}
-
-	x, y = castLayer.GetPosition()
-	if x != 100 || y != 200 {
-		t.Errorf("Expected position (100, 200), got (%d, %d)", x, y)
-	}
-
-	// DelCastを呼び出してCastLayerが削除されることを確認
-	// 要件 2.3: DelCastが呼び出されたときに対応するCast_Layerを削除する
-	err = gs.DelCast(castID)
-	if err != nil {
-		t.Fatalf("DelCast failed: %v", err)
-	}
-
-	if pls.GetCastLayer(castID) != nil {
-		t.Error("CastLayer should be deleted")
 	}
 }
 
@@ -295,5 +197,367 @@ func TestGraphicsSystem_SpriteManagerInitialization(t *testing.T) {
 	sm.Clear()
 	if sm.Count() != 0 {
 		t.Errorf("Expected 0 sprites after Clear, got %d", sm.Count())
+	}
+}
+
+// TestGraphicsSystem_GetShapeSpriteManager はGetShapeSpriteManagerメソッドをテストする
+// スプライトシステム要件 9.1〜9.3: GraphicsSystemにShapeSpriteManagerを統合する
+func TestGraphicsSystem_GetShapeSpriteManager(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// GetShapeSpriteManagerがnilでないことを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm == nil {
+		t.Fatal("GetShapeSpriteManager returned nil")
+	}
+
+	// 初期状態ではShapeSpriteがないことを確認
+	if ssm.Count() != 0 {
+		t.Errorf("Expected 0 shape sprites initially, got %d", ssm.Count())
+	}
+}
+
+// TestGraphicsSystem_DrawLine_CreatesShapeSprite はDrawLineがShapeSpriteを作成することをテストする
+// スプライトシステム要件 9.1: 線を描画したスプライトを作成できる
+func TestGraphicsSystem_DrawLine_CreatesShapeSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 線を描画
+	err = gs.DrawLine(picID, 10, 10, 100, 100)
+	if err != nil {
+		t.Fatalf("DrawLine failed: %v", err)
+	}
+
+	// ShapeSpriteが作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 1 {
+		t.Errorf("Expected 1 shape sprite, got %d", ssm.Count())
+	}
+
+	// ShapeSpriteの種類を確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 1 {
+		t.Fatalf("Expected 1 shape sprite for picID %d, got %d", picID, len(sprites))
+	}
+
+	if sprites[0].GetShapeType() != ShapeTypeLine {
+		t.Errorf("Expected ShapeTypeLine, got %v", sprites[0].GetShapeType())
+	}
+}
+
+// TestGraphicsSystem_DrawRect_CreatesShapeSprite はDrawRectがShapeSpriteを作成することをテストする
+// スプライトシステム要件 9.2: 矩形を描画したスプライトを作成できる
+func TestGraphicsSystem_DrawRect_CreatesShapeSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 矩形（輪郭のみ）を描画
+	err = gs.DrawRect(picID, 10, 10, 100, 100, 0)
+	if err != nil {
+		t.Fatalf("DrawRect failed: %v", err)
+	}
+
+	// ShapeSpriteが作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 1 {
+		t.Errorf("Expected 1 shape sprite, got %d", ssm.Count())
+	}
+
+	// ShapeSpriteの種類を確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 1 {
+		t.Fatalf("Expected 1 shape sprite for picID %d, got %d", picID, len(sprites))
+	}
+
+	if sprites[0].GetShapeType() != ShapeTypeRect {
+		t.Errorf("Expected ShapeTypeRect, got %v", sprites[0].GetShapeType())
+	}
+}
+
+// TestGraphicsSystem_DrawRect_FillMode_CreatesShapeSprite はDrawRectの塗りつぶしモードがShapeSpriteを作成することをテストする
+// スプライトシステム要件 9.3: 塗りつぶし矩形を描画したスプライトを作成できる
+func TestGraphicsSystem_DrawRect_FillMode_CreatesShapeSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 塗りつぶし矩形を描画
+	err = gs.DrawRect(picID, 10, 10, 100, 100, 2)
+	if err != nil {
+		t.Fatalf("DrawRect failed: %v", err)
+	}
+
+	// ShapeSpriteが作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 1 {
+		t.Errorf("Expected 1 shape sprite, got %d", ssm.Count())
+	}
+
+	// ShapeSpriteの種類を確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 1 {
+		t.Fatalf("Expected 1 shape sprite for picID %d, got %d", picID, len(sprites))
+	}
+
+	if sprites[0].GetShapeType() != ShapeTypeFillRect {
+		t.Errorf("Expected ShapeTypeFillRect, got %v", sprites[0].GetShapeType())
+	}
+}
+
+// TestGraphicsSystem_FillRect_CreatesShapeSprite はFillRectがShapeSpriteを作成することをテストする
+// スプライトシステム要件 9.3: 塗りつぶし矩形を描画したスプライトを作成できる
+func TestGraphicsSystem_FillRect_CreatesShapeSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 塗りつぶし矩形を描画
+	err = gs.FillRect(picID, 10, 10, 100, 100, 0xFF0000)
+	if err != nil {
+		t.Fatalf("FillRect failed: %v", err)
+	}
+
+	// ShapeSpriteが作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 1 {
+		t.Errorf("Expected 1 shape sprite, got %d", ssm.Count())
+	}
+
+	// ShapeSpriteの種類を確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 1 {
+		t.Fatalf("Expected 1 shape sprite for picID %d, got %d", picID, len(sprites))
+	}
+
+	if sprites[0].GetShapeType() != ShapeTypeFillRect {
+		t.Errorf("Expected ShapeTypeFillRect, got %v", sprites[0].GetShapeType())
+	}
+}
+
+// TestGraphicsSystem_DrawCircle_CreatesShapeSprite はDrawCircleがShapeSpriteを作成することをテストする
+// スプライトシステム要件 9: 円を描画したスプライトを作成できる
+func TestGraphicsSystem_DrawCircle_CreatesShapeSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 円（輪郭のみ）を描画
+	err = gs.DrawCircle(picID, 100, 100, 50, 0)
+	if err != nil {
+		t.Fatalf("DrawCircle failed: %v", err)
+	}
+
+	// ShapeSpriteが作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 1 {
+		t.Errorf("Expected 1 shape sprite, got %d", ssm.Count())
+	}
+
+	// ShapeSpriteの種類を確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 1 {
+		t.Fatalf("Expected 1 shape sprite for picID %d, got %d", picID, len(sprites))
+	}
+
+	if sprites[0].GetShapeType() != ShapeTypeCircle {
+		t.Errorf("Expected ShapeTypeCircle, got %v", sprites[0].GetShapeType())
+	}
+}
+
+// TestGraphicsSystem_DrawCircle_FillMode_CreatesShapeSprite はDrawCircleの塗りつぶしモードがShapeSpriteを作成することをテストする
+// スプライトシステム要件 9: 塗りつぶし円を描画したスプライトを作成できる
+func TestGraphicsSystem_DrawCircle_FillMode_CreatesShapeSprite(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 塗りつぶし円を描画
+	err = gs.DrawCircle(picID, 100, 100, 50, 2)
+	if err != nil {
+		t.Fatalf("DrawCircle failed: %v", err)
+	}
+
+	// ShapeSpriteが作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 1 {
+		t.Errorf("Expected 1 shape sprite, got %d", ssm.Count())
+	}
+
+	// ShapeSpriteの種類を確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 1 {
+		t.Fatalf("Expected 1 shape sprite for picID %d, got %d", picID, len(sprites))
+	}
+
+	if sprites[0].GetShapeType() != ShapeTypeFillCircle {
+		t.Errorf("Expected ShapeTypeFillCircle, got %v", sprites[0].GetShapeType())
+	}
+}
+
+// TestGraphicsSystem_MultipleShapes_CreatesMultipleShapeSprites は複数の図形描画が複数のShapeSpriteを作成することをテストする
+func TestGraphicsSystem_MultipleShapes_CreatesMultipleShapeSprites(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ピクチャーを作成
+	picID, err := gs.CreatePic(200, 200)
+	if err != nil {
+		t.Fatalf("CreatePic failed: %v", err)
+	}
+
+	// 複数の図形を描画
+	gs.DrawLine(picID, 10, 10, 50, 50)
+	gs.DrawRect(picID, 60, 60, 100, 100, 0)
+	gs.FillRect(picID, 110, 110, 150, 150, 0x00FF00)
+	gs.DrawCircle(picID, 175, 175, 20, 0)
+
+	// ShapeSpriteが4つ作成されていることを確認
+	ssm := gs.GetShapeSpriteManager()
+	if ssm.Count() != 4 {
+		t.Errorf("Expected 4 shape sprites, got %d", ssm.Count())
+	}
+
+	// すべてのShapeSpriteが同じpicIDに関連付けられていることを確認
+	sprites := ssm.GetShapeSprites(picID)
+	if len(sprites) != 4 {
+		t.Errorf("Expected 4 shape sprites for picID %d, got %d", picID, len(sprites))
+	}
+}
+
+// TestGraphicsSystem_DrawWithSpriteManager はDrawWithSpriteManagerメソッドをテストする
+// スプライトシステム要件 14.1: SpriteManager.Draw()ベースの描画
+func TestGraphicsSystem_DrawWithSpriteManager(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ダミーのスクリーンを作成
+	screen := ebiten.NewImage(1024, 768)
+
+	// DrawWithSpriteManagerを呼び出す（エラーが発生しないことを確認）
+	gs.DrawWithSpriteManager(screen)
+
+	// SpriteManagerにスプライトを追加
+	sm := gs.GetSpriteManager()
+	sprite := sm.CreateSpriteWithSize(100, 100)
+	sprite.SetPosition(50, 50)
+	sprite.SetVisible(true)
+
+	// 再度DrawWithSpriteManagerを呼び出す
+	gs.DrawWithSpriteManager(screen)
+
+	// スプライトが描画されたことを確認（エラーが発生しないことを確認）
+	if sm.Count() != 1 {
+		t.Errorf("Expected 1 sprite, got %d", sm.Count())
+	}
+}
+
+// TestGraphicsSystem_DrawWithSpriteManager_NilSpriteManager はSpriteManagerがnilの場合のテスト
+func TestGraphicsSystem_DrawWithSpriteManager_NilSpriteManager(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// SpriteManagerをnilに設定（テスト用）
+	gs.spriteManager = nil
+
+	// ダミーのスクリーンを作成
+	screen := ebiten.NewImage(1024, 768)
+
+	// DrawWithSpriteManagerを呼び出す（パニックしないことを確認）
+	gs.DrawWithSpriteManager(screen)
+}
+
+// TestGraphicsSystem_DrawWithSpriteManager_MultipleSprites は複数のスプライトの描画をテストする
+func TestGraphicsSystem_DrawWithSpriteManager_MultipleSprites(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ダミーのスクリーンを作成
+	screen := ebiten.NewImage(1024, 768)
+
+	// SpriteManagerに複数のスプライトを追加
+	sm := gs.GetSpriteManager()
+
+	// 異なるZ順序でスプライトを作成
+	sprite1 := sm.CreateSpriteWithSize(50, 50)
+	sprite1.SetPosition(10, 10)
+	sprite1.SetZOrder(100)
+	sprite1.SetVisible(true)
+
+	sprite2 := sm.CreateSpriteWithSize(50, 50)
+	sprite2.SetPosition(20, 20)
+	sprite2.SetZOrder(50) // sprite1より背面
+	sprite2.SetVisible(true)
+
+	sprite3 := sm.CreateSpriteWithSize(50, 50)
+	sprite3.SetPosition(30, 30)
+	sprite3.SetZOrder(150) // sprite1より前面
+	sprite3.SetVisible(true)
+
+	// DrawWithSpriteManagerを呼び出す
+	gs.DrawWithSpriteManager(screen)
+
+	// スプライトが3つあることを確認
+	if sm.Count() != 3 {
+		t.Errorf("Expected 3 sprites, got %d", sm.Count())
+	}
+}
+
+// TestGraphicsSystem_DrawWithSpriteManager_InvisibleSprites は非表示スプライトの描画をテストする
+func TestGraphicsSystem_DrawWithSpriteManager_InvisibleSprites(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// ダミーのスクリーンを作成
+	screen := ebiten.NewImage(1024, 768)
+
+	// SpriteManagerにスプライトを追加
+	sm := gs.GetSpriteManager()
+
+	// 可視スプライト
+	visibleSprite := sm.CreateSpriteWithSize(50, 50)
+	visibleSprite.SetPosition(10, 10)
+	visibleSprite.SetVisible(true)
+
+	// 非表示スプライト
+	invisibleSprite := sm.CreateSpriteWithSize(50, 50)
+	invisibleSprite.SetPosition(20, 20)
+	invisibleSprite.SetVisible(false)
+
+	// DrawWithSpriteManagerを呼び出す（非表示スプライトは描画されない）
+	gs.DrawWithSpriteManager(screen)
+
+	// スプライトが2つあることを確認
+	if sm.Count() != 2 {
+		t.Errorf("Expected 2 sprites, got %d", sm.Count())
+	}
+
+	// 可視性を確認
+	if !visibleSprite.Visible() {
+		t.Error("visibleSprite should be visible")
+	}
+	if invisibleSprite.Visible() {
+		t.Error("invisibleSprite should not be visible")
 	}
 }

@@ -385,8 +385,10 @@ func TestWindowSpriteUpdateZOrder(t *testing.T) {
 	}
 
 	// スプライトのZ順序が更新されたことを確認
-	if ws.GetSprite().ZOrder() != 10 {
-		t.Errorf("Expected sprite ZOrder 10, got %d", ws.GetSprite().ZOrder())
+	// 要件 14.3: グローバルZ順序が使用される
+	expectedGlobalZOrder := CalculateGlobalZOrder(10, ZOrderWindowBase)
+	if ws.GetSprite().ZOrder() != expectedGlobalZOrder {
+		t.Errorf("Expected sprite ZOrder %d (global), got %d", expectedGlobalZOrder, ws.GetSprite().ZOrder())
 	}
 }
 
@@ -526,5 +528,153 @@ func TestGraphicsSystemCloseWinAllRemovesWindowSprites(t *testing.T) {
 		if wsm.GetWindowSprite(winID) != nil {
 			t.Errorf("WindowSprite for window %d should be removed after CloseWinAll", winID)
 		}
+	}
+}
+
+// TestGetWindowSpriteSprite はGetWindowSpriteSpriteメソッドをテストする
+// 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+func TestGetWindowSpriteSprite(t *testing.T) {
+	sm := NewSpriteManager()
+	wsm := NewWindowSpriteManager(sm)
+
+	win := &Window{
+		ID:      1,
+		Width:   200,
+		Height:  150,
+		Visible: true,
+	}
+
+	pic := &Picture{
+		ID:     1,
+		Width:  200,
+		Height: 150,
+		Image:  ebiten.NewImage(200, 150),
+	}
+
+	ws := wsm.CreateWindowSprite(win, pic)
+
+	// GetWindowSpriteSpriteで基盤スプライトを取得
+	sprite := wsm.GetWindowSpriteSprite(1)
+	if sprite == nil {
+		t.Error("GetWindowSpriteSprite returned nil for existing window")
+	}
+	if sprite != ws.GetSprite() {
+		t.Error("GetWindowSpriteSprite should return the same sprite as GetSprite()")
+	}
+
+	// 存在しないウインドウの場合
+	sprite = wsm.GetWindowSpriteSprite(999)
+	if sprite != nil {
+		t.Error("GetWindowSpriteSprite should return nil for non-existing window")
+	}
+}
+
+// TestGetPicOffset はGetPicOffsetメソッドをテストする
+func TestGetPicOffset(t *testing.T) {
+	sm := NewSpriteManager()
+	wsm := NewWindowSpriteManager(sm)
+
+	win := &Window{
+		ID:      1,
+		Width:   200,
+		Height:  150,
+		PicX:    10,
+		PicY:    20,
+		Visible: true,
+	}
+
+	pic := &Picture{
+		ID:     1,
+		Width:  200,
+		Height: 150,
+		Image:  ebiten.NewImage(200, 150),
+	}
+
+	ws := wsm.CreateWindowSprite(win, pic)
+
+	// GetPicOffsetでピクチャーオフセットを取得
+	picX, picY := ws.GetPicOffset()
+	if picX != 10 || picY != 20 {
+		t.Errorf("Expected PicOffset (10, 20), got (%d, %d)", picX, picY)
+	}
+}
+
+// TestGetContentSprite はGetContentSpriteメソッドをテストする
+func TestGetContentSprite(t *testing.T) {
+	sm := NewSpriteManager()
+	wsm := NewWindowSpriteManager(sm)
+
+	win := &Window{
+		ID:      1,
+		Width:   200,
+		Height:  150,
+		Visible: true,
+	}
+
+	pic := &Picture{
+		ID:     1,
+		Width:  200,
+		Height: 150,
+		Image:  ebiten.NewImage(200, 150),
+	}
+
+	ws := wsm.CreateWindowSprite(win, pic)
+
+	// GetContentSpriteでコンテンツスプライトを取得
+	contentSprite := ws.GetContentSprite()
+	if contentSprite == nil {
+		t.Error("GetContentSprite returned nil")
+	}
+	if contentSprite != ws.GetSprite() {
+		t.Error("GetContentSprite should return the same sprite as GetSprite()")
+	}
+}
+
+// TestChildSpriteInheritance は子スプライトが親の属性を継承することをテストする
+// 要件 2.1, 2.2, 2.3: 親子関係の位置、透明度、可視性の継承
+func TestChildSpriteInheritance(t *testing.T) {
+	sm := NewSpriteManager()
+	wsm := NewWindowSpriteManager(sm)
+
+	win := &Window{
+		ID:      1,
+		X:       100,
+		Y:       50,
+		Width:   200,
+		Height:  150,
+		Visible: true,
+	}
+
+	pic := &Picture{
+		ID:     1,
+		Width:  200,
+		Height: 150,
+		Image:  ebiten.NewImage(200, 150),
+	}
+
+	ws := wsm.CreateWindowSprite(win, pic)
+
+	// 親スプライトの透明度を設定
+	ws.GetSprite().SetAlpha(0.5)
+
+	// 子スプライトを作成して追加
+	childImg := ebiten.NewImage(50, 50)
+	child := sm.CreateSprite(childImg)
+	child.SetPosition(10, 20)
+	child.SetAlpha(0.8)
+	ws.AddChild(child)
+
+	// 子スプライトの実効透明度を確認（0.5 * 0.8 = 0.4）
+	effectiveAlpha := child.EffectiveAlpha()
+	if effectiveAlpha != 0.4 {
+		t.Errorf("Expected effective alpha 0.4, got %v", effectiveAlpha)
+	}
+
+	// 親を非表示にする
+	ws.UpdateVisible(false)
+
+	// 子スプライトの実効可視性を確認
+	if child.IsEffectivelyVisible() {
+		t.Error("Child should be effectively invisible when parent is invisible")
 	}
 }
