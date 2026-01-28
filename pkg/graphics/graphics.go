@@ -13,14 +13,15 @@ import (
 
 // GraphicsSystem は描画システム全体を管理する
 type GraphicsSystem struct {
-	pictures     *PictureManager
-	windows      *WindowManager
-	casts        *CastManager
-	textRenderer *TextRenderer
-	cmdQueue     *CommandQueue
-	sceneChanges *SceneChangeManager
-	debugOverlay *DebugOverlay
-	layerManager *LayerManager // 要件 8.1: LayerManagerを統合
+	pictures      *PictureManager
+	windows       *WindowManager
+	casts         *CastManager
+	textRenderer  *TextRenderer
+	cmdQueue      *CommandQueue
+	sceneChanges  *SceneChangeManager
+	debugOverlay  *DebugOverlay
+	layerManager  *LayerManager  // 要件 8.1: LayerManagerを統合
+	spriteManager *SpriteManager // スプライトシステム要件 3.1〜3.6: SpriteManagerを統合
 
 	// 仮想デスクトップ
 	virtualWidth  int
@@ -88,7 +89,8 @@ func NewGraphicsSystem(basePath string, opts ...Option) *GraphicsSystem {
 	gs.cmdQueue = NewCommandQueue()
 	gs.sceneChanges = NewSceneChangeManager()
 	gs.debugOverlay = NewDebugOverlay()
-	gs.layerManager = NewLayerManager() // 要件 8.1: LayerManagerを初期化
+	gs.layerManager = NewLayerManager()   // 要件 8.1: LayerManagerを初期化
+	gs.spriteManager = NewSpriteManager() // スプライトシステム要件 3.1〜3.6: SpriteManagerを初期化
 
 	// 要件 8.2: CastManagerとLayerManagerを統合
 	gs.casts.SetLayerManager(gs.layerManager)
@@ -666,6 +668,12 @@ func (gs *GraphicsSystem) IsDebugOverlayEnabled() bool {
 // 要件 8.1: GraphicsSystemにLayerManagerを統合する
 func (gs *GraphicsSystem) GetLayerManager() *LayerManager {
 	return gs.layerManager
+}
+
+// GetSpriteManager はSpriteManagerを返す
+// スプライトシステム要件 3.1〜3.6: GraphicsSystemにSpriteManagerを統合する
+func (gs *GraphicsSystem) GetSpriteManager() *SpriteManager {
+	return gs.spriteManager
 }
 
 // VM Interface Implementation

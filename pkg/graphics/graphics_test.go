@@ -48,6 +48,11 @@ func TestNewGraphicsSystem(t *testing.T) {
 	if gs.layerManager == nil {
 		t.Error("LayerManager not initialized")
 	}
+
+	// スプライトシステム要件 3.1〜3.6: SpriteManagerが初期化されていることを確認
+	if gs.spriteManager == nil {
+		t.Error("SpriteManager not initialized")
+	}
 }
 
 func TestNewGraphicsSystemWithOptions(t *testing.T) {
@@ -209,5 +214,86 @@ func TestGraphicsSystem_CastManagerLayerManagerIntegration(t *testing.T) {
 
 	if pls.GetCastLayer(castID) != nil {
 		t.Error("CastLayer should be deleted")
+	}
+}
+
+// TestGraphicsSystem_GetSpriteManager はGetSpriteManagerメソッドをテストする
+// スプライトシステム要件 3.1〜3.6: GraphicsSystemにSpriteManagerを統合する
+func TestGraphicsSystem_GetSpriteManager(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	// GetSpriteManagerがnilでないことを確認
+	sm := gs.GetSpriteManager()
+	if sm == nil {
+		t.Fatal("GetSpriteManager returned nil")
+	}
+
+	// SpriteManagerが正しく動作することを確認
+	// スプライトを作成
+	sprite := sm.CreateSpriteWithSize(100, 100)
+	if sprite == nil {
+		t.Fatal("CreateSpriteWithSize returned nil")
+	}
+
+	// スプライトIDが正しいことを確認
+	if sprite.ID() <= 0 {
+		t.Errorf("Expected positive sprite ID, got %d", sprite.ID())
+	}
+
+	// 同じスプライトを取得できることを確認
+	sprite2 := sm.GetSprite(sprite.ID())
+	if sprite2 != sprite {
+		t.Error("GetSprite returned different instance")
+	}
+
+	// SpriteManagerのカウントを確認
+	if sm.Count() != 1 {
+		t.Errorf("Expected 1 sprite, got %d", sm.Count())
+	}
+
+	// スプライトを削除
+	sm.RemoveSprite(sprite.ID())
+	if sm.Count() != 0 {
+		t.Errorf("Expected 0 sprites after removal, got %d", sm.Count())
+	}
+
+	// 削除後は取得できないことを確認
+	if sm.GetSprite(sprite.ID()) != nil {
+		t.Error("GetSprite should return nil after removal")
+	}
+}
+
+// TestGraphicsSystem_SpriteManagerInitialization はSpriteManagerの初期化をテストする
+func TestGraphicsSystem_SpriteManagerInitialization(t *testing.T) {
+	gs := NewGraphicsSystem("")
+
+	sm := gs.GetSpriteManager()
+	if sm == nil {
+		t.Fatal("SpriteManager not initialized")
+	}
+
+	// 初期状態ではスプライトがないことを確認
+	if sm.Count() != 0 {
+		t.Errorf("Expected 0 sprites initially, got %d", sm.Count())
+	}
+
+	// 複数のスプライトを作成
+	sprite1 := sm.CreateSpriteWithSize(50, 50)
+	sprite2 := sm.CreateSpriteWithSize(100, 100)
+	sprite3 := sm.CreateSpriteWithSize(150, 150)
+
+	if sm.Count() != 3 {
+		t.Errorf("Expected 3 sprites, got %d", sm.Count())
+	}
+
+	// 各スプライトが異なるIDを持つことを確認
+	if sprite1.ID() == sprite2.ID() || sprite2.ID() == sprite3.ID() || sprite1.ID() == sprite3.ID() {
+		t.Error("Sprites should have unique IDs")
+	}
+
+	// Clearで全スプライトを削除
+	sm.Clear()
+	if sm.Count() != 0 {
+		t.Errorf("Expected 0 sprites after Clear, got %d", sm.Count())
 	}
 }
