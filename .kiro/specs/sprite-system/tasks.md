@@ -74,12 +74,12 @@ FILLYエミュレータのグラフィックスシステムを簡素化するた
   - [x] 8.3 GetSpriteManager()メソッドを追加する
   - [x] 8.4 統合の単体テストを作成する
 
-- [ ] 9. ウインドウのスプライト化
-  - [ ] 9.1 WindowSpriteラッパー構造体を作成する（Window + Sprite）
-  - [ ] 9.2 OpenWin()でWindowSpriteを作成するように変更する
-  - [ ] 9.3 drawWindowDecoration()をスプライトベースに変更する
-  - [ ] 9.4 ウインドウスプライトの単体テストを作成する
-  - [ ] 9.5 サンプルタイトル（kuma2）でウインドウ表示を確認する
+- [x] 9. ウインドウのスプライト化
+  - [x] 9.1 WindowSpriteラッパー構造体を作成する（Window + Sprite）
+  - [x] 9.2 OpenWin()でWindowSpriteを作成するように変更する
+  - [x] 9.3 drawWindowDecoration()をスプライトベースに変更する
+  - [x] 9.4 ウインドウスプライトの単体テストを作成する
+  - [x] 9.5 サンプルタイトル（kuma2）でウインドウ表示を確認する
 
 - [ ] 10. ピクチャ描画（MovePic）のスプライト化
   - [ ] 10.1 DrawingEntryをSpriteベースに変換するアダプタを作成する

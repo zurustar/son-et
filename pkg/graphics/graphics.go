@@ -13,15 +13,16 @@ import (
 
 // GraphicsSystem は描画システム全体を管理する
 type GraphicsSystem struct {
-	pictures      *PictureManager
-	windows       *WindowManager
-	casts         *CastManager
-	textRenderer  *TextRenderer
-	cmdQueue      *CommandQueue
-	sceneChanges  *SceneChangeManager
-	debugOverlay  *DebugOverlay
-	layerManager  *LayerManager  // 要件 8.1: LayerManagerを統合
-	spriteManager *SpriteManager // スプライトシステム要件 3.1〜3.6: SpriteManagerを統合
+	pictures            *PictureManager
+	windows             *WindowManager
+	casts               *CastManager
+	textRenderer        *TextRenderer
+	cmdQueue            *CommandQueue
+	sceneChanges        *SceneChangeManager
+	debugOverlay        *DebugOverlay
+	layerManager        *LayerManager        // 要件 8.1: LayerManagerを統合
+	spriteManager       *SpriteManager       // スプライトシステム要件 3.1〜3.6: SpriteManagerを統合
+	windowSpriteManager *WindowSpriteManager // スプライトシステム要件 7.1〜7.3: WindowSpriteManagerを統合
 
 	// 仮想デスクトップ
 	virtualWidth  int
@@ -89,8 +90,9 @@ func NewGraphicsSystem(basePath string, opts ...Option) *GraphicsSystem {
 	gs.cmdQueue = NewCommandQueue()
 	gs.sceneChanges = NewSceneChangeManager()
 	gs.debugOverlay = NewDebugOverlay()
-	gs.layerManager = NewLayerManager()   // 要件 8.1: LayerManagerを初期化
-	gs.spriteManager = NewSpriteManager() // スプライトシステム要件 3.1〜3.6: SpriteManagerを初期化
+	gs.layerManager = NewLayerManager()                               // 要件 8.1: LayerManagerを初期化
+	gs.spriteManager = NewSpriteManager()                             // スプライトシステム要件 3.1〜3.6: SpriteManagerを初期化
+	gs.windowSpriteManager = NewWindowSpriteManager(gs.spriteManager) // スプライトシステム要件 7.1〜7.3: WindowSpriteManagerを初期化
 
 	// 要件 8.2: CastManagerとLayerManagerを統合
 	gs.casts.SetLayerManager(gs.layerManager)
@@ -200,6 +202,7 @@ func (gs *GraphicsSystem) executeCommand(cmd Command) error {
 // 要件 4.9: キャストをZ順序で管理し、後から配置したキャストを前面に表示する
 // 要件 15.1-15.8: デバッグオーバーレイの描画
 // 要件 10.1, 10.2: PutCast、MovePic、TextWriteの操作順序に基づくZ順序で描画
+// スプライトシステム要件 7.1〜7.3: WindowSpriteを使用した描画
 func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
@@ -226,8 +229,20 @@ func (gs *GraphicsSystem) Draw(screen *ebiten.Image) {
 			continue
 		}
 
-		// ウィンドウ装飾を描画（Windows 3.1風）
-		gs.drawWindowDecoration(screen, win, pic)
+		// スプライトシステム要件 7.1〜7.3: WindowSpriteを使用した描画
+		// WindowSpriteが存在する場合はスプライトベースで描画
+		if gs.windowSpriteManager != nil {
+			ws := gs.windowSpriteManager.GetWindowSprite(win.ID)
+			if ws != nil {
+				gs.drawWindowSpriteDecoration(screen, ws, pic)
+			} else {
+				// WindowSpriteが存在しない場合は従来の方法で描画
+				gs.drawWindowDecoration(screen, win, pic)
+			}
+		} else {
+			// WindowSpriteManagerが存在しない場合は従来の方法で描画
+			gs.drawWindowDecoration(screen, win, pic)
+		}
 
 		// このウィンドウに属するすべてのレイヤーをZ順序で描画
 		// 要件 10.1, 10.2: キャスト、描画エントリ（MovePic）、テキストを操作順序で描画
@@ -676,6 +691,12 @@ func (gs *GraphicsSystem) GetSpriteManager() *SpriteManager {
 	return gs.spriteManager
 }
 
+// GetWindowSpriteManager はWindowSpriteManagerを返す
+// スプライトシステム要件 7.1〜7.3: GraphicsSystemにWindowSpriteManagerを統合する
+func (gs *GraphicsSystem) GetWindowSpriteManager() *WindowSpriteManager {
+	return gs.windowSpriteManager
+}
+
 // VM Interface Implementation
 // These methods implement the GraphicsSystemInterface for VM integration
 
@@ -747,6 +768,7 @@ func (gs *GraphicsSystem) GetVirtualHeight() int {
 
 // OpenWin opens a window
 // 要件 1.2: ウィンドウが開かれたときにWindowLayerSetを作成する
+// スプライトシステム要件 7.1: ウィンドウが開かれたときにWindowSpriteを作成する
 func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -772,9 +794,10 @@ func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 	// ウィンドウのサイズを取得（設定されていない場合はピクチャーのサイズを使用）
 	width := win.Width
 	height := win.Height
+	var pic *Picture
 	if width <= 0 || height <= 0 {
 		// ピクチャーのサイズを取得
-		pic, err := gs.pictures.GetPicWithoutLock(picID)
+		pic, err = gs.pictures.GetPicWithoutLock(picID)
 		if err == nil {
 			width = pic.Width
 			height = pic.Height
@@ -783,10 +806,19 @@ func (gs *GraphicsSystem) OpenWin(picID int, opts ...any) (int, error) {
 			width = 640
 			height = 480
 		}
+	} else {
+		// ピクチャーを取得（WindowSprite作成用）
+		pic, _ = gs.pictures.GetPicWithoutLock(picID)
 	}
 
 	// WindowLayerSetを作成
 	gs.layerManager.GetOrCreateWindowLayerSet(winID, width, height, win.BgColor)
+
+	// スプライトシステム要件 7.1: WindowSpriteを作成する
+	if pic != nil && gs.windowSpriteManager != nil {
+		gs.windowSpriteManager.CreateWindowSprite(win, pic)
+		gs.log.Debug("OpenWin: created WindowSprite", "winID", winID)
+	}
 
 	gs.log.Debug("OpenWin: created WindowLayerSet", "winID", winID, "width", width, "height", height)
 
@@ -870,6 +902,7 @@ func (gs *GraphicsSystem) MoveWin(id int, opts ...any) error {
 
 // CloseWin closes a window
 // 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
+// スプライトシステム要件 7.3: ウィンドウが閉じられたときにWindowSpriteを削除する
 func (gs *GraphicsSystem) CloseWin(id int) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -883,11 +916,18 @@ func (gs *GraphicsSystem) CloseWin(id int) error {
 		gs.log.Debug("CloseWin: deleted WindowLayerSet", "winID", id)
 	}
 
+	// スプライトシステム要件 7.3: WindowSpriteを削除する
+	if gs.windowSpriteManager != nil {
+		gs.windowSpriteManager.RemoveWindowSprite(id)
+		gs.log.Debug("CloseWin: deleted WindowSprite", "winID", id)
+	}
+
 	return gs.windows.CloseWin(id)
 }
 
 // CloseWinAll closes all windows
 // 要件 1.3: ウィンドウが閉じられたときにそのウィンドウに属するすべてのレイヤーを削除する
+// スプライトシステム要件 7.3: ウィンドウが閉じられたときにWindowSpriteを削除する
 func (gs *GraphicsSystem) CloseWinAll() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -901,6 +941,12 @@ func (gs *GraphicsSystem) CloseWinAll() {
 		if gs.layerManager != nil {
 			gs.layerManager.DeleteWindowLayerSet(win.ID)
 		}
+	}
+
+	// スプライトシステム要件 7.3: すべてのWindowSpriteを削除する
+	if gs.windowSpriteManager != nil {
+		gs.windowSpriteManager.Clear()
+		gs.log.Debug("CloseWinAll: deleted all WindowSprites")
 	}
 
 	gs.windows.CloseWinAll()
@@ -1226,6 +1272,33 @@ func toIntFromAny(v any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// drawWindowSpriteDecoration はWindowSpriteを使用してウィンドウ装飾を描画する
+// スプライトシステム要件 7.1〜7.3: WindowSpriteを使用した描画
+func (gs *GraphicsSystem) drawWindowSpriteDecoration(screen *ebiten.Image, ws *WindowSprite, pic *Picture) {
+	sprite := ws.GetSprite()
+	if sprite == nil || sprite.Image() == nil {
+		// スプライトが無効な場合は従来の方法で描画
+		gs.drawWindowDecoration(screen, ws.GetWindow(), pic)
+		return
+	}
+
+	// スプライトの画像を更新（ピクチャーが変更された場合など）
+	// 注意: 毎フレーム再描画するのは非効率なので、将来的にはダーティフラグで制御する
+	ws.RedrawDecoration(pic)
+
+	// スプライトを描画
+	op := &ebiten.DrawImageOptions{}
+	x, y := sprite.AbsolutePosition()
+	op.GeoM.Translate(x, y)
+
+	alpha := sprite.EffectiveAlpha()
+	if alpha < 1.0 {
+		op.ColorScale.ScaleAlpha(float32(alpha))
+	}
+
+	screen.DrawImage(sprite.Image(), op)
 }
 
 // drawWindowDecoration はWindows 3.1風のウィンドウ装飾を描画する
