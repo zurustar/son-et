@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 	"github.com/zurustar/son-et/pkg/graphics"
 )
 
 // TestNewVM tests the VM constructor with various options.
 func TestNewVM(t *testing.T) {
 	t.Run("creates VM with empty opcodes", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		if vm == nil {
 			t.Fatal("expected VM to be created")
 		}
@@ -29,8 +29,8 @@ func TestNewVM(t *testing.T) {
 	})
 
 	t.Run("creates VM with opcodes", func(t *testing.T) {
-		opcodes := []compiler.OpCode{
-			{Cmd: compiler.OpDefineFunction, Args: []any{"main", []any{}, []compiler.OpCode{}}},
+		opcodes := []opcode.OpCode{
+			{Cmd: opcode.DefineFunction, Args: []any{"main", []any{}, []opcode.OpCode{}}},
 		}
 		vm := New(opcodes)
 		if len(vm.opcodes) != 1 {
@@ -39,7 +39,7 @@ func TestNewVM(t *testing.T) {
 	})
 
 	t.Run("applies headless option", func(t *testing.T) {
-		vm := New([]compiler.OpCode{}, WithHeadless(true))
+		vm := New([]opcode.OpCode{}, WithHeadless(true))
 		if !vm.headless {
 			t.Error("expected headless to be true")
 		}
@@ -47,7 +47,7 @@ func TestNewVM(t *testing.T) {
 
 	t.Run("applies timeout option", func(t *testing.T) {
 		timeout := 5 * time.Second
-		vm := New([]compiler.OpCode{}, WithTimeout(timeout))
+		vm := New([]opcode.OpCode{}, WithTimeout(timeout))
 		if vm.timeout != timeout {
 			t.Errorf("expected timeout to be %v, got %v", timeout, vm.timeout)
 		}
@@ -55,7 +55,7 @@ func TestNewVM(t *testing.T) {
 
 	t.Run("applies multiple options", func(t *testing.T) {
 		timeout := 10 * time.Second
-		vm := New([]compiler.OpCode{}, WithHeadless(true), WithTimeout(timeout))
+		vm := New([]opcode.OpCode{}, WithHeadless(true), WithTimeout(timeout))
 		if !vm.headless {
 			t.Error("expected headless to be true")
 		}
@@ -68,7 +68,7 @@ func TestNewVM(t *testing.T) {
 // TestVMRun tests the VM Run method.
 func TestVMRun(t *testing.T) {
 	t.Run("runs empty opcode sequence", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		err := vm.Run()
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
@@ -76,7 +76,7 @@ func TestVMRun(t *testing.T) {
 	})
 
 	t.Run("prevents double run", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Start first run in goroutine
 		done := make(chan error)
@@ -96,7 +96,7 @@ func TestVMRun(t *testing.T) {
 
 	t.Run("respects timeout", func(t *testing.T) {
 		// Create a VM with a very short timeout
-		vm := New([]compiler.OpCode{}, WithTimeout(50*time.Millisecond))
+		vm := New([]opcode.OpCode{}, WithTimeout(50*time.Millisecond))
 
 		start := time.Now()
 		err := vm.Run()
@@ -113,15 +113,15 @@ func TestVMRun(t *testing.T) {
 	})
 
 	t.Run("collects function definitions", func(t *testing.T) {
-		opcodes := []compiler.OpCode{
+		opcodes := []opcode.OpCode{
 			{
-				Cmd: compiler.OpDefineFunction,
+				Cmd: opcode.DefineFunction,
 				Args: []any{
 					"testFunc",
 					[]any{
 						map[string]any{"name": "x", "type": "int", "isArray": false},
 					},
-					[]compiler.OpCode{},
+					[]opcode.OpCode{},
 				},
 			},
 		}
@@ -140,7 +140,7 @@ func TestVMRun(t *testing.T) {
 // TestVMStop tests the VM Stop method.
 func TestVMStop(t *testing.T) {
 	t.Run("stops running VM", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Start VM in goroutine
 		done := make(chan error)
@@ -160,7 +160,7 @@ func TestVMStop(t *testing.T) {
 	})
 
 	t.Run("stop on non-running VM is safe", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Should not panic
 		vm.Stop()
 	})
@@ -169,7 +169,7 @@ func TestVMStop(t *testing.T) {
 // TestVMIsRunning tests the IsRunning method.
 func TestVMIsRunning(t *testing.T) {
 	t.Run("returns false when not running", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		if vm.IsRunning() {
 			t.Error("expected IsRunning to be false")
 		}
@@ -179,7 +179,7 @@ func TestVMIsRunning(t *testing.T) {
 // TestVMStackFrame tests stack frame management.
 func TestVMStackFrame(t *testing.T) {
 	t.Run("pushes and pops stack frames", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Initial depth should be 0
 		if vm.GetStackDepth() != 0 {
@@ -232,7 +232,7 @@ func TestVMStackFrame(t *testing.T) {
 	})
 
 	t.Run("detects stack overflow", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Push MaxStackDepth frames
 		for i := 0; i < MaxStackDepth; i++ {
@@ -252,7 +252,7 @@ func TestVMStackFrame(t *testing.T) {
 	})
 
 	t.Run("pop from empty stack returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		_, err := vm.PopStackFrame()
 		if err == nil {
@@ -264,7 +264,7 @@ func TestVMStackFrame(t *testing.T) {
 // TestVMBuiltinFunctions tests built-in function registration.
 func TestVMBuiltinFunctions(t *testing.T) {
 	t.Run("registers built-in function", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		vm.RegisterBuiltinFunction("testFunc", func(vm *VM, args []any) (any, error) {
 			return 42, nil
@@ -280,7 +280,7 @@ func TestVMBuiltinFunctions(t *testing.T) {
 // TestVMGetScope tests scope access methods.
 func TestVMGetScope(t *testing.T) {
 	t.Run("returns global scope", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		scope := vm.GetGlobalScope()
 		if scope == nil {
@@ -292,7 +292,7 @@ func TestVMGetScope(t *testing.T) {
 	})
 
 	t.Run("returns current scope", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Without local scope, should return global
 		scope := vm.GetCurrentScope()
@@ -315,7 +315,7 @@ func TestVMGetScope(t *testing.T) {
 // Requirement 10.1: When PlayMIDI is called, system calls MIDI playback function.
 func TestVMBuiltinPlayMIDI(t *testing.T) {
 	t.Run("PlayMIDI is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify PlayMIDI is registered
 		if _, ok := vm.builtins["PlayMIDI"]; !ok {
@@ -324,7 +324,7 @@ func TestVMBuiltinPlayMIDI(t *testing.T) {
 	})
 
 	t.Run("PlayMIDI handles missing argument with error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call PlayMIDI without arguments - should return error
 		fn := vm.builtins["PlayMIDI"]
@@ -340,7 +340,7 @@ func TestVMBuiltinPlayMIDI(t *testing.T) {
 	})
 
 	t.Run("PlayMIDI handles wrong argument type gracefully", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call PlayMIDI with wrong type - should not panic
 		fn := vm.builtins["PlayMIDI"]
@@ -356,7 +356,7 @@ func TestVMBuiltinPlayMIDI(t *testing.T) {
 	})
 
 	t.Run("PlayMIDI handles missing audio system gracefully", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call PlayMIDI without audio system - should not panic
 		fn := vm.builtins["PlayMIDI"]
@@ -376,7 +376,7 @@ func TestVMBuiltinPlayMIDI(t *testing.T) {
 // Requirement 10.2: When PlayWAVE is called, system calls WAV playback function.
 func TestVMBuiltinPlayWAVE(t *testing.T) {
 	t.Run("PlayWAVE is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify PlayWAVE is registered
 		if _, ok := vm.builtins["PlayWAVE"]; !ok {
@@ -385,7 +385,7 @@ func TestVMBuiltinPlayWAVE(t *testing.T) {
 	})
 
 	t.Run("PlayWAVE handles missing argument with error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call PlayWAVE without arguments - should return error
 		fn := vm.builtins["PlayWAVE"]
@@ -401,7 +401,7 @@ func TestVMBuiltinPlayWAVE(t *testing.T) {
 	})
 
 	t.Run("PlayWAVE handles wrong argument type gracefully", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call PlayWAVE with wrong type - should not panic
 		fn := vm.builtins["PlayWAVE"]
@@ -417,7 +417,7 @@ func TestVMBuiltinPlayWAVE(t *testing.T) {
 	})
 
 	t.Run("PlayWAVE handles missing audio system gracefully", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call PlayWAVE without audio system - should not panic
 		fn := vm.builtins["PlayWAVE"]
@@ -435,7 +435,7 @@ func TestVMBuiltinPlayWAVE(t *testing.T) {
 
 // TestVMDefaultBuiltins tests that all default built-in functions are registered.
 func TestVMDefaultBuiltins(t *testing.T) {
-	vm := New([]compiler.OpCode{})
+	vm := New([]opcode.OpCode{})
 
 	expectedBuiltins := []string{
 		"del_me",
@@ -459,13 +459,13 @@ func TestVMDefaultBuiltins(t *testing.T) {
 // Requirement 6.3: When event occurs during step execution, system proceeds to next step.
 func TestOpWait(t *testing.T) {
 	t.Run("OpWait sets handler wait counter", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with OpWait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(2)}}, // Wait for 2 events
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(2)}}, // Wait for 2 events
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -501,13 +501,13 @@ func TestOpWait(t *testing.T) {
 	})
 
 	t.Run("OpWait decrements wait counter on event", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with OpWait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(2)}}, // Wait for 2 events
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(2)}}, // Wait for 2 events
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -533,13 +533,13 @@ func TestOpWait(t *testing.T) {
 	})
 
 	t.Run("OpWait resumes execution when wait counter reaches 0", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with OpWait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(2)}}, // Wait for 2 events
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(2)}}, // Wait for 2 events
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -574,13 +574,13 @@ func TestOpWait(t *testing.T) {
 	})
 
 	t.Run("OpWait with count 0 continues immediately", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with OpWait(0)
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(0)}}, // Wait for 0 events (immediate)
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(0)}}, // Wait for 0 events (immediate)
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -602,13 +602,13 @@ func TestOpWait(t *testing.T) {
 	})
 
 	t.Run("OpWait with negative count continues immediately", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with OpWait(-1)
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(-1)}}, // Negative count (immediate)
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(-1)}}, // Negative count (immediate)
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -630,15 +630,15 @@ func TestOpWait(t *testing.T) {
 	})
 
 	t.Run("multiple OpWait in sequence", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with multiple OpWait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(1)}}, // Wait for 1 event
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(2)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(1)}}, // Wait for 1 event
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(3)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("step"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(1)}}, // Wait for 1 event
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("step"), int64(2)}},
+			{Cmd: opcode.Wait, Args: []any{int64(1)}}, // Wait for 1 event
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("step"), int64(3)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -672,10 +672,10 @@ func TestOpWait(t *testing.T) {
 	})
 
 	t.Run("OpWait outside handler is ignored", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Execute OpWait directly (not in a handler)
-		opcode := compiler.OpCode{Cmd: compiler.OpWait, Args: []any{int64(5)}}
+		opcode := opcode.OpCode{Cmd: opcode.Wait, Args: []any{int64(5)}}
 		result, err := vm.Execute(opcode)
 
 		// Should not return an error
@@ -695,11 +695,11 @@ func TestOpWait(t *testing.T) {
 // Requirement 6.3: When event occurs during step execution, system proceeds to next step.
 func TestEventHandlerPauseResume(t *testing.T) {
 	t.Run("handler resets PC after completion", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a simple handler without OpWait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -723,13 +723,13 @@ func TestEventHandlerPauseResume(t *testing.T) {
 	})
 
 	t.Run("handler preserves PC during wait", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with OpWait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
-			{Cmd: compiler.OpWait, Args: []any{int64(3)}}, // Wait for 3 events
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+			{Cmd: opcode.Wait, Args: []any{int64(3)}}, // Wait for 3 events
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -758,7 +758,7 @@ func TestEventHandlerPauseResume(t *testing.T) {
 // Requirement 10.6: When end_step is called, system terminates current step block.
 func TestVMBuiltinEndStep(t *testing.T) {
 	t.Run("end_step is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify end_step is registered
 		if _, ok := vm.builtins["end_step"]; !ok {
@@ -767,10 +767,10 @@ func TestVMBuiltinEndStep(t *testing.T) {
 	})
 
 	t.Run("end_step resets handler step counter", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler with step counter
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		handler.StepCounter = 10
 		handler.WaitCounter = 5
 		handler.CurrentPC = 3
@@ -802,7 +802,7 @@ func TestVMBuiltinEndStep(t *testing.T) {
 	})
 
 	t.Run("end_step resets VM step counter when no handler", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.SetStepCounter(10)
 
 		// Call end_step without a handler
@@ -823,13 +823,13 @@ func TestVMBuiltinEndStep(t *testing.T) {
 	})
 
 	t.Run("end_step stops handler execution", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler that calls end_step and then tries to assign a variable
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("before_end"), int64(1)}},
-			{Cmd: compiler.OpCall, Args: []any{"end_step", []any{}}},
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("after_end"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("before_end"), int64(1)}},
+			{Cmd: opcode.Call, Args: []any{"end_step", []any{}}},
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("after_end"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -861,7 +861,7 @@ func TestVMBuiltinEndStep(t *testing.T) {
 // Requirement 17.6: System maintains separate wait counter for each handler.
 func TestVMBuiltinWait(t *testing.T) {
 	t.Run("Wait is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify Wait is registered
 		if _, ok := vm.builtins["Wait"]; !ok {
@@ -870,10 +870,10 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait sets handler wait counter", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(5)
@@ -896,10 +896,10 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait(0) continues immediately", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(0)
@@ -922,10 +922,10 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait with negative count continues immediately", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(-5)
@@ -948,7 +948,7 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait outside handler is ignored", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Call Wait without a handler
 		fn := vm.builtins["Wait"]
@@ -965,10 +965,10 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait with float argument", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait(3.7) - should truncate to 3
@@ -991,10 +991,10 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait with no arguments defaults to 1", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a handler
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
 		// Call Wait() with no arguments
@@ -1017,13 +1017,13 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait in TIME handler waits for TIME events", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a TIME handler that uses Wait
-		handler := NewEventHandler("test-handler", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(1)}},
-			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(2)}},
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("step"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("step"), int64(1)}},
+			{Cmd: opcode.Call, Args: []any{"Wait", int64(2)}},
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("step"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -1057,13 +1057,13 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("Wait in MIDI_TIME handler waits for MIDI_TIME events", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create a MIDI_TIME handler that uses Wait
-		handler := NewEventHandler("test-handler", EventMIDI_TIME, []compiler.OpCode{
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("midi_step"), int64(1)}},
-			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(2)}},
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("midi_step"), int64(2)}},
+		handler := NewEventHandler("test-handler", EventMIDI_TIME, []opcode.OpCode{
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("midi_step"), int64(1)}},
+			{Cmd: opcode.Call, Args: []any{"Wait", int64(2)}},
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("midi_step"), int64(2)}},
 		}, vm, nil)
 
 		vm.handlerRegistry.Register(handler)
@@ -1092,19 +1092,19 @@ func TestVMBuiltinWait(t *testing.T) {
 	})
 
 	t.Run("multiple handlers have separate wait counters", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create first handler with Wait(3)
-		handler1 := NewEventHandler("handler1", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(3)}},
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("handler1_done"), int64(1)}},
+		handler1 := NewEventHandler("handler1", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Call, Args: []any{"Wait", int64(3)}},
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("handler1_done"), int64(1)}},
 		}, vm, nil)
 		vm.handlerRegistry.Register(handler1)
 
 		// Create second handler with Wait(1)
-		handler2 := NewEventHandler("handler2", EventTIME, []compiler.OpCode{
-			{Cmd: compiler.OpCall, Args: []any{"Wait", int64(1)}},
-			{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("handler2_done"), int64(1)}},
+		handler2 := NewEventHandler("handler2", EventTIME, []opcode.OpCode{
+			{Cmd: opcode.Call, Args: []any{"Wait", int64(1)}},
+			{Cmd: opcode.Assign, Args: []any{opcode.Variable("handler2_done"), int64(1)}},
 		}, vm, nil)
 		vm.handlerRegistry.Register(handler2)
 
@@ -1158,7 +1158,7 @@ func TestVMBuiltinWait(t *testing.T) {
 // Requirement 15.7: System provides graceful shutdown mechanism.
 func TestVMBuiltinExitTitle(t *testing.T) {
 	t.Run("ExitTitle is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify ExitTitle is registered
 		if _, ok := vm.builtins["ExitTitle"]; !ok {
@@ -1167,11 +1167,11 @@ func TestVMBuiltinExitTitle(t *testing.T) {
 	})
 
 	t.Run("ExitTitle removes all handlers", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Register some handlers
-		handler1 := NewEventHandler("handler1", EventTIME, []compiler.OpCode{}, vm, nil)
-		handler2 := NewEventHandler("handler2", EventMIDI_TIME, []compiler.OpCode{}, vm, nil)
+		handler1 := NewEventHandler("handler1", EventTIME, []opcode.OpCode{}, vm, nil)
+		handler2 := NewEventHandler("handler2", EventMIDI_TIME, []opcode.OpCode{}, vm, nil)
 		vm.handlerRegistry.Register(handler1)
 		vm.handlerRegistry.Register(handler2)
 
@@ -1198,7 +1198,7 @@ func TestVMBuiltinExitTitle(t *testing.T) {
 	})
 
 	t.Run("ExitTitle stops VM", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Start VM in a goroutine
 		done := make(chan error)
@@ -1225,7 +1225,7 @@ func TestVMBuiltinExitTitle(t *testing.T) {
 	})
 
 	t.Run("ExitTitle handles nil audio system gracefully", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Ensure audio system is nil
 		vm.audioSystem = nil
@@ -1247,7 +1247,7 @@ func TestVMBuiltinExitTitle(t *testing.T) {
 // Validates: Requirements 1.1-1.8
 func TestVMBuiltinStrPrint(t *testing.T) {
 	t.Run("StrPrint is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify StrPrint is registered
 		if _, ok := vm.builtins["StrPrint"]; !ok {
@@ -1257,7 +1257,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.1: Basic format string with arguments
 	t.Run("basic format string with arguments", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Hello %s", "World"})
@@ -1271,7 +1271,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.2: %ld format specifier for decimal integers
 	t.Run("%ld format specifier for decimal integers", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Number: %ld", int64(42)})
@@ -1284,7 +1284,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("%ld with negative number", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Value: %ld", int64(-123)})
@@ -1298,7 +1298,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.3: %lx format specifier for hexadecimal
 	t.Run("%lx format specifier for hexadecimal", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Hex: %lx", int64(255)})
@@ -1311,7 +1311,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("%lx with zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Hex: %lx", int64(0)})
@@ -1325,7 +1325,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.4: %s format specifier for strings
 	t.Run("%s format specifier for strings", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Name: %s", "Alice"})
@@ -1338,7 +1338,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("%s with empty string", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Value: [%s]", ""})
@@ -1352,7 +1352,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.5: Width and padding specifiers
 	t.Run("%03d width and padding specifier", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"ROBOT%03d.BMP", int64(1)})
@@ -1365,7 +1365,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("%05ld width and padding with %ld", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"ID: %05ld", int64(42)})
@@ -1378,7 +1378,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("%08lx width and padding with %lx", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Addr: %08lx", int64(4096)})
@@ -1392,7 +1392,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.6: Escape sequences
 	t.Run("\\n escape sequence", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Line1\\nLine2"})
@@ -1405,7 +1405,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("\\t escape sequence", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Col1\\tCol2"})
@@ -1418,7 +1418,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("\\r escape sequence", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Start\\rEnd"})
@@ -1431,7 +1431,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("multiple escape sequences", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"A\\nB\\tC\\rD"})
@@ -1445,7 +1445,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.7: Fewer arguments than format specifiers
 	t.Run("fewer arguments than format specifiers", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		// Should not crash, Go's fmt.Sprintf handles this gracefully
@@ -1460,7 +1460,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("one argument missing", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"%s and %s", "first"})
@@ -1475,7 +1475,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Requirement 1.8: More arguments than format specifiers
 	t.Run("more arguments than format specifiers", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Value: %s", "used", "ignored1", "ignored2"})
@@ -1491,7 +1491,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Edge cases
 	t.Run("empty format string", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{""})
@@ -1504,7 +1504,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("no format specifiers", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"Hello World"})
@@ -1517,7 +1517,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("no arguments", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{})
@@ -1530,7 +1530,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 	})
 
 	t.Run("non-string format argument", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{123})
@@ -1544,7 +1544,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Multiple format specifiers
 	t.Run("multiple format specifiers", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		result, err := fn(vm, []any{"%s: %ld (0x%lx)", "Value", int64(255), int64(255)})
@@ -1558,7 +1558,7 @@ func TestVMBuiltinStrPrint(t *testing.T) {
 
 	// Real-world use case from ROBOT sample
 	t.Run("ROBOT sample use case", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		fn := vm.builtins["StrPrint"]
 
 		// Test the actual use case from ROBOT.TFY: StrPrint("ROBOT%03d.BMP", i)
@@ -1822,7 +1822,7 @@ func (m *mockGraphicsSystem) GetVirtualHeight() int {
 // Validates: Requirements 2.1-2.5
 func TestVMBuiltinCreatePic(t *testing.T) {
 	t.Run("CreatePic is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify CreatePic is registered
 		if _, ok := vm.builtins["CreatePic"]; !ok {
@@ -1832,7 +1832,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 1: CreatePic with 3 arguments creates picture with correct size (要件 2.1)
 	t.Run("CreatePic with 3 arguments creates picture with correct size", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -1864,7 +1864,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 	// Note: The mock doesn't actually copy content, so we verify the new picture
 	// has different dimensions from the source to confirm it's not a copy
 	t.Run("CreatePic with 3 arguments creates empty picture (not copying source)", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -1900,7 +1900,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 3: CreatePic with non-existent source ID returns error (要件 2.3)
 	t.Run("CreatePic with non-existent source ID returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -1920,7 +1920,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 4: CreatePic with zero width returns error (要件 2.4)
 	t.Run("CreatePic with zero width returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -1943,7 +1943,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 4b: CreatePic with zero height returns error (要件 2.4)
 	t.Run("CreatePic with zero height returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -1966,7 +1966,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 4c: CreatePic with negative width returns error (要件 2.4)
 	t.Run("CreatePic with negative width returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -1989,7 +1989,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 4d: CreatePic with negative height returns error (要件 2.4)
 	t.Run("CreatePic with negative height returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2012,7 +2012,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 5: Backward compatibility - 1-argument pattern still works (要件 2.5)
 	t.Run("backward compatibility: 1-argument pattern (CreatePicFrom)", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2042,7 +2042,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 6: Backward compatibility - 2-argument pattern still works (要件 2.5)
 	t.Run("backward compatibility: 2-argument pattern (CreatePic width, height)", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2069,7 +2069,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Edge case: CreatePic without graphics system
 	t.Run("CreatePic without graphics system returns -1", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Don't set graphics system
 
 		fn := vm.builtins["CreatePic"]
@@ -2086,7 +2086,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Edge case: CreatePic with no arguments
 	t.Run("CreatePic with no arguments returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2100,7 +2100,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Edge case: CreatePic with non-integer arguments
 	t.Run("CreatePic with non-integer arguments returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2118,7 +2118,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test with float arguments (should be converted to int)
 	t.Run("CreatePic with float arguments", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2145,7 +2145,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 
 	// Test 3-argument pattern with float arguments
 	t.Run("CreatePic 3-argument pattern with float arguments", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2178,7 +2178,7 @@ func TestVMBuiltinCreatePic(t *testing.T) {
 // Validates: Requirements 3.1-3.5
 func TestVMBuiltinCapTitle(t *testing.T) {
 	t.Run("CapTitle is registered as built-in", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Verify CapTitle is registered
 		if _, ok := vm.builtins["CapTitle"]; !ok {
@@ -2188,7 +2188,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 1: CapTitle with 1 argument sets caption for ALL windows (requirement 3.1)
 	t.Run("CapTitle with 1 argument sets caption for ALL windows", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2222,7 +2222,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 2: CapTitle with 1 argument when no windows exist (requirement 3.2)
 	t.Run("CapTitle with 1 argument when no windows exist", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2247,7 +2247,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 3: CapTitle with 2 arguments sets caption for specific window only (requirement 3.3)
 	t.Run("CapTitle with 2 arguments sets caption for specific window only", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2290,7 +2290,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 4: CapTitle with non-existent window ID does not error (requirement 3.4)
 	t.Run("CapTitle with non-existent window ID does not error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2318,7 +2318,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 5: CapTitle with empty string clears caption (requirement 3.5)
 	t.Run("CapTitle with empty string clears caption", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2345,7 +2345,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 5b: CapTitle with empty string clears caption (2 argument pattern)
 	t.Run("CapTitle with empty string clears caption (2 argument pattern)", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2372,7 +2372,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 6: CapTitle without graphics system returns nil (edge case)
 	t.Run("CapTitle without graphics system returns nil", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// No graphics system set
 
 		fn := vm.builtins["CapTitle"]
@@ -2389,7 +2389,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Test case 7: CapTitle with no arguments returns error (edge case)
 	t.Run("CapTitle with no arguments returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 
@@ -2404,7 +2404,7 @@ func TestVMBuiltinCapTitle(t *testing.T) {
 
 	// Additional test: CapTitle with float window ID
 	t.Run("CapTitle with float window ID", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		mockGS := newMockGraphicsSystem()
 		vm.SetGraphicsSystem(mockGS)
 

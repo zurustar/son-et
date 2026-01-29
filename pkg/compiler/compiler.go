@@ -27,6 +27,7 @@ import (
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
 	"github.com/zurustar/son-et/pkg/compiler/parser"
 	"github.com/zurustar/son-et/pkg/compiler/preprocessor"
+	"github.com/zurustar/son-et/pkg/opcode"
 	"github.com/zurustar/son-et/pkg/script"
 )
 
@@ -43,7 +44,7 @@ type CompileOptions struct {
 //   - source: UTF-8 encoded source code string
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence
+//   - []opcode.OpCode: The compiled OpCode sequence
 //   - []error: Any compilation errors (empty if successful)
 //
 // Requirement 6.1: System provides a compilation pipeline chaining Lexer, Parser, Compiler.
@@ -51,7 +52,7 @@ type CompileOptions struct {
 // Requirement 6.3: If any phase fails, stop pipeline and return accumulated errors.
 // Requirement 5.6: System collects all errors and returns them to caller.
 // Requirement 10.2: CompileString function accepts script content as string.
-func Compile(source string) ([]compiler.OpCode, []error) {
+func Compile(source string) ([]opcode.OpCode, []error) {
 	// Phase 1: Lexical analysis
 	l := lexer.New(source)
 
@@ -105,14 +106,14 @@ func Compile(source string) ([]compiler.OpCode, []error) {
 //   - path: Path to the .TFY script file
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence
+//   - []opcode.OpCode: The compiled OpCode sequence
 //   - []error: Any compilation errors (empty if successful)
 //
 // Requirement 1.1: Compiler reads script content from file path.
 // Requirement 1.4: Returns descriptive error with file path if file cannot be read.
 // Requirement 1.5: Correctly processes Shift-JIS encoded files.
 // Requirement 10.1: Compile function accepts script path and returns OpCode or errors.
-func CompileFile(path string) ([]compiler.OpCode, []error) {
+func CompileFile(path string) ([]opcode.OpCode, []error) {
 	// Read file content
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -137,11 +138,11 @@ func CompileFile(path string) ([]compiler.OpCode, []error) {
 //   - opts: Compilation options
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence
+//   - []opcode.OpCode: The compiled OpCode sequence
 //   - []error: Any compilation errors (empty if successful)
 //
 // Requirement 10.3: CompileWithOptions accepts compiler configuration options.
-func CompileWithOptions(source string, opts CompileOptions) ([]compiler.OpCode, []error) {
+func CompileWithOptions(source string, opts CompileOptions) ([]opcode.OpCode, []error) {
 	// Currently, the Debug option is reserved for future use.
 	// The basic compilation pipeline is the same as Compile.
 	// When Debug is true, additional debug information could be included
@@ -166,9 +167,9 @@ func CompileWithOptions(source string, opts CompileOptions) ([]compiler.OpCode, 
 //   - opts: Compilation options
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence
+//   - []opcode.OpCode: The compiled OpCode sequence
 //   - []error: Any compilation errors (empty if successful)
-func CompileFileWithOptions(path string, opts CompileOptions) ([]compiler.OpCode, []error) {
+func CompileFileWithOptions(path string, opts CompileOptions) ([]opcode.OpCode, []error) {
 	// Read file content
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -191,7 +192,7 @@ type CompileResult struct {
 	// FileName is the name of the script file
 	FileName string
 	// OpCodes is the compiled OpCode sequence (nil if compilation failed)
-	OpCodes []compiler.OpCode
+	OpCodes []opcode.OpCode
 	// Errors contains any compilation errors (empty if successful)
 	Errors []error
 }
@@ -205,13 +206,13 @@ type CompileResult struct {
 //   - scripts: Slice of Script structs from script.Loader (already UTF-8 converted)
 //
 // Returns:
-//   - map[string][]compiler.OpCode: Map of file name to compiled OpCodes (only successful compilations)
+//   - map[string][]opcode.OpCode: Map of file name to compiled OpCodes (only successful compilations)
 //   - []error: All compilation errors from all scripts (empty if all successful)
 //
 // Requirement 6.5: System integrates with existing script loading functionality.
 // Requirement 6.6: When processing multiple script files, system compiles each file independently.
-func CompileScripts(scripts []script.Script) (map[string][]compiler.OpCode, []error) {
-	results := make(map[string][]compiler.OpCode)
+func CompileScripts(scripts []script.Script) (map[string][]opcode.OpCode, []error) {
+	results := make(map[string][]opcode.OpCode)
 	var allErrors []error
 
 	for _, s := range scripts {
@@ -268,13 +269,13 @@ func CompileScriptsWithResults(scripts []script.Script) []CompileResult {
 //   - dirPath: Path to the directory containing .TFY script files
 //
 // Returns:
-//   - map[string][]compiler.OpCode: Map of file name to compiled OpCodes (only successful compilations)
+//   - map[string][]opcode.OpCode: Map of file name to compiled OpCodes (only successful compilations)
 //   - []error: All errors (loading and compilation) (empty if all successful)
 //
 // Requirement 1.2: When multiple TFY files exist in directory, compiler loads all TFY files.
 // Requirement 6.5: System integrates with existing script loading functionality.
 // Requirement 6.6: When processing multiple script files, system compiles each file independently.
-func CompileDirectory(dirPath string) (map[string][]compiler.OpCode, []error) {
+func CompileDirectory(dirPath string) (map[string][]opcode.OpCode, []error) {
 	// Use script.Loader to find and load all .TFY files
 	loader := script.NewLoader(dirPath)
 	scripts, err := loader.LoadAllScripts()
@@ -400,12 +401,12 @@ func containsMainFunction(content string) (bool, error) {
 //   - scripts: Slice of Script structs from script.Loader (already UTF-8 converted)
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence from all scripts
+//   - []opcode.OpCode: The compiled OpCode sequence from all scripts
 //   - error: Error if compilation failed
 //
 // Requirement 13.1: Application calls compiler after loading scripts to generate OpCode.
 // Requirement 14.4: When file containing main function is identified, start compilation from that file.
-func CompileWithEntryPoint(scripts []script.Script) ([]compiler.OpCode, error) {
+func CompileWithEntryPoint(scripts []script.Script) ([]opcode.OpCode, error) {
 	// Find the main entry point
 	mainInfo, err := FindMainScript(scripts)
 	if err != nil {
@@ -414,7 +415,7 @@ func CompileWithEntryPoint(scripts []script.Script) ([]compiler.OpCode, error) {
 
 	// Compile all scripts and collect OpCodes
 	// The main script's OpCodes should be executed first
-	var allOpCodes []compiler.OpCode
+	var allOpCodes []opcode.OpCode
 
 	// First, compile the main script
 	mainOpCodes, errs := Compile(mainInfo.Script.Content)
@@ -447,12 +448,12 @@ func CompileWithEntryPoint(scripts []script.Script) ([]compiler.OpCode, error) {
 //   - dirPath: Path to the directory containing .TFY script files
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence
+//   - []opcode.OpCode: The compiled OpCode sequence
 //   - error: Error if loading or compilation failed
 //
 // Requirement 13.1: Application calls compiler after loading scripts to generate OpCode.
 // Requirement 14.4: When file containing main function is identified, start compilation from that file.
-func CompileDirectoryWithEntryPoint(dirPath string) ([]compiler.OpCode, error) {
+func CompileDirectoryWithEntryPoint(dirPath string) ([]opcode.OpCode, error) {
 	// Use script.Loader to find and load all .TFY files
 	loader := script.NewLoader(dirPath)
 	scripts, err := loader.LoadAllScripts()
@@ -475,7 +476,7 @@ type PreprocessResult = preprocessor.PreprocessResult
 //   - entryFile: The entry point file name (relative to dirPath)
 //
 // Returns:
-//   - []compiler.OpCode: The compiled OpCode sequence
+//   - []opcode.OpCode: The compiled OpCode sequence
 //   - *PreprocessResult: The preprocessing result (included files list)
 //   - error: Error if preprocessing or compilation failed
 //
@@ -483,7 +484,7 @@ type PreprocessResult = preprocessor.PreprocessResult
 // Requirement 16.2: Preprocessor expands #include directives.
 // Requirement 16.3: Preprocessor processes included files recursively.
 // Requirement 16.6: Preprocessor outputs single combined source code.
-func CompileWithPreprocessor(dirPath string, entryFile string) ([]compiler.OpCode, *PreprocessResult, error) {
+func CompileWithPreprocessor(dirPath string, entryFile string) ([]opcode.OpCode, *PreprocessResult, error) {
 	// Create preprocessor
 	p := preprocessor.New(dirPath)
 
@@ -526,36 +527,36 @@ func convertShiftJISToUTF8(data []byte) (string, error) {
 	return string(utf8Data), nil
 }
 
-// Re-export types from sub-packages for convenience
+// Re-export types from pkg/opcode for convenience
 // This allows users to import only the main compiler package
 
-// OpCode is re-exported from the compiler sub-package
-type OpCode = compiler.OpCode
+// OpCode is re-exported from the opcode package
+type OpCode = opcode.OpCode
 
-// OpCmd is re-exported from the compiler sub-package
-type OpCmd = compiler.OpCmd
+// OpCmd is re-exported from the opcode package
+type OpCmd = opcode.Cmd
 
-// Variable is re-exported from the compiler sub-package
-type Variable = compiler.Variable
+// Variable is re-exported from the opcode package
+type Variable = opcode.Variable
 
 // Re-export OpCode command constants
 const (
-	OpAssign               = compiler.OpAssign
-	OpArrayAssign          = compiler.OpArrayAssign
-	OpCall                 = compiler.OpCall
-	OpBinaryOp             = compiler.OpBinaryOp
-	OpUnaryOp              = compiler.OpUnaryOp
-	OpArrayAccess          = compiler.OpArrayAccess
-	OpIf                   = compiler.OpIf
-	OpFor                  = compiler.OpFor
-	OpWhile                = compiler.OpWhile
-	OpSwitch               = compiler.OpSwitch
-	OpBreak                = compiler.OpBreak
-	OpContinue             = compiler.OpContinue
-	OpRegisterEventHandler = compiler.OpRegisterEventHandler
-	OpWait                 = compiler.OpWait
-	OpSetStep              = compiler.OpSetStep
-	OpDefineFunction       = compiler.OpDefineFunction
+	OpAssign               = opcode.Assign
+	OpArrayAssign          = opcode.ArrayAssign
+	OpCall                 = opcode.Call
+	OpBinaryOp             = opcode.BinaryOp
+	OpUnaryOp              = opcode.UnaryOp
+	OpArrayAccess          = opcode.ArrayAccess
+	OpIf                   = opcode.If
+	OpFor                  = opcode.For
+	OpWhile                = opcode.While
+	OpSwitch               = opcode.Switch
+	OpBreak                = opcode.Break
+	OpContinue             = opcode.Continue
+	OpRegisterEventHandler = opcode.RegisterEventHandler
+	OpWait                 = opcode.Wait
+	OpSetStep              = opcode.SetStep
+	OpDefineFunction       = opcode.DefineFunction
 )
 
 // Re-export error types from sub-packages for convenience

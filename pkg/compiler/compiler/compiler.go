@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/zurustar/son-et/pkg/compiler/parser"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // CompilerError represents an error that occurred during compilation.
@@ -50,12 +51,12 @@ func New() *Compiler {
 // Returns the generated OpCode sequence and any compilation errors.
 // Requirement 5.5: Compiler reports unknown AST node types in error messages.
 // Requirement 5.6: System collects all errors and returns them to caller.
-func (c *Compiler) Compile(program *parser.Program) ([]OpCode, []error) {
+func (c *Compiler) Compile(program *parser.Program) ([]opcode.OpCode, []error) {
 	if program == nil {
 		return nil, []error{NewCompilerError("program is nil", 0, 0)}
 	}
 
-	var opcodes []OpCode
+	var opcodes []opcode.OpCode
 
 	// Iterate through all statements in the program
 	for _, stmt := range program.Statements {
@@ -154,7 +155,7 @@ func getExpressionLocation(expr parser.Expression) (int, int) {
 // compileStatement compiles a single statement into OpCode instructions.
 // It dispatches to the appropriate compile method based on the statement type.
 // Requirement 5.5: Compiler reports unknown AST node types in error messages.
-func (c *Compiler) compileStatement(stmt parser.Statement) []OpCode {
+func (c *Compiler) compileStatement(stmt parser.Statement) []opcode.OpCode {
 	switch s := stmt.(type) {
 	case *parser.VarDeclaration:
 		return c.compileVarDeclaration(s)
@@ -186,21 +187,21 @@ func (c *Compiler) compileStatement(stmt parser.Statement) []OpCode {
 		return c.compileReturnStatement(s)
 	case *parser.InfoDirective:
 		// #info directives are metadata and don't generate OpCode
-		return []OpCode{}
+		return []opcode.OpCode{}
 	case *parser.IncludeDirective:
 		// #include directives are handled during preprocessing, not compilation
-		return []OpCode{}
+		return []opcode.OpCode{}
 	case *parser.DefineDirective:
 		// #define directives are handled during preprocessing, not compilation
-		return []OpCode{}
+		return []opcode.OpCode{}
 	case *parser.LabelStatement:
 		// Labels are used for goto, which is not yet implemented
 		// For now, just skip them
-		return []OpCode{}
+		return []opcode.OpCode{}
 	default:
 		line, col := getStatementLocation(stmt)
 		c.addError(line, col, "unknown statement type: %T", stmt)
-		return []OpCode{}
+		return []opcode.OpCode{}
 	}
 }
 
@@ -248,19 +249,19 @@ func (c *Compiler) compileExpression(expr parser.Expression) any {
 // compileVarDeclaration compiles a variable declaration statement.
 // Variable declarations don't generate OpCode directly; they are handled
 // when the variable is first assigned.
-func (c *Compiler) compileVarDeclaration(_ *parser.VarDeclaration) []OpCode {
+func (c *Compiler) compileVarDeclaration(_ *parser.VarDeclaration) []opcode.OpCode {
 	// Variable declarations in FILLY don't generate OpCode directly.
 	// Variables are created dynamically when first assigned.
 	// Arrays with sizes (e.g., int arr[10]) are also handled dynamically.
 	// The VM will allocate the array when it's first accessed or assigned.
-	return []OpCode{}
+	return []opcode.OpCode{}
 }
 
 // compileFunctionStatement compiles a function definition.
 // It generates an OpDefineFunction with the function name, parameters, and compiled body.
-func (c *Compiler) compileFunctionStatement(fs *parser.FunctionStatement) []OpCode {
+func (c *Compiler) compileFunctionStatement(fs *parser.FunctionStatement) []opcode.OpCode {
 	// Compile the function body
-	var bodyOpcodes []OpCode
+	var bodyOpcodes []opcode.OpCode
 	if fs.Body != nil {
 		bodyOpcodes = c.compileBlockStatement(fs.Body)
 	}
@@ -280,9 +281,9 @@ func (c *Compiler) compileFunctionStatement(fs *parser.FunctionStatement) []OpCo
 	}
 
 	// Generate OpDefineFunction with function name, parameters, and body
-	return []OpCode{
+	return []opcode.OpCode{
 		{
-			Cmd: OpDefineFunction,
+			Cmd: opcode.DefineFunction,
 			Args: []any{
 				fs.Name,
 				params,
@@ -293,8 +294,8 @@ func (c *Compiler) compileFunctionStatement(fs *parser.FunctionStatement) []OpCo
 }
 
 // compileBlockStatement compiles a block of statements.
-func (c *Compiler) compileBlockStatement(bs *parser.BlockStatement) []OpCode {
-	var opcodes []OpCode
+func (c *Compiler) compileBlockStatement(bs *parser.BlockStatement) []opcode.OpCode {
+	var opcodes []opcode.OpCode
 	for _, stmt := range bs.Statements {
 		stmtOpcodes := c.compileStatement(stmt)
 		opcodes = append(opcodes, stmtOpcodes...)
@@ -304,43 +305,43 @@ func (c *Compiler) compileBlockStatement(bs *parser.BlockStatement) []OpCode {
 
 // compileAssignStatement compiles an assignment statement.
 // Handles both simple variable assignment (x = value) and array element assignment (arr[i] = value).
-// For simple assignment: generates OpAssign with Variable(name) and compiled value.
+// For simple assignment: generates OpAssign with opcode.Variable(name) and compiled value.
 // For array assignment: generates OpArrayAssign with array name, index, and value.
-func (c *Compiler) compileAssignStatement(as *parser.AssignStatement) []OpCode {
+func (c *Compiler) compileAssignStatement(as *parser.AssignStatement) []opcode.OpCode {
 	value := c.compileExpression(as.Value)
 
 	switch target := as.Name.(type) {
 	case *parser.Identifier:
 		// Simple variable assignment: x = value
-		// OpCode{Cmd: OpAssign, Args: []any{Variable("x"), value}}
-		return []OpCode{
+		// opcode.OpCode{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), value}}
+		return []opcode.OpCode{
 			{
-				Cmd:  OpAssign,
-				Args: []any{Variable(target.Value), value},
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable(target.Value), value},
 			},
 		}
 
 	case *parser.IndexExpression:
 		// Array element assignment: arr[i] = value
-		// OpCode{Cmd: OpArrayAssign, Args: []any{Variable("arr"), index, value}}
+		// opcode.OpCode{Cmd: opcode.ArrayAssign, Args: []any{opcode.Variable("arr"), index, value}}
 		// The Left of IndexExpression should be an Identifier for the array name
-		var arrayName Variable
+		var arrayName opcode.Variable
 		switch left := target.Left.(type) {
 		case *parser.Identifier:
-			arrayName = Variable(left.Value)
+			arrayName = opcode.Variable(left.Value)
 		default:
 			// For nested array access or other complex expressions,
 			// compile the left side as an expression
-			arrayName = Variable("")
+			arrayName = opcode.Variable("")
 			line, col := getExpressionLocation(target.Left)
 			c.addError(line, col, "array assignment target must be an identifier, got %T", target.Left)
-			return []OpCode{}
+			return []opcode.OpCode{}
 		}
 
 		index := c.compileExpression(target.Index)
-		return []OpCode{
+		return []opcode.OpCode{
 			{
-				Cmd:  OpArrayAssign,
+				Cmd:  opcode.ArrayAssign,
 				Args: []any{arrayName, index, value},
 			},
 		}
@@ -348,16 +349,16 @@ func (c *Compiler) compileAssignStatement(as *parser.AssignStatement) []OpCode {
 	default:
 		line, col := as.Token.Line, as.Token.Column
 		c.addError(line, col, "invalid assignment target: %T", as.Name)
-		return []OpCode{}
+		return []opcode.OpCode{}
 	}
 }
 
 // compileExpressionStatement compiles an expression statement.
 // If the expression is a CallExpression, it generates an OpCall.
 // Otherwise, it compiles the expression (which may have side effects).
-func (c *Compiler) compileExpressionStatement(es *parser.ExpressionStatement) []OpCode {
+func (c *Compiler) compileExpressionStatement(es *parser.ExpressionStatement) []opcode.OpCode {
 	if es.Expression == nil {
-		return []OpCode{}
+		return []opcode.OpCode{}
 	}
 
 	// Check if the expression is a function call
@@ -367,8 +368,8 @@ func (c *Compiler) compileExpressionStatement(es *parser.ExpressionStatement) []
 		for _, arg := range ce.Arguments {
 			args = append(args, c.compileExpression(arg))
 		}
-		return []OpCode{
-			{Cmd: OpCall, Args: args},
+		return []opcode.OpCode{
+			{Cmd: opcode.Call, Args: args},
 		}
 	}
 
@@ -376,17 +377,17 @@ func (c *Compiler) compileExpressionStatement(es *parser.ExpressionStatement) []
 	// The result is discarded but the expression is still evaluated
 	result := c.compileExpression(es.Expression)
 	if result == nil {
-		return []OpCode{}
+		return []opcode.OpCode{}
 	}
 
 	// If the result is an OpCode (e.g., from a complex expression), return it
-	if opcode, ok := result.(OpCode); ok {
-		return []OpCode{opcode}
+	if op, ok := result.(opcode.OpCode); ok {
+		return []opcode.OpCode{op}
 	}
 
 	// For simple values (literals, variables), no OpCode is generated
 	// as they have no side effects
-	return []OpCode{}
+	return []opcode.OpCode{}
 }
 
 // compileIfStatement compiles an if statement.
@@ -394,31 +395,31 @@ func (c *Compiler) compileExpressionStatement(es *parser.ExpressionStatement) []
 // For if-else if chains, the else block contains another OpIf.
 //
 // Example: if (x > 5) { y = 10 } else { y = 0 }
-// OpCode{
+// opcode.OpCode{
 //
-//	Cmd: OpIf,
+//	Cmd: opcode.If,
 //	Args: []any{
 //	    // condition
-//	    OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("x"), 5}},
+//	    opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("x"), 5}},
 //	    // then block
-//	    []OpCode{{Cmd: OpAssign, Args: []any{Variable("y"), 10}}},
+//	    []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), 10}}},
 //	    // else block
-//	    []OpCode{{Cmd: OpAssign, Args: []any{Variable("y"), 0}}},
+//	    []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), 0}}},
 //	},
 //
 // }
-func (c *Compiler) compileIfStatement(is *parser.IfStatement) []OpCode {
+func (c *Compiler) compileIfStatement(is *parser.IfStatement) []opcode.OpCode {
 	// Compile the condition
 	condition := c.compileExpression(is.Condition)
 
 	// Compile the then block (consequence)
-	thenBlock := []OpCode{}
+	thenBlock := []opcode.OpCode{}
 	if is.Consequence != nil {
 		thenBlock = c.compileBlockStatement(is.Consequence)
 	}
 
 	// Compile the else block (alternative)
-	elseBlock := []OpCode{}
+	elseBlock := []opcode.OpCode{}
 	if is.Alternative != nil {
 		switch alt := is.Alternative.(type) {
 		case *parser.BlockStatement:
@@ -433,9 +434,9 @@ func (c *Compiler) compileIfStatement(is *parser.IfStatement) []OpCode {
 		}
 	}
 
-	return []OpCode{
+	return []opcode.OpCode{
 		{
-			Cmd: OpIf,
+			Cmd: opcode.If,
 			Args: []any{
 				condition,
 				thenBlock,
@@ -449,24 +450,24 @@ func (c *Compiler) compileIfStatement(is *parser.IfStatement) []OpCode {
 // Generates OpFor with init, condition, post, and body blocks.
 //
 // Example: for(i=0; i<10; i=i+1) { ... }
-// OpCode{
+// opcode.OpCode{
 //
-//	Cmd: OpFor,
+//	Cmd: opcode.For,
 //	Args: []any{
 //	    // init
-//	    []OpCode{{Cmd: OpAssign, Args: []any{Variable("i"), 0}}},
+//	    []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), 0}}},
 //	    // condition
-//	    OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("i"), 10}},
+//	    opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), 10}},
 //	    // post
-//	    []OpCode{{Cmd: OpAssign, Args: []any{Variable("i"), OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("i"), 1}}}}},
+//	    []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), 1}}}}},
 //	    // body
-//	    []OpCode{...},
+//	    []opcode.OpCode{...},
 //	},
 //
 // }
-func (c *Compiler) compileForStatement(fs *parser.ForStatement) []OpCode {
+func (c *Compiler) compileForStatement(fs *parser.ForStatement) []opcode.OpCode {
 	// Compile the init statement
-	initBlock := []OpCode{}
+	initBlock := []opcode.OpCode{}
 	if fs.Init != nil {
 		initBlock = c.compileStatement(fs.Init)
 	}
@@ -478,20 +479,20 @@ func (c *Compiler) compileForStatement(fs *parser.ForStatement) []OpCode {
 	}
 
 	// Compile the post statement
-	postBlock := []OpCode{}
+	postBlock := []opcode.OpCode{}
 	if fs.Post != nil {
 		postBlock = c.compileStatement(fs.Post)
 	}
 
 	// Compile the body
-	bodyBlock := []OpCode{}
+	bodyBlock := []opcode.OpCode{}
 	if fs.Body != nil {
 		bodyBlock = c.compileBlockStatement(fs.Body)
 	}
 
-	return []OpCode{
+	return []opcode.OpCode{
 		{
-			Cmd: OpFor,
+			Cmd: opcode.For,
 			Args: []any{
 				initBlock,
 				condition,
@@ -506,18 +507,18 @@ func (c *Compiler) compileForStatement(fs *parser.ForStatement) []OpCode {
 // Generates OpWhile with condition and body blocks.
 //
 // Example: while (condition) { body }
-// OpCode{
+// opcode.OpCode{
 //
-//	Cmd: OpWhile,
+//	Cmd: opcode.While,
 //	Args: []any{
 //	    // condition
-//	    OpCode{...},
+//	    opcode.OpCode{...},
 //	    // body
-//	    []OpCode{...},
+//	    []opcode.OpCode{...},
 //	},
 //
 // }
-func (c *Compiler) compileWhileStatement(ws *parser.WhileStatement) []OpCode {
+func (c *Compiler) compileWhileStatement(ws *parser.WhileStatement) []opcode.OpCode {
 	// Compile the condition
 	var condition any
 	if ws.Condition != nil {
@@ -525,14 +526,14 @@ func (c *Compiler) compileWhileStatement(ws *parser.WhileStatement) []OpCode {
 	}
 
 	// Compile the body
-	bodyBlock := []OpCode{}
+	bodyBlock := []opcode.OpCode{}
 	if ws.Body != nil {
 		bodyBlock = c.compileBlockStatement(ws.Body)
 	}
 
-	return []OpCode{
+	return []opcode.OpCode{
 		{
-			Cmd: OpWhile,
+			Cmd: opcode.While,
 			Args: []any{
 				condition,
 				bodyBlock,
@@ -545,23 +546,23 @@ func (c *Compiler) compileWhileStatement(ws *parser.WhileStatement) []OpCode {
 // Generates OpSwitch with value, cases array, and optional default block.
 //
 // Example: switch (value) { case 1: ... default: ... }
-// OpCode{
+// opcode.OpCode{
 //
-//	Cmd: OpSwitch,
+//	Cmd: opcode.Switch,
 //	Args: []any{
 //	    // value
-//	    Variable("x"),
+//	    opcode.Variable("x"),
 //	    // cases (array of case clauses)
 //	    []any{
-//	        map[string]any{"value": 1, "body": []OpCode{...}},
-//	        map[string]any{"value": 2, "body": []OpCode{...}},
+//	        map[string]any{"value": 1, "body": []opcode.OpCode{...}},
+//	        map[string]any{"value": 2, "body": []opcode.OpCode{...}},
 //	    },
 //	    // default block
-//	    []OpCode{...},
+//	    []opcode.OpCode{...},
 //	},
 //
 // }
-func (c *Compiler) compileSwitchStatement(ss *parser.SwitchStatement) []OpCode {
+func (c *Compiler) compileSwitchStatement(ss *parser.SwitchStatement) []opcode.OpCode {
 	// Compile the switch value
 	value := c.compileExpression(ss.Value)
 
@@ -572,7 +573,7 @@ func (c *Compiler) compileSwitchStatement(ss *parser.SwitchStatement) []OpCode {
 		caseValue := c.compileExpression(caseClause.Value)
 
 		// Compile the case body
-		caseBody := []OpCode{}
+		caseBody := []opcode.OpCode{}
 		for _, stmt := range caseClause.Body {
 			stmtOpcodes := c.compileStatement(stmt)
 			caseBody = append(caseBody, stmtOpcodes...)
@@ -585,14 +586,14 @@ func (c *Compiler) compileSwitchStatement(ss *parser.SwitchStatement) []OpCode {
 	}
 
 	// Compile the default block
-	defaultBlock := []OpCode{}
+	defaultBlock := []opcode.OpCode{}
 	if ss.Default != nil {
 		defaultBlock = c.compileBlockStatement(ss.Default)
 	}
 
-	return []OpCode{
+	return []opcode.OpCode{
 		{
-			Cmd: OpSwitch,
+			Cmd: opcode.Switch,
 			Args: []any{
 				value,
 				cases,
@@ -606,26 +607,26 @@ func (c *Compiler) compileSwitchStatement(ss *parser.SwitchStatement) []OpCode {
 // Generates OpRegisterEventHandler with event type and compiled body.
 //
 // Example: mes(MIDI_TIME) { step { ... } }
-// OpCode{
+// opcode.OpCode{
 //
-//	Cmd: OpRegisterEventHandler,
+//	Cmd: opcode.RegisterEventHandler,
 //	Args: []any{
 //	    "MIDI_TIME",
-//	    []OpCode{...}, // body OpCode
+//	    []opcode.OpCode{...}, // body OpCode
 //	},
 //
 // }
-func (c *Compiler) compileMesStatement(ms *parser.MesStatement) []OpCode {
+func (c *Compiler) compileMesStatement(ms *parser.MesStatement) []opcode.OpCode {
 	// Compile the body block
-	bodyOpcodes := []OpCode{}
+	bodyOpcodes := []opcode.OpCode{}
 	if ms.Body != nil {
 		bodyOpcodes = c.compileBlockStatement(ms.Body)
 	}
 
 	// Generate OpRegisterEventHandler with event type and body
-	return []OpCode{
+	return []opcode.OpCode{
 		{
-			Cmd: OpRegisterEventHandler,
+			Cmd: opcode.RegisterEventHandler,
 			Args: []any{
 				ms.EventType,
 				bodyOpcodes,
@@ -640,22 +641,22 @@ func (c *Compiler) compileMesStatement(ms *parser.MesStatement) []OpCode {
 // Example: step(10) { func1();, func2();,, end_step; del_me; }
 // Generates:
 //
-//	[]OpCode{
-//	    {Cmd: OpSetStep, Args: []any{10}},
-//	    {Cmd: OpCall, Args: []any{"func1"}},
-//	    {Cmd: OpWait, Args: []any{1}},  // 1 comma
-//	    {Cmd: OpCall, Args: []any{"func2"}},
-//	    {Cmd: OpWait, Args: []any{2}},  // 2 commas
-//	    {Cmd: OpCall, Args: []any{"del_me"}},
+//	[]opcode.OpCode{
+//	    {Cmd: opcode.SetStep, Args: []any{10}},
+//	    {Cmd: opcode.Call, Args: []any{"func1"}},
+//	    {Cmd: opcode.Wait, Args: []any{1}},  // 1 comma
+//	    {Cmd: opcode.Call, Args: []any{"func2"}},
+//	    {Cmd: opcode.Wait, Args: []any{2}},  // 2 commas
+//	    {Cmd: opcode.Call, Args: []any{"del_me"}},
 //	}
-func (c *Compiler) compileStepStatement(ss *parser.StepStatement) []OpCode {
-	var opcodes []OpCode
+func (c *Compiler) compileStepStatement(ss *parser.StepStatement) []opcode.OpCode {
+	var opcodes []opcode.OpCode
 
 	// If Count is specified, generate OpSetStep first
 	if ss.Count != nil {
 		countValue := c.compileExpression(ss.Count)
-		opcodes = append(opcodes, OpCode{
-			Cmd:  OpSetStep,
+		opcodes = append(opcodes, opcode.OpCode{
+			Cmd:  opcode.SetStep,
 			Args: []any{countValue},
 		})
 	}
@@ -675,8 +676,8 @@ func (c *Compiler) compileStepStatement(ss *parser.StepStatement) []OpCode {
 
 		// If WaitCount > 0, generate OpWait with the count
 		if cmd.WaitCount > 0 {
-			opcodes = append(opcodes, OpCode{
-				Cmd:  OpWait,
+			opcodes = append(opcodes, opcode.OpCode{
+				Cmd:  opcode.Wait,
 				Args: []any{cmd.WaitCount},
 			})
 		}
@@ -686,27 +687,27 @@ func (c *Compiler) compileStepStatement(ss *parser.StepStatement) []OpCode {
 }
 
 // compileBreakStatement compiles a break statement.
-func (c *Compiler) compileBreakStatement(bs *parser.BreakStatement) []OpCode {
-	return []OpCode{
-		{Cmd: OpBreak, Args: []any{}},
+func (c *Compiler) compileBreakStatement(bs *parser.BreakStatement) []opcode.OpCode {
+	return []opcode.OpCode{
+		{Cmd: opcode.Break, Args: []any{}},
 	}
 }
 
 // compileContinueStatement compiles a continue statement.
-func (c *Compiler) compileContinueStatement(cs *parser.ContinueStatement) []OpCode {
-	return []OpCode{
-		{Cmd: OpContinue, Args: []any{}},
+func (c *Compiler) compileContinueStatement(cs *parser.ContinueStatement) []opcode.OpCode {
+	return []opcode.OpCode{
+		{Cmd: opcode.Continue, Args: []any{}},
 	}
 }
 
 // compileReturnStatement compiles a return statement.
-func (c *Compiler) compileReturnStatement(rs *parser.ReturnStatement) []OpCode {
+func (c *Compiler) compileReturnStatement(rs *parser.ReturnStatement) []opcode.OpCode {
 	args := []any{"return"}
 	if rs.ReturnValue != nil {
 		args = append(args, c.compileExpression(rs.ReturnValue))
 	}
-	return []OpCode{
-		{Cmd: OpCall, Args: args},
+	return []opcode.OpCode{
+		{Cmd: opcode.Call, Args: args},
 	}
 }
 
@@ -717,7 +718,7 @@ func (c *Compiler) compileReturnStatement(rs *parser.ReturnStatement) []OpCode {
 // compileIdentifier compiles an identifier expression.
 // Returns a Variable reference for the identifier.
 func (c *Compiler) compileIdentifier(id *parser.Identifier) any {
-	return Variable(id.Value)
+	return opcode.Variable(id.Value)
 }
 
 // compileIntegerLiteral compiles an integer literal expression.
@@ -743,8 +744,8 @@ func (c *Compiler) compileStringLiteral(sl *parser.StringLiteral) any {
 func (c *Compiler) compileBinaryExpression(be *parser.BinaryExpression) any {
 	left := c.compileExpression(be.Left)
 	right := c.compileExpression(be.Right)
-	return OpCode{
-		Cmd:  OpBinaryOp,
+	return opcode.OpCode{
+		Cmd:  opcode.BinaryOp,
 		Args: []any{be.Operator, left, right},
 	}
 }
@@ -753,8 +754,8 @@ func (c *Compiler) compileBinaryExpression(be *parser.BinaryExpression) any {
 // Returns an OpCode with OpUnaryOp command.
 func (c *Compiler) compileUnaryExpression(ue *parser.UnaryExpression) any {
 	operand := c.compileExpression(ue.Right)
-	return OpCode{
-		Cmd:  OpUnaryOp,
+	return opcode.OpCode{
+		Cmd:  opcode.UnaryOp,
 		Args: []any{ue.Operator, operand},
 	}
 }
@@ -766,8 +767,8 @@ func (c *Compiler) compileCallExpression(ce *parser.CallExpression) any {
 	for _, arg := range ce.Arguments {
 		args = append(args, c.compileExpression(arg))
 	}
-	return OpCode{
-		Cmd:  OpCall,
+	return opcode.OpCode{
+		Cmd:  opcode.Call,
 		Args: args,
 	}
 }
@@ -777,8 +778,8 @@ func (c *Compiler) compileCallExpression(ce *parser.CallExpression) any {
 func (c *Compiler) compileIndexExpression(ie *parser.IndexExpression) any {
 	array := c.compileExpression(ie.Left)
 	index := c.compileExpression(ie.Index)
-	return OpCode{
-		Cmd:  OpArrayAccess,
+	return opcode.OpCode{
+		Cmd:  opcode.ArrayAccess,
 		Args: []any{array, index},
 	}
 }
@@ -787,5 +788,5 @@ func (c *Compiler) compileIndexExpression(ie *parser.IndexExpression) any {
 // This is used when passing an entire array as a function argument.
 // Returns a Variable reference for the array.
 func (c *Compiler) compileArrayReference(ar *parser.ArrayReference) any {
-	return Variable(ar.Name)
+	return opcode.Variable(ar.Name)
 }

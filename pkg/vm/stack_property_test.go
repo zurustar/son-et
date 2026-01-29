@@ -6,7 +6,7 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // Property-based tests for stack frame management.
@@ -33,7 +33,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 				initialDepth = 100
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Push initial frames to reach initialDepth
 			for i := 0; i < initialDepth; i++ {
@@ -73,7 +73,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 				initialDepth = 100
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Push initial frames
 			for i := 0; i < initialDepth; i++ {
@@ -113,7 +113,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 				initialDepth = 100
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Push initial frames
 			for i := 0; i < initialDepth; i++ {
@@ -160,7 +160,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 				operations = operations[:50]
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			expectedDepth := 0
 
 			for _, isPush := range operations {
@@ -201,7 +201,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 	// Property: Popped frame contains correct function name
 	properties.Property("popped frame contains correct function name", prop.ForAll(
 		func(functionName string) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Push a frame with specific function name
 			scope := NewScope(vm.globalScope)
@@ -231,7 +231,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 				functionNames = functionNames[:50]
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Push all frames
 			for _, name := range functionNames {
@@ -260,7 +260,7 @@ func TestProperty23_StackFrameRoundTrip(t *testing.T) {
 	// Property: Local scope is correctly associated with stack frame
 	properties.Property("local scope is correctly associated with stack frame", prop.ForAll(
 		func(functionName string, varName string, value int) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create local scope with a variable
 			localScope := NewScope(vm.globalScope)
@@ -328,15 +328,15 @@ func TestProperty23_StackFrameRoundTripWithUserFunction(t *testing.T) {
 				Parameters: []FunctionParam{
 					{Name: "x", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd:  compiler.OpCall,
-						Args: []any{"return", compiler.Variable("x")},
+						Cmd:  opcode.Call,
+						Args: []any{"return", opcode.Variable("x")},
 					},
 				},
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			vm.functions[funcName] = funcDef
 
 			// Record initial stack depth
@@ -372,7 +372,7 @@ func TestProperty23_StackFrameRoundTripWithUserFunction(t *testing.T) {
 				recursionDepth = 50
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Record initial depth
 			depthBefore := vm.GetStackDepth()

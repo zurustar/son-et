@@ -7,6 +7,7 @@ import (
 
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
 	"github.com/zurustar/son-et/pkg/compiler/parser"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // TestCompileSimpleAssignment tests simple variable assignment (x = value).
@@ -14,38 +15,38 @@ func TestCompileSimpleAssignment(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple integer assignment",
 			input: "x = 5",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpAssign,
-					Args: []any{Variable("x"), int64(5)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("x"), int64(5)},
 				},
 			},
 		},
 		{
 			name:  "simple string assignment",
 			input: `s = "hello"`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpAssign,
-					Args: []any{Variable("s"), "hello"},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("s"), "hello"},
 				},
 			},
 		},
 		{
 			name:  "assignment with binary expression",
 			input: "x = 5 + 3",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpAssign,
+					Cmd: opcode.Assign,
 					Args: []any{
-						Variable("x"),
-						OpCode{
-							Cmd:  OpBinaryOp,
+						opcode.Variable("x"),
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
 							Args: []any{"+", int64(5), int64(3)},
 						},
 					},
@@ -55,30 +56,30 @@ func TestCompileSimpleAssignment(t *testing.T) {
 		{
 			name:  "assignment with variable reference",
 			input: "y = x",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpAssign,
-					Args: []any{Variable("y"), Variable("x")},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("y"), opcode.Variable("x")},
 				},
 			},
 		},
 		{
 			name:  "assignment with complex expression",
 			input: "result = a * b + c",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpAssign,
+					Cmd: opcode.Assign,
 					Args: []any{
-						Variable("result"),
-						OpCode{
-							Cmd: OpBinaryOp,
+						opcode.Variable("result"),
+						opcode.OpCode{
+							Cmd: opcode.BinaryOp,
 							Args: []any{
 								"+",
-								OpCode{
-									Cmd:  OpBinaryOp,
-									Args: []any{"*", Variable("a"), Variable("b")},
+								opcode.OpCode{
+									Cmd:  opcode.BinaryOp,
+									Args: []any{"*", opcode.Variable("a"), opcode.Variable("b")},
 								},
-								Variable("c"),
+								opcode.Variable("c"),
 							},
 						},
 					},
@@ -88,13 +89,13 @@ func TestCompileSimpleAssignment(t *testing.T) {
 		{
 			name:  "assignment with unary expression",
 			input: "x = -5",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpAssign,
+					Cmd: opcode.Assign,
 					Args: []any{
-						Variable("x"),
-						OpCode{
-							Cmd:  OpUnaryOp,
+						opcode.Variable("x"),
+						opcode.OpCode{
+							Cmd:  opcode.UnaryOp,
 							Args: []any{"-", int64(5)},
 						},
 					},
@@ -130,41 +131,41 @@ func TestCompileArrayAssignment(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "array assignment with integer index",
 			input: "arr[0] = 10",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpArrayAssign,
-					Args: []any{Variable("arr"), int64(0), int64(10)},
+					Cmd:  opcode.ArrayAssign,
+					Args: []any{opcode.Variable("arr"), int64(0), int64(10)},
 				},
 			},
 		},
 		{
 			name:  "array assignment with variable index",
 			input: "arr[i] = value",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpArrayAssign,
-					Args: []any{Variable("arr"), Variable("i"), Variable("value")},
+					Cmd:  opcode.ArrayAssign,
+					Args: []any{opcode.Variable("arr"), opcode.Variable("i"), opcode.Variable("value")},
 				},
 			},
 		},
 		{
 			name:  "array assignment with expression index",
 			input: "arr[i + 1] = x",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpArrayAssign,
+					Cmd: opcode.ArrayAssign,
 					Args: []any{
-						Variable("arr"),
-						OpCode{
-							Cmd:  OpBinaryOp,
-							Args: []any{"+", Variable("i"), int64(1)},
+						opcode.Variable("arr"),
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"+", opcode.Variable("i"), int64(1)},
 						},
-						Variable("x"),
+						opcode.Variable("x"),
 					},
 				},
 			},
@@ -172,15 +173,15 @@ func TestCompileArrayAssignment(t *testing.T) {
 		{
 			name:  "array assignment with expression value",
 			input: "data[idx] = a + b",
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpArrayAssign,
+					Cmd: opcode.ArrayAssign,
 					Args: []any{
-						Variable("data"),
-						Variable("idx"),
-						OpCode{
-							Cmd:  OpBinaryOp,
-							Args: []any{"+", Variable("a"), Variable("b")},
+						opcode.Variable("data"),
+						opcode.Variable("idx"),
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"+", opcode.Variable("a"), opcode.Variable("b")},
 						},
 					},
 				},
@@ -215,32 +216,32 @@ func TestCompileVarDeclaration(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:     "simple int declaration",
 			input:    "int x;",
-			expected: []OpCode{},
+			expected: []opcode.OpCode{},
 		},
 		{
 			name:     "multiple int declarations",
 			input:    "int x, y, z;",
-			expected: []OpCode{},
+			expected: []opcode.OpCode{},
 		},
 		{
 			name:     "array declaration",
 			input:    "int arr[];",
-			expected: []OpCode{},
+			expected: []opcode.OpCode{},
 		},
 		{
 			name:     "array declaration with size",
 			input:    "int arr[10];",
-			expected: []OpCode{},
+			expected: []opcode.OpCode{},
 		},
 		{
 			name:     "string declaration",
 			input:    "str s;",
-			expected: []OpCode{},
+			expected: []opcode.OpCode{},
 		},
 	}
 
@@ -275,23 +276,23 @@ func TestCompileMixedStatements(t *testing.T) {
 		arr[0] = x + 5;
 	`
 
-	expected := []OpCode{
+	expected := []opcode.OpCode{
 		// int x; - no OpCode
 		// x = 10;
 		{
-			Cmd:  OpAssign,
-			Args: []any{Variable("x"), int64(10)},
+			Cmd:  opcode.Assign,
+			Args: []any{opcode.Variable("x"), int64(10)},
 		},
 		// int arr[]; - no OpCode
 		// arr[0] = x + 5;
 		{
-			Cmd: OpArrayAssign,
+			Cmd: opcode.ArrayAssign,
 			Args: []any{
-				Variable("arr"),
+				opcode.Variable("arr"),
 				int64(0),
-				OpCode{
-					Cmd:  OpBinaryOp,
-					Args: []any{"+", Variable("x"), int64(5)},
+				opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
+					Args: []any{"+", opcode.Variable("x"), int64(5)},
 				},
 			},
 		},
@@ -320,14 +321,14 @@ func TestCompileFunctionCall(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple function call with string argument",
 			input: `LoadPic("image.bmp");`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"LoadPic", "image.bmp"},
 				},
 			},
@@ -335,9 +336,9 @@ func TestCompileFunctionCall(t *testing.T) {
 		{
 			name:  "function call with no arguments",
 			input: `del_me();`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd:  OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"del_me"},
 				},
 			},
@@ -345,14 +346,14 @@ func TestCompileFunctionCall(t *testing.T) {
 		{
 			name:  "function call with multiple arguments",
 			input: `MovePic(src, 0, 0, 100, 100, dst, 0, 0);`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"MovePic",
-						Variable("src"),
+						opcode.Variable("src"),
 						int64(0), int64(0), int64(100), int64(100),
-						Variable("dst"),
+						opcode.Variable("dst"),
 						int64(0), int64(0),
 					},
 				},
@@ -361,14 +362,14 @@ func TestCompileFunctionCall(t *testing.T) {
 		{
 			name:  "function call with expression argument",
 			input: `SetValue(x + 1);`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"SetValue",
-						OpCode{
-							Cmd:  OpBinaryOp,
-							Args: []any{"+", Variable("x"), int64(1)},
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"+", opcode.Variable("x"), int64(1)},
 						},
 					},
 				},
@@ -377,14 +378,14 @@ func TestCompileFunctionCall(t *testing.T) {
 		{
 			name:  "function call with array access argument",
 			input: `Process(arr[i]);`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"Process",
-						OpCode{
-							Cmd:  OpArrayAccess,
-							Args: []any{Variable("arr"), Variable("i")},
+						opcode.OpCode{
+							Cmd:  opcode.ArrayAccess,
+							Args: []any{opcode.Variable("arr"), opcode.Variable("i")},
 						},
 					},
 				},
@@ -419,19 +420,19 @@ func TestCompileFunctionDefinition(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple function definition",
 			input: `myFunc() { x = 1; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpDefineFunction,
+					Cmd: opcode.DefineFunction,
 					Args: []any{
 						"myFunc",
 						[]any{},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("x"), int64(1)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
 						},
 					},
 				},
@@ -440,23 +441,23 @@ func TestCompileFunctionDefinition(t *testing.T) {
 		{
 			name:  "function with parameters",
 			input: `add(int a, int b) { result = a + b; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpDefineFunction,
+					Cmd: opcode.DefineFunction,
 					Args: []any{
 						"add",
 						[]any{
 							map[string]any{"name": "a", "type": "int", "isArray": false},
 							map[string]any{"name": "b", "type": "int", "isArray": false},
 						},
-						[]OpCode{
+						[]opcode.OpCode{
 							{
-								Cmd: OpAssign,
+								Cmd: opcode.Assign,
 								Args: []any{
-									Variable("result"),
-									OpCode{
-										Cmd:  OpBinaryOp,
-										Args: []any{"+", Variable("a"), Variable("b")},
+									opcode.Variable("result"),
+									opcode.OpCode{
+										Cmd:  opcode.BinaryOp,
+										Args: []any{"+", opcode.Variable("a"), opcode.Variable("b")},
 									},
 								},
 							},
@@ -468,16 +469,16 @@ func TestCompileFunctionDefinition(t *testing.T) {
 		{
 			name:  "function with default parameter",
 			input: `greet(int count=1) { x = count; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpDefineFunction,
+					Cmd: opcode.DefineFunction,
 					Args: []any{
 						"greet",
 						[]any{
 							map[string]any{"name": "count", "type": "int", "isArray": false, "default": int64(1)},
 						},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("x"), Variable("count")}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), opcode.Variable("count")}},
 						},
 					},
 				},
@@ -486,16 +487,16 @@ func TestCompileFunctionDefinition(t *testing.T) {
 		{
 			name:  "function with array parameter",
 			input: `process(int arr[]) { x = 0; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpDefineFunction,
+					Cmd: opcode.DefineFunction,
 					Args: []any{
 						"process",
 						[]any{
 							map[string]any{"name": "arr", "type": "int", "isArray": true},
 						},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("x"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(0)}},
 						},
 					},
 				},
@@ -504,14 +505,14 @@ func TestCompileFunctionDefinition(t *testing.T) {
 		{
 			name:  "function with function call in body",
 			input: `wrapper() { innerFunc(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpDefineFunction,
+					Cmd: opcode.DefineFunction,
 					Args: []any{
 						"wrapper",
 						[]any{},
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"innerFunc"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"innerFunc"}},
 						},
 					},
 				},
@@ -551,33 +552,33 @@ func TestCompileMixedFunctionCallsAndAssignments(t *testing.T) {
 		Process(y);
 	`
 
-	expected := []OpCode{
+	expected := []opcode.OpCode{
 		// int x; - no OpCode
 		// x = 10;
 		{
-			Cmd:  OpAssign,
-			Args: []any{Variable("x"), int64(10)},
+			Cmd:  opcode.Assign,
+			Args: []any{opcode.Variable("x"), int64(10)},
 		},
 		// LoadPic("test.bmp");
 		{
-			Cmd:  OpCall,
+			Cmd:  opcode.Call,
 			Args: []any{"LoadPic", "test.bmp"},
 		},
 		// y = x + 5;
 		{
-			Cmd: OpAssign,
+			Cmd: opcode.Assign,
 			Args: []any{
-				Variable("y"),
-				OpCode{
-					Cmd:  OpBinaryOp,
-					Args: []any{"+", Variable("x"), int64(5)},
+				opcode.Variable("y"),
+				opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
+					Args: []any{"+", opcode.Variable("x"), int64(5)},
 				},
 			},
 		},
 		// Process(y);
 		{
-			Cmd:  OpCall,
-			Args: []any{"Process", Variable("y")},
+			Cmd:  opcode.Call,
+			Args: []any{"Process", opcode.Variable("y")},
 		},
 	}
 
@@ -604,20 +605,20 @@ func TestCompileIfStatement(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple if statement",
 			input: `if (x > 5) { y = 10; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("x"), int64(5)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("y"), int64(10)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("x"), int64(5)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -625,16 +626,16 @@ func TestCompileIfStatement(t *testing.T) {
 		{
 			name:  "if-else statement",
 			input: `if (x > 5) { y = 10; } else { y = 0; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("x"), int64(5)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("y"), int64(10)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("x"), int64(5)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}},
 						},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("y"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(0)}},
 						},
 					},
 				},
@@ -643,15 +644,15 @@ func TestCompileIfStatement(t *testing.T) {
 		{
 			name:  "if with equality condition",
 			input: `if (x == 0) { result = 1; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{"==", Variable("x"), int64(0)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("result"), int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("x"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("result"), int64(1)}},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -659,15 +660,15 @@ func TestCompileIfStatement(t *testing.T) {
 		{
 			name:  "if with function call in body",
 			input: `if (flag) { doSomething(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						Variable("flag"),
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"doSomething"}},
+						opcode.Variable("flag"),
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"doSomething"}},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -675,24 +676,24 @@ func TestCompileIfStatement(t *testing.T) {
 		{
 			name:  "if-else if-else chain",
 			input: `if (x > 10) { y = 1; } else if (x > 5) { y = 2; } else { y = 3; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("x"), int64(10)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("y"), int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("x"), int64(10)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(1)}},
 						},
-						[]OpCode{
+						[]opcode.OpCode{
 							{
-								Cmd: OpIf,
+								Cmd: opcode.If,
 								Args: []any{
-									OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("x"), int64(5)}},
-									[]OpCode{
-										{Cmd: OpAssign, Args: []any{Variable("y"), int64(2)}},
+									opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("x"), int64(5)}},
+									[]opcode.OpCode{
+										{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
 									},
-									[]OpCode{
-										{Cmd: OpAssign, Args: []any{Variable("y"), int64(3)}},
+									[]opcode.OpCode{
+										{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(3)}},
 									},
 								},
 							},
@@ -704,24 +705,24 @@ func TestCompileIfStatement(t *testing.T) {
 		{
 			name:  "nested if statements",
 			input: `if (a > 0) { if (b > 0) { c = 1; } }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("a"), int64(0)}},
-						[]OpCode{
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("a"), int64(0)}},
+						[]opcode.OpCode{
 							{
-								Cmd: OpIf,
+								Cmd: opcode.If,
 								Args: []any{
-									OpCode{Cmd: OpBinaryOp, Args: []any{">", Variable("b"), int64(0)}},
-									[]OpCode{
-										{Cmd: OpAssign, Args: []any{Variable("c"), int64(1)}},
+									opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("b"), int64(0)}},
+									[]opcode.OpCode{
+										{Cmd: opcode.Assign, Args: []any{opcode.Variable("c"), int64(1)}},
 									},
-									[]OpCode{},
+									[]opcode.OpCode{},
 								},
 							},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -755,31 +756,31 @@ func TestCompileForStatement(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple for loop",
 			input: `for (i = 0; i < 10; i = i + 1) { x = i; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpFor,
+					Cmd: opcode.For,
 					Args: []any{
 						// init
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("i"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
 						},
 						// condition
-						OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("i"), int64(10)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(10)}},
 						// post
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{
-								Variable("i"),
-								OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("i"), int64(1)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{
+								opcode.Variable("i"),
+								opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 							}},
 						},
 						// body
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("x"), Variable("i")}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), opcode.Variable("i")}},
 						},
 					},
 				},
@@ -788,22 +789,22 @@ func TestCompileForStatement(t *testing.T) {
 		{
 			name:  "for loop with function call in body",
 			input: `for (j = 0; j < 5; j = j + 1) { process(j); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpFor,
+					Cmd: opcode.For,
 					Args: []any{
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("j"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("j"), int64(0)}},
 						},
-						OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("j"), int64(5)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{
-								Variable("j"),
-								OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("j"), int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("j"), int64(5)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{
+								opcode.Variable("j"),
+								opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("j"), int64(1)}},
 							}},
 						},
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"process", Variable("j")}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"process", opcode.Variable("j")}},
 						},
 					},
 				},
@@ -812,22 +813,22 @@ func TestCompileForStatement(t *testing.T) {
 		{
 			name:  "for loop with array access",
 			input: `for (k = 0; k < n; k = k + 1) { arr[k] = k; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpFor,
+					Cmd: opcode.For,
 					Args: []any{
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("k"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("k"), int64(0)}},
 						},
-						OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("k"), Variable("n")}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{
-								Variable("k"),
-								OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("k"), int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("k"), opcode.Variable("n")}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{
+								opcode.Variable("k"),
+								opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("k"), int64(1)}},
 							}},
 						},
-						[]OpCode{
-							{Cmd: OpArrayAssign, Args: []any{Variable("arr"), Variable("k"), Variable("k")}},
+						[]opcode.OpCode{
+							{Cmd: opcode.ArrayAssign, Args: []any{opcode.Variable("arr"), opcode.Variable("k"), opcode.Variable("k")}},
 						},
 					},
 				},
@@ -836,29 +837,29 @@ func TestCompileForStatement(t *testing.T) {
 		{
 			name:  "for loop with break",
 			input: `for (i = 0; i < 10; i = i + 1) { if (i == 5) { break; } }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpFor,
+					Cmd: opcode.For,
 					Args: []any{
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("i"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
 						},
-						OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("i"), int64(10)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{
-								Variable("i"),
-								OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("i"), int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(10)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{
+								opcode.Variable("i"),
+								opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 							}},
 						},
-						[]OpCode{
+						[]opcode.OpCode{
 							{
-								Cmd: OpIf,
+								Cmd: opcode.If,
 								Args: []any{
-									OpCode{Cmd: OpBinaryOp, Args: []any{"==", Variable("i"), int64(5)}},
-									[]OpCode{
-										{Cmd: OpBreak, Args: []any{}},
+									opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("i"), int64(5)}},
+									[]opcode.OpCode{
+										{Cmd: opcode.Break, Args: []any{}},
 									},
-									[]OpCode{},
+									[]opcode.OpCode{},
 								},
 							},
 						},
@@ -895,20 +896,20 @@ func TestCompileWhileStatement(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple while loop",
 			input: `while (x < 10) { x = x + 1; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpWhile,
+					Cmd: opcode.While,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("x"), int64(10)}},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{
-								Variable("x"),
-								OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("x"), int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("x"), int64(10)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{
+								opcode.Variable("x"),
+								opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("x"), int64(1)}},
 							}},
 						},
 					},
@@ -918,13 +919,13 @@ func TestCompileWhileStatement(t *testing.T) {
 		{
 			name:  "while loop with variable condition",
 			input: `while (running) { process(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpWhile,
+					Cmd: opcode.While,
 					Args: []any{
-						Variable("running"),
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"process"}},
+						opcode.Variable("running"),
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"process"}},
 						},
 					},
 				},
@@ -933,20 +934,20 @@ func TestCompileWhileStatement(t *testing.T) {
 		{
 			name:  "while loop with break",
 			input: `while (1) { if (done) { break; } }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpWhile,
+					Cmd: opcode.While,
 					Args: []any{
 						int64(1),
-						[]OpCode{
+						[]opcode.OpCode{
 							{
-								Cmd: OpIf,
+								Cmd: opcode.If,
 								Args: []any{
-									Variable("done"),
-									[]OpCode{
-										{Cmd: OpBreak, Args: []any{}},
+									opcode.Variable("done"),
+									[]opcode.OpCode{
+										{Cmd: opcode.Break, Args: []any{}},
 									},
-									[]OpCode{},
+									[]opcode.OpCode{},
 								},
 							},
 						},
@@ -957,23 +958,23 @@ func TestCompileWhileStatement(t *testing.T) {
 		{
 			name:  "while loop with continue",
 			input: `while (i < 10) { if (i == 5) { continue; } x = i; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpWhile,
+					Cmd: opcode.While,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{"<", Variable("i"), int64(10)}},
-						[]OpCode{
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(10)}},
+						[]opcode.OpCode{
 							{
-								Cmd: OpIf,
+								Cmd: opcode.If,
 								Args: []any{
-									OpCode{Cmd: OpBinaryOp, Args: []any{"==", Variable("i"), int64(5)}},
-									[]OpCode{
-										{Cmd: OpContinue, Args: []any{}},
+									opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("i"), int64(5)}},
+									[]opcode.OpCode{
+										{Cmd: opcode.Continue, Args: []any{}},
 									},
-									[]OpCode{},
+									[]opcode.OpCode{},
 								},
 							},
-							{Cmd: OpAssign, Args: []any{Variable("x"), Variable("i")}},
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), opcode.Variable("i")}},
 						},
 					},
 				},
@@ -1008,25 +1009,25 @@ func TestCompileSwitchStatement(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple switch statement",
 			input: `switch (x) { case 1: y = 10; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpSwitch,
+					Cmd: opcode.Switch,
 					Args: []any{
-						Variable("x"),
+						opcode.Variable("x"),
 						[]any{
 							map[string]any{
 								"value": int64(1),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("y"), int64(10)}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}},
 								},
 							},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -1034,26 +1035,26 @@ func TestCompileSwitchStatement(t *testing.T) {
 		{
 			name:  "switch with multiple cases",
 			input: `switch (x) { case 1: y = 10; case 2: y = 20; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpSwitch,
+					Cmd: opcode.Switch,
 					Args: []any{
-						Variable("x"),
+						opcode.Variable("x"),
 						[]any{
 							map[string]any{
 								"value": int64(1),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("y"), int64(10)}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}},
 								},
 							},
 							map[string]any{
 								"value": int64(2),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("y"), int64(20)}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(20)}},
 								},
 							},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -1061,21 +1062,21 @@ func TestCompileSwitchStatement(t *testing.T) {
 		{
 			name:  "switch with default",
 			input: `switch (x) { case 1: y = 10; default: y = 0; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpSwitch,
+					Cmd: opcode.Switch,
 					Args: []any{
-						Variable("x"),
+						opcode.Variable("x"),
 						[]any{
 							map[string]any{
 								"value": int64(1),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("y"), int64(10)}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}},
 								},
 							},
 						},
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("y"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(0)}},
 						},
 					},
 				},
@@ -1084,20 +1085,20 @@ func TestCompileSwitchStatement(t *testing.T) {
 		{
 			name:  "switch with expression value",
 			input: `switch (a + b) { case 0: result = 1; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpSwitch,
+					Cmd: opcode.Switch,
 					Args: []any{
-						OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("a"), Variable("b")}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("a"), opcode.Variable("b")}},
 						[]any{
 							map[string]any{
 								"value": int64(0),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("result"), int64(1)}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("result"), int64(1)}},
 								},
 							},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -1105,27 +1106,27 @@ func TestCompileSwitchStatement(t *testing.T) {
 		{
 			name:  "switch with break in case",
 			input: `switch (x) { case 1: y = 10; break; case 2: y = 20; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpSwitch,
+					Cmd: opcode.Switch,
 					Args: []any{
-						Variable("x"),
+						opcode.Variable("x"),
 						[]any{
 							map[string]any{
 								"value": int64(1),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("y"), int64(10)}},
-									{Cmd: OpBreak, Args: []any{}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}},
+									{Cmd: opcode.Break, Args: []any{}},
 								},
 							},
 							map[string]any{
 								"value": int64(2),
-								"body": []OpCode{
-									{Cmd: OpAssign, Args: []any{Variable("y"), int64(20)}},
+								"body": []opcode.OpCode{
+									{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(20)}},
 								},
 							},
 						},
-						[]OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 			},
@@ -1159,20 +1160,20 @@ func TestCompileBreakContinue(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "break statement",
 			input: `break;`,
-			expected: []OpCode{
-				{Cmd: OpBreak, Args: []any{}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.Break, Args: []any{}},
 			},
 		},
 		{
 			name:  "continue statement",
 			input: `continue;`,
-			expected: []OpCode{
-				{Cmd: OpContinue, Args: []any{}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.Continue, Args: []any{}},
 			},
 		},
 	}
@@ -1204,18 +1205,18 @@ func TestCompileMesStatement(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "simple mes statement with MIDI_TIME",
 			input: `mes(MIDI_TIME) { x = 1; }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"MIDI_TIME",
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("x"), int64(1)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
 						},
 					},
 				},
@@ -1224,13 +1225,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with TIME event",
 			input: `mes(TIME) { process(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"TIME",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"process"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"process"}},
 						},
 					},
 				},
@@ -1239,13 +1240,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with KEY event",
 			input: `mes(KEY) { handleKey(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"KEY",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"handleKey"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"handleKey"}},
 						},
 					},
 				},
@@ -1254,13 +1255,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with CLICK event",
 			input: `mes(CLICK) { onClick(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"CLICK",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"onClick"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"onClick"}},
 						},
 					},
 				},
@@ -1269,13 +1270,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with MIDI_END event",
 			input: `mes(MIDI_END) { cleanup(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"MIDI_END",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"cleanup"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"cleanup"}},
 						},
 					},
 				},
@@ -1284,13 +1285,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with USER event",
 			input: `mes(USER) { userHandler(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"USER",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"userHandler"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"userHandler"}},
 						},
 					},
 				},
@@ -1299,12 +1300,12 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with empty body",
 			input: `mes(MIDI_TIME) { }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"MIDI_TIME",
-						[]OpCode(nil),
+						[]opcode.OpCode(nil),
 					},
 				},
 			},
@@ -1312,15 +1313,15 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with multiple statements in body",
 			input: `mes(MIDI_TIME) { x = 1; y = 2; process(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"MIDI_TIME",
-						[]OpCode{
-							{Cmd: OpAssign, Args: []any{Variable("x"), int64(1)}},
-							{Cmd: OpAssign, Args: []any{Variable("y"), int64(2)}},
-							{Cmd: OpCall, Args: []any{"process"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
+							{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(2)}},
+							{Cmd: opcode.Call, Args: []any{"process"}},
 						},
 					},
 				},
@@ -1329,20 +1330,20 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with if statement in body",
 			input: `mes(KEY) { if (key == 27) { exit(); } }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"KEY",
-						[]OpCode{
+						[]opcode.OpCode{
 							{
-								Cmd: OpIf,
+								Cmd: opcode.If,
 								Args: []any{
-									OpCode{Cmd: OpBinaryOp, Args: []any{"==", Variable("key"), int64(27)}},
-									[]OpCode{
-										{Cmd: OpCall, Args: []any{"exit"}},
+									opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("key"), int64(27)}},
+									[]opcode.OpCode{
+										{Cmd: opcode.Call, Args: []any{"exit"}},
 									},
-									[]OpCode{},
+									[]opcode.OpCode{},
 								},
 							},
 						},
@@ -1353,13 +1354,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with RBDOWN event",
 			input: `mes(RBDOWN) { rightClick(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"RBDOWN",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"rightClick"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"rightClick"}},
 						},
 					},
 				},
@@ -1368,13 +1369,13 @@ func TestCompileMesStatement(t *testing.T) {
 		{
 			name:  "mes statement with RBDBLCLK event",
 			input: `mes(RBDBLCLK) { rightDoubleClick(); }`,
-			expected: []OpCode{
+			expected: []opcode.OpCode{
 				{
-					Cmd: OpRegisterEventHandler,
+					Cmd: opcode.RegisterEventHandler,
 					Args: []any{
 						"RBDBLCLK",
-						[]OpCode{
-							{Cmd: OpCall, Args: []any{"rightDoubleClick"}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"rightDoubleClick"}},
 						},
 					},
 				},
@@ -1409,34 +1410,34 @@ func TestCompileStepStatement(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []OpCode
+		expected []opcode.OpCode
 	}{
 		{
 			name:  "step with count and single function call",
 			input: `step(10) { func1(); }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(10)}},
-				{Cmd: OpCall, Args: []any{"func1"}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(10)}},
+				{Cmd: opcode.Call, Args: []any{"func1"}},
 			},
 		},
 		{
 			name:  "step with count and function call followed by wait",
 			input: `step(10) { func1();, }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(10)}},
-				{Cmd: OpCall, Args: []any{"func1"}},
-				{Cmd: OpWait, Args: []any{1}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(10)}},
+				{Cmd: opcode.Call, Args: []any{"func1"}},
+				{Cmd: opcode.Wait, Args: []any{1}},
 			},
 		},
 		{
 			name:  "step with multiple function calls and waits",
 			input: `step(10) { func1();, func2();,, }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(10)}},
-				{Cmd: OpCall, Args: []any{"func1"}},
-				{Cmd: OpWait, Args: []any{1}},
-				{Cmd: OpCall, Args: []any{"func2"}},
-				{Cmd: OpWait, Args: []any{2}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(10)}},
+				{Cmd: opcode.Call, Args: []any{"func1"}},
+				{Cmd: opcode.Wait, Args: []any{1}},
+				{Cmd: opcode.Call, Args: []any{"func2"}},
+				{Cmd: opcode.Wait, Args: []any{2}},
 			},
 		},
 		{
@@ -1444,73 +1445,73 @@ func TestCompileStepStatement(t *testing.T) {
 			// The parser skips end_step and continues parsing remaining statements
 			name:  "step with end_step and del_me",
 			input: `step(10) { func1();, func2();,, end_step; del_me; }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(10)}},
-				{Cmd: OpCall, Args: []any{"func1"}},
-				{Cmd: OpWait, Args: []any{1}},
-				{Cmd: OpCall, Args: []any{"func2"}},
-				{Cmd: OpWait, Args: []any{2}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(10)}},
+				{Cmd: opcode.Call, Args: []any{"func1"}},
+				{Cmd: opcode.Wait, Args: []any{1}},
+				{Cmd: opcode.Call, Args: []any{"func2"}},
+				{Cmd: opcode.Wait, Args: []any{2}},
 				// end_step is skipped by parser (it's a marker, not a command)
-				{Cmd: OpCall, Args: []any{"del_me"}},
+				{Cmd: opcode.Call, Args: []any{"del_me"}},
 			},
 		},
 		{
 			name:  "step without count",
 			input: `step { func1();, }`,
-			expected: []OpCode{
-				{Cmd: OpCall, Args: []any{"func1"}},
-				{Cmd: OpWait, Args: []any{1}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.Call, Args: []any{"func1"}},
+				{Cmd: opcode.Wait, Args: []any{1}},
 			},
 		},
 		{
 			name:  "step with variable count",
 			input: `step(n) { process(); }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{Variable("n")}},
-				{Cmd: OpCall, Args: []any{"process"}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{opcode.Variable("n")}},
+				{Cmd: opcode.Call, Args: []any{"process"}},
 			},
 		},
 		{
 			name:  "step with expression count",
 			input: `step(x + 1) { doWork(); }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{OpCode{Cmd: OpBinaryOp, Args: []any{"+", Variable("x"), int64(1)}}}},
-				{Cmd: OpCall, Args: []any{"doWork"}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("x"), int64(1)}}}},
+				{Cmd: opcode.Call, Args: []any{"doWork"}},
 			},
 		},
 		{
 			name:  "step with assignment in body",
 			input: `step(5) { x = 10;, }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(5)}},
-				{Cmd: OpAssign, Args: []any{Variable("x"), int64(10)}},
-				{Cmd: OpWait, Args: []any{1}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(5)}},
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(10)}},
+				{Cmd: opcode.Wait, Args: []any{1}},
 			},
 		},
 		{
 			name:  "step with multiple consecutive waits",
 			input: `step(8) { func1();,,, func2(); }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(8)}},
-				{Cmd: OpCall, Args: []any{"func1"}},
-				{Cmd: OpWait, Args: []any{3}},
-				{Cmd: OpCall, Args: []any{"func2"}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(8)}},
+				{Cmd: opcode.Call, Args: []any{"func1"}},
+				{Cmd: opcode.Wait, Args: []any{3}},
+				{Cmd: opcode.Call, Args: []any{"func2"}},
 			},
 		},
 		{
 			name:  "step with function call with arguments",
 			input: `step(16) { MovePic(src, 0, 0);, }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(16)}},
-				{Cmd: OpCall, Args: []any{"MovePic", Variable("src"), int64(0), int64(0)}},
-				{Cmd: OpWait, Args: []any{1}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(16)}},
+				{Cmd: opcode.Call, Args: []any{"MovePic", opcode.Variable("src"), int64(0), int64(0)}},
+				{Cmd: opcode.Wait, Args: []any{1}},
 			},
 		},
 		{
 			name:  "step with empty body",
 			input: `step(10) { }`,
-			expected: []OpCode{
-				{Cmd: OpSetStep, Args: []any{int64(10)}},
+			expected: []opcode.OpCode{
+				{Cmd: opcode.SetStep, Args: []any{int64(10)}},
 			},
 		},
 	}
@@ -1541,18 +1542,18 @@ func TestCompileStepStatement(t *testing.T) {
 func TestCompileStepStatementInMes(t *testing.T) {
 	input := `mes(MIDI_TIME) { step(10) { func1();, func2();,, del_me; } }`
 
-	expected := []OpCode{
+	expected := []opcode.OpCode{
 		{
-			Cmd: OpRegisterEventHandler,
+			Cmd: opcode.RegisterEventHandler,
 			Args: []any{
 				"MIDI_TIME",
-				[]OpCode{
-					{Cmd: OpSetStep, Args: []any{int64(10)}},
-					{Cmd: OpCall, Args: []any{"func1"}},
-					{Cmd: OpWait, Args: []any{1}},
-					{Cmd: OpCall, Args: []any{"func2"}},
-					{Cmd: OpWait, Args: []any{2}},
-					{Cmd: OpCall, Args: []any{"del_me"}},
+				[]opcode.OpCode{
+					{Cmd: opcode.SetStep, Args: []any{int64(10)}},
+					{Cmd: opcode.Call, Args: []any{"func1"}},
+					{Cmd: opcode.Wait, Args: []any{1}},
+					{Cmd: opcode.Call, Args: []any{"func2"}},
+					{Cmd: opcode.Wait, Args: []any{2}},
+					{Cmd: opcode.Call, Args: []any{"del_me"}},
 				},
 			},
 		},

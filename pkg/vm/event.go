@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // EventType represents the type of an event.
@@ -232,7 +232,7 @@ type EventHandler struct {
 	EventType EventType
 
 	// OpCodes is the compiled code to execute when the event occurs.
-	OpCodes []compiler.OpCode
+	OpCodes []opcode.OpCode
 
 	// Active indicates whether this handler is currently active.
 	// Handlers can be deactivated by del_me or del_us.
@@ -269,7 +269,7 @@ type EventHandler struct {
 
 // NewEventHandler creates a new event handler.
 // parentScope is the scope in which the handler was registered, allowing access to enclosing variables.
-func NewEventHandler(id string, eventType EventType, opcodes []compiler.OpCode, vm *VM, parentScope *Scope) *EventHandler {
+func NewEventHandler(id string, eventType EventType, opcodes []opcode.OpCode, vm *VM, parentScope *Scope) *EventHandler {
 	return &EventHandler{
 		ID:          id,
 		EventType:   eventType,

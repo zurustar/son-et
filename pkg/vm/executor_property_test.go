@@ -6,7 +6,7 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // Property-based tests for basic OpCode execution.
@@ -33,11 +33,11 @@ func TestProperty13_OpCodeSequentialExecution(t *testing.T) {
 
 			// Create a sequence of OpAssign operations that set variables x0, x1, x2, ...
 			// Each assignment sets xi = i (the index)
-			opcodes := make([]compiler.OpCode, len(values))
+			opcodes := make([]opcode.OpCode, len(values))
 			for i := range values {
-				varName := compiler.Variable("x" + string(rune('0'+i%10)) + string(rune('0'+i/10)))
-				opcodes[i] = compiler.OpCode{
-					Cmd:  compiler.OpAssign,
+				varName := opcode.Variable("x" + string(rune('0'+i%10)) + string(rune('0'+i/10)))
+				opcodes[i] = opcode.OpCode{
+					Cmd:  opcode.Assign,
 					Args: []any{varName, int64(i)},
 				}
 			}
@@ -72,28 +72,28 @@ func TestProperty13_OpCodeSequentialExecution(t *testing.T) {
 			// x = initialValue
 			// y = x + 1
 			// z = y + 1
-			opcodes := []compiler.OpCode{
+			opcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("x"), initialValue},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("x"), initialValue},
 				},
 				{
-					Cmd: compiler.OpAssign,
+					Cmd: opcode.Assign,
 					Args: []any{
-						compiler.Variable("y"),
-						compiler.OpCode{
-							Cmd:  compiler.OpBinaryOp,
-							Args: []any{"+", compiler.Variable("x"), int64(1)},
+						opcode.Variable("y"),
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"+", opcode.Variable("x"), int64(1)},
 						},
 					},
 				},
 				{
-					Cmd: compiler.OpAssign,
+					Cmd: opcode.Assign,
 					Args: []any{
-						compiler.Variable("z"),
-						compiler.OpCode{
-							Cmd:  compiler.OpBinaryOp,
-							Args: []any{"+", compiler.Variable("y"), int64(1)},
+						opcode.Variable("z"),
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"+", opcode.Variable("y"), int64(1)},
 						},
 					},
 				},
@@ -131,10 +131,10 @@ func TestProperty14_VariableAssignmentAccuracy(t *testing.T) {
 
 	properties.Property("integer assignment is accurate", prop.ForAll(
 		func(varName string, value int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpAssign,
-				Args: []any{compiler.Variable(varName), value},
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable(varName), value},
 			}
 
 			result, err := vm.executeAssign(opcode)
@@ -161,10 +161,10 @@ func TestProperty14_VariableAssignmentAccuracy(t *testing.T) {
 
 	properties.Property("string assignment is accurate", prop.ForAll(
 		func(varName string, value string) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpAssign,
-				Args: []any{compiler.Variable(varName), value},
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable(varName), value},
 			}
 
 			result, err := vm.executeAssign(opcode)
@@ -189,10 +189,10 @@ func TestProperty14_VariableAssignmentAccuracy(t *testing.T) {
 
 	properties.Property("float assignment is accurate", prop.ForAll(
 		func(varName string, value float64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpAssign,
-				Args: []any{compiler.Variable(varName), value},
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable(varName), value},
 			}
 
 			result, err := vm.executeAssign(opcode)
@@ -222,14 +222,14 @@ func TestProperty14_VariableAssignmentAccuracy(t *testing.T) {
 				dstVar = dstVar + "_dst"
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			// Set source variable
 			vm.GetCurrentScope().Set(srcVar, value)
 
 			// Assign dst = src
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpAssign,
-				Args: []any{compiler.Variable(dstVar), compiler.Variable(srcVar)},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable(dstVar), opcode.Variable(srcVar)},
 			}
 
 			_, err := vm.executeAssign(opcode)
@@ -251,15 +251,15 @@ func TestProperty14_VariableAssignmentAccuracy(t *testing.T) {
 
 	properties.Property("assignment from expression is accurate", prop.ForAll(
 		func(varName string, a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Assign var = a + b
-			opcode := compiler.OpCode{
-				Cmd: compiler.OpAssign,
+			opcode := opcode.OpCode{
+				Cmd: opcode.Assign,
 				Args: []any{
-					compiler.Variable(varName),
-					compiler.OpCode{
-						Cmd:  compiler.OpBinaryOp,
+					opcode.Variable(varName),
+					opcode.OpCode{
+						Cmd:  opcode.BinaryOp,
 						Args: []any{"+", a, b},
 					},
 				},
@@ -297,9 +297,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 	// Arithmetic operations
 	properties.Property("addition is mathematically correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"+", a, b},
 			}
 
@@ -316,9 +316,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("subtraction is mathematically correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"-", a, b},
 			}
 
@@ -335,9 +335,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("multiplication is mathematically correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"*", a, b},
 			}
 
@@ -359,9 +359,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 				return true
 			}
 
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"/", a, b},
 			}
 
@@ -378,9 +378,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("division by zero returns zero", prop.ForAll(
 		func(a int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"/", a, int64(0)},
 			}
 
@@ -401,9 +401,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 				return true
 			}
 
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"%", a, b},
 			}
 
@@ -421,9 +421,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 	// Comparison operations
 	properties.Property("equality comparison is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"==", a, b},
 			}
 
@@ -445,9 +445,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("inequality comparison is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"!=", a, b},
 			}
 
@@ -469,9 +469,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("less than comparison is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"<", a, b},
 			}
 
@@ -493,9 +493,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("less than or equal comparison is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"<=", a, b},
 			}
 
@@ -517,9 +517,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("greater than comparison is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{">", a, b},
 			}
 
@@ -541,9 +541,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("greater than or equal comparison is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{">=", a, b},
 			}
 
@@ -566,9 +566,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 	// Logical operations
 	properties.Property("logical AND is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"&&", a, b},
 			}
 
@@ -593,9 +593,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 
 	properties.Property("logical OR is correct", prop.ForAll(
 		func(a int64, b int64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"||", a, b},
 			}
 
@@ -621,9 +621,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 	// Float operations
 	properties.Property("float addition is mathematically correct", prop.ForAll(
 		func(a float64, b float64) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"+", a, b},
 			}
 
@@ -641,9 +641,9 @@ func TestProperty15_BinaryOperationAccuracy(t *testing.T) {
 	// String concatenation
 	properties.Property("string concatenation is correct", prop.ForAll(
 		func(a string, b string) bool {
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"+", a, b},
 			}
 
@@ -679,9 +679,9 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{stepCount},
 			}
 
@@ -702,9 +702,9 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{stepCount},
 			}
 
@@ -725,9 +725,9 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{stepCount},
 			}
 
@@ -749,14 +749,14 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create and set a current handler
-			handler := NewEventHandler("test_handler", EventTIME, []compiler.OpCode{}, vm, nil)
+			handler := NewEventHandler("test_handler", EventTIME, []opcode.OpCode{}, vm, nil)
 			vm.SetCurrentHandler(handler)
 
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{stepCount},
 			}
 
@@ -786,13 +786,13 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			// Set variable with the step count value
 			vm.GetCurrentScope().Set(varName, stepCount)
 
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
-				Args: []any{compiler.Variable(varName)},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
+				Args: []any{opcode.Variable(varName)},
 			}
 
 			_, err := vm.executeSetStep(opcode)
@@ -822,13 +822,13 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				b = 5000
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// step(a + b) should result in step counter = a + b
-			opcode := compiler.OpCode{
-				Cmd: compiler.OpSetStep,
-				Args: []any{compiler.OpCode{
-					Cmd:  compiler.OpBinaryOp,
+			opcode := opcode.OpCode{
+				Cmd: opcode.SetStep,
+				Args: []any{opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
 					Args: []any{"+", a, b},
 				}},
 			}
@@ -847,14 +847,14 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 
 	properties.Property("zero step count is correctly set", prop.ForAll(
 		func(_ bool) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// First set a non-zero value
 			vm.SetStepCounter(100)
 
 			// Then set to zero
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{int64(0)},
 			}
 
@@ -874,9 +874,9 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			vm := New([]opcode.OpCode{})
+			opcode := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{stepCount},
 			}
 
@@ -902,11 +902,11 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 				second = -second
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Set first value
-			opcode1 := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			opcode1 := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{first},
 			}
 			_, err := vm.executeSetStep(opcode1)
@@ -918,8 +918,8 @@ func TestProperty9_StepCounterInitialization(t *testing.T) {
 			}
 
 			// Set second value
-			opcode2 := compiler.OpCode{
-				Cmd:  compiler.OpSetStep,
+			opcode2 := opcode.OpCode{
+				Cmd:  opcode.SetStep,
 				Args: []any{second},
 			}
 			_, err = vm.executeSetStep(opcode2)
@@ -959,19 +959,19 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				waitCount = 100
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler with OpWait
 			// The handler will wait for waitCount events before continuing
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(waitCount)},
 				},
 				// After wait, assign a variable to indicate completion
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -1022,12 +1022,12 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				waitCount = 100
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler with OpWait
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(waitCount)},
 				},
 			}
@@ -1080,17 +1080,17 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 	// Property: Handler with wait count 0 executes immediately without waiting
 	properties.Property("wait count 0 executes immediately", prop.ForAll(
 		func(_ bool) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler with OpWait(0)
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(0)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -1123,17 +1123,17 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				negativeCount = -1 - negativeCount
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler with negative OpWait
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(negativeCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -1175,31 +1175,31 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				waitCount2 = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create first handler
-			handler1Opcodes := []compiler.OpCode{
+			handler1Opcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(waitCount1)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("handler1_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("handler1_completed"), int64(1)},
 				},
 			}
 			handler1 := NewEventHandler("handler1", EventTIME, handler1Opcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler1)
 
 			// Create second handler
-			handler2Opcodes := []compiler.OpCode{
+			handler2Opcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(waitCount2)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("handler2_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("handler2_completed"), int64(1)},
 				},
 			}
 			handler2 := NewEventHandler("handler2", EventTIME, handler2Opcodes, vm, nil)
@@ -1250,12 +1250,12 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				stepCount = -stepCount
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler with OpSetStep
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpSetStep,
+					Cmd:  opcode.SetStep,
 					Args: []any{stepCount},
 				},
 			}
@@ -1293,25 +1293,25 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				wait2 = 10
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler with two OpWait instructions
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(wait1)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("step1_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("step1_completed"), int64(1)},
 				},
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(wait2)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("step2_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("step2_completed"), int64(1)},
 				},
 			}
 
@@ -1372,31 +1372,31 @@ func TestProperty10_EventStepProgression(t *testing.T) {
 				waitCount = 10
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create TIME handler
-			timeHandlerOpcodes := []compiler.OpCode{
+			timeHandlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(waitCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("time_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("time_completed"), int64(1)},
 				},
 			}
 			timeHandler := NewEventHandler("time_handler", EventTIME, timeHandlerOpcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(timeHandler)
 
 			// Create MIDI_TIME handler
-			midiHandlerOpcodes := []compiler.OpCode{
+			midiHandlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(waitCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("midi_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("midi_completed"), int64(1)},
 				},
 			}
 			midiHandler := NewEventHandler("midi_handler", EventMIDI_TIME, midiHandlerOpcodes, vm, nil)
@@ -1453,18 +1453,18 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				commaCount = 50
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler that simulates consecutive commas
 			// In the compiler, n consecutive commas generate OpWait with Args[0] = n
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(commaCount)}, // n consecutive commas = wait for n events
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_commas"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_commas"), int64(1)},
 				},
 			}
 
@@ -1506,16 +1506,16 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 	// Property: Single comma (n=1) waits for exactly 1 event
 	properties.Property("single comma waits for 1 event", prop.ForAll(
 		func(_ bool) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(1)}, // Single comma
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -1570,25 +1570,25 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				commas2 = 10
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Handler with two consecutive comma sequences
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(commas1)}, // First sequence of commas
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_first_commas"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_first_commas"), int64(1)},
 				},
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(commas2)}, // Second sequence of commas
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_second_commas"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_second_commas"), int64(1)},
 				},
 			}
 
@@ -1647,16 +1647,16 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				commaCount = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
+					Cmd:  opcode.Wait,
 					Args: []any{int64(commaCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("midi_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("midi_completed"), int64(1)},
 				},
 			}
 
@@ -1694,19 +1694,19 @@ func TestProperty11_ConsecutiveCommaWait(t *testing.T) {
 				commaCount = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Set the comma count in a variable
 			vm.GetGlobalScope().Set("comma_count", commaCount)
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpWait,
-					Args: []any{compiler.Variable("comma_count")}, // Wait count from variable
+					Cmd:  opcode.Wait,
+					Args: []any{opcode.Variable("comma_count")}, // Wait count from variable
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -1758,21 +1758,21 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				waitCount = 50
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create a handler that uses Wait(n)
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("before_wait"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("before_wait"), int64(1)},
 				},
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(waitCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_wait"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_wait"), int64(1)},
 				},
 			}
 
@@ -1814,20 +1814,20 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 	// Property: Wait(0) executes immediately without waiting
 	properties.Property("Wait(0) executes immediately", prop.ForAll(
 		func(_ bool) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("before_wait"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("before_wait"), int64(1)},
 				},
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(0)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_wait"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_wait"), int64(1)},
 				},
 			}
 
@@ -1858,16 +1858,16 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				negativeCount = -1 - negativeCount
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(negativeCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -1908,24 +1908,24 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				wait2 = 10
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(wait1)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_first_wait"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_first_wait"), int64(1)},
 				},
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(wait2)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("after_second_wait"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("after_second_wait"), int64(1)},
 				},
 			}
 
@@ -1984,19 +1984,19 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				waitCount = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Set the wait count in a variable
 			vm.GetGlobalScope().Set("wait_count", waitCount)
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpCall,
-					Args: []any{"Wait", compiler.Variable("wait_count")},
+					Cmd:  opcode.Call,
+					Args: []any{"Wait", opcode.Variable("wait_count")},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("completed"), int64(1)},
 				},
 			}
 
@@ -2034,16 +2034,16 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				waitCount = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
-			handlerOpcodes := []compiler.OpCode{
+			handlerOpcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(waitCount)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("midi_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("midi_completed"), int64(1)},
 				},
 			}
 
@@ -2088,31 +2088,31 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 				wait2 = 10
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create first handler
-			handler1Opcodes := []compiler.OpCode{
+			handler1Opcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(wait1)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("handler1_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("handler1_completed"), int64(1)},
 				},
 			}
 			handler1 := NewEventHandler("handler1", EventTIME, handler1Opcodes, vm, nil)
 			vm.GetHandlerRegistry().Register(handler1)
 
 			// Create second handler
-			handler2Opcodes := []compiler.OpCode{
+			handler2Opcodes := []opcode.OpCode{
 				{
-					Cmd:  compiler.OpCall,
+					Cmd:  opcode.Call,
 					Args: []any{"Wait", int64(wait2)},
 				},
 				{
-					Cmd:  compiler.OpAssign,
-					Args: []any{compiler.Variable("handler2_completed"), int64(1)},
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("handler2_completed"), int64(1)},
 				},
 			}
 			handler2 := NewEventHandler("handler2", EventTIME, handler2Opcodes, vm, nil)

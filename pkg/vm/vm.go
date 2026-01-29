@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zurustar/son-et/pkg/compiler"
 	"github.com/zurustar/son-et/pkg/graphics"
 	"github.com/zurustar/son-et/pkg/logger"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // MaxStackDepth is the maximum call stack depth before stack overflow.
@@ -36,7 +36,7 @@ const MaxStackDepth = 1000
 // Requirement 14.1: System runs main event loop that processes events and executes OpCode.
 type VM struct {
 	// OpCode execution
-	opcodes []compiler.OpCode
+	opcodes []opcode.OpCode
 	pc      int // Program counter
 
 	// Scope management
@@ -159,7 +159,7 @@ type GraphicsSystemInterface interface {
 type FunctionDef struct {
 	Name       string
 	Parameters []FunctionParam
-	Body       []compiler.OpCode
+	Body       []opcode.OpCode
 }
 
 // FunctionParam represents a function parameter.
@@ -237,7 +237,7 @@ func WithTitlePath(path string) Option {
 //
 // Returns:
 //   - *VM: The initialized VM instance
-func New(opcodes []compiler.OpCode, opts ...Option) *VM {
+func New(opcodes []opcode.OpCode, opts ...Option) *VM {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	vm := &VM{
@@ -1718,9 +1718,9 @@ func (vm *VM) runEventLoop() error {
 
 // collectFunctionDefinitions scans OpCodes for function definitions and registers them.
 func (vm *VM) collectFunctionDefinitions() error {
-	for _, opcode := range vm.opcodes {
-		if opcode.Cmd == compiler.OpDefineFunction {
-			if err := vm.registerFunction(opcode); err != nil {
+	for _, op := range vm.opcodes {
+		if op.Cmd == opcode.DefineFunction {
+			if err := vm.registerFunction(op); err != nil {
 				return err
 			}
 		}
@@ -1729,19 +1729,19 @@ func (vm *VM) collectFunctionDefinitions() error {
 }
 
 // registerFunction registers a function definition from an OpDefineFunction OpCode.
-func (vm *VM) registerFunction(opcode compiler.OpCode) error {
-	if len(opcode.Args) < 3 {
-		return fmt.Errorf("OpDefineFunction requires 3 arguments, got %d", len(opcode.Args))
+func (vm *VM) registerFunction(op opcode.OpCode) error {
+	if len(op.Args) < 3 {
+		return fmt.Errorf("OpDefineFunction requires 3 arguments, got %d", len(op.Args))
 	}
 
-	name, ok := opcode.Args[0].(string)
+	name, ok := op.Args[0].(string)
 	if !ok {
-		return fmt.Errorf("function name must be string, got %T", opcode.Args[0])
+		return fmt.Errorf("function name must be string, got %T", op.Args[0])
 	}
 
 	// Parse parameters
 	var params []FunctionParam
-	if paramsRaw, ok := opcode.Args[1].([]any); ok {
+	if paramsRaw, ok := op.Args[1].([]any); ok {
 		for _, p := range paramsRaw {
 			if paramMap, ok := p.(map[string]any); ok {
 				param := FunctionParam{
@@ -1759,9 +1759,9 @@ func (vm *VM) registerFunction(opcode compiler.OpCode) error {
 	}
 
 	// Get body OpCodes
-	body, ok := opcode.Args[2].([]compiler.OpCode)
+	body, ok := op.Args[2].([]opcode.OpCode)
 	if !ok {
-		return fmt.Errorf("function body must be []OpCode, got %T", opcode.Args[2])
+		return fmt.Errorf("function body must be []OpCode, got %T", op.Args[2])
 	}
 
 	vm.functions[name] = &FunctionDef{
@@ -1797,45 +1797,45 @@ func (vm *VM) Stop() {
 // Returns:
 //   - any: The result of the OpCode execution (may be nil)
 //   - error: Any error that occurred during execution
-func (vm *VM) Execute(opcode compiler.OpCode) (any, error) {
-	vm.log.Debug("Executing OpCode", "cmd", opcode.Cmd, "pc", vm.pc)
+func (vm *VM) Execute(op opcode.OpCode) (any, error) {
+	vm.log.Debug("Executing OpCode", "cmd", op.Cmd, "pc", vm.pc)
 
-	switch opcode.Cmd {
-	case compiler.OpAssign:
-		return vm.executeAssign(opcode)
-	case compiler.OpArrayAssign:
-		return vm.executeArrayAssign(opcode)
-	case compiler.OpCall:
-		return vm.executeCall(opcode)
-	case compiler.OpBinaryOp:
-		return vm.executeBinaryOp(opcode)
-	case compiler.OpUnaryOp:
-		return vm.executeUnaryOp(opcode)
-	case compiler.OpArrayAccess:
-		return vm.executeArrayAccess(opcode)
-	case compiler.OpIf:
-		return vm.executeIf(opcode)
-	case compiler.OpFor:
-		return vm.executeFor(opcode)
-	case compiler.OpWhile:
-		return vm.executeWhile(opcode)
-	case compiler.OpSwitch:
-		return vm.executeSwitch(opcode)
-	case compiler.OpBreak:
-		return vm.executeBreak(opcode)
-	case compiler.OpContinue:
-		return vm.executeContinue(opcode)
-	case compiler.OpRegisterEventHandler:
-		return vm.executeRegisterEventHandler(opcode)
-	case compiler.OpWait:
-		return vm.executeWait(opcode)
-	case compiler.OpSetStep:
-		return vm.executeSetStep(opcode)
-	case compiler.OpDefineFunction:
+	switch op.Cmd {
+	case opcode.Assign:
+		return vm.executeAssign(op)
+	case opcode.ArrayAssign:
+		return vm.executeArrayAssign(op)
+	case opcode.Call:
+		return vm.executeCall(op)
+	case opcode.BinaryOp:
+		return vm.executeBinaryOp(op)
+	case opcode.UnaryOp:
+		return vm.executeUnaryOp(op)
+	case opcode.ArrayAccess:
+		return vm.executeArrayAccess(op)
+	case opcode.If:
+		return vm.executeIf(op)
+	case opcode.For:
+		return vm.executeFor(op)
+	case opcode.While:
+		return vm.executeWhile(op)
+	case opcode.Switch:
+		return vm.executeSwitch(op)
+	case opcode.Break:
+		return vm.executeBreak(op)
+	case opcode.Continue:
+		return vm.executeContinue(op)
+	case opcode.RegisterEventHandler:
+		return vm.executeRegisterEventHandler(op)
+	case opcode.Wait:
+		return vm.executeWait(op)
+	case opcode.SetStep:
+		return vm.executeSetStep(op)
+	case opcode.DefineFunction:
 		// Function definitions are processed in collectFunctionDefinitions
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("unknown OpCode command: %s", opcode.Cmd)
+		return nil, fmt.Errorf("unknown OpCode command: %s", op.Cmd)
 	}
 }
 
@@ -1924,13 +1924,13 @@ type waitMarker struct {
 // Args: [condition, thenBlock []OpCode, elseBlock []OpCode]
 //
 // Requirement 8.5: When OpIf is executed, system evaluates condition and executes appropriate branch.
-func (vm *VM) executeIf(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpIf requires at least 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeIf(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpIf requires at least 2 arguments, got %d", len(op.Args))
 	}
 
 	// Evaluate the condition
-	conditionVal, err := vm.evaluateValue(opcode.Args[0])
+	conditionVal, err := vm.evaluateValue(op.Args[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate condition: %w", err)
 	}
@@ -1940,16 +1940,16 @@ func (vm *VM) executeIf(opcode compiler.OpCode) (any, error) {
 
 	if condition {
 		// Execute then block
-		thenBlock, ok := opcode.Args[1].([]compiler.OpCode)
+		thenBlock, ok := op.Args[1].([]opcode.OpCode)
 		if !ok {
-			return nil, fmt.Errorf("OpIf then block must be []OpCode, got %T", opcode.Args[1])
+			return nil, fmt.Errorf("OpIf then block must be []OpCode, got %T", op.Args[1])
 		}
 		return vm.executeBlock(thenBlock)
-	} else if len(opcode.Args) >= 3 {
+	} else if len(op.Args) >= 3 {
 		// Execute else block if present
-		elseBlock, ok := opcode.Args[2].([]compiler.OpCode)
+		elseBlock, ok := op.Args[2].([]opcode.OpCode)
 		if !ok {
-			return nil, fmt.Errorf("OpIf else block must be []OpCode, got %T", opcode.Args[2])
+			return nil, fmt.Errorf("OpIf else block must be []OpCode, got %T", op.Args[2])
 		}
 		return vm.executeBlock(elseBlock)
 	}
@@ -1962,32 +1962,32 @@ func (vm *VM) executeIf(opcode compiler.OpCode) (any, error) {
 // Args: [initBlock []OpCode, condition, postBlock []OpCode, bodyBlock []OpCode]
 //
 // Requirement 8.6: When OpFor is executed, system executes loop with init, condition, increment.
-func (vm *VM) executeFor(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 4 {
-		return nil, fmt.Errorf("OpFor requires 4 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeFor(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 4 {
+		return nil, fmt.Errorf("OpFor requires 4 arguments, got %d", len(op.Args))
 	}
 
 	// Execute init block
-	if initBlock, ok := opcode.Args[0].([]compiler.OpCode); ok && len(initBlock) > 0 {
+	if initBlock, ok := op.Args[0].([]opcode.OpCode); ok && len(initBlock) > 0 {
 		if _, err := vm.executeBlock(initBlock); err != nil {
 			return nil, fmt.Errorf("failed to execute for init: %w", err)
 		}
 	}
 
 	// Get body and post blocks
-	bodyBlock, ok := opcode.Args[3].([]compiler.OpCode)
+	bodyBlock, ok := op.Args[3].([]opcode.OpCode)
 	if !ok {
-		return nil, fmt.Errorf("OpFor body must be []OpCode, got %T", opcode.Args[3])
+		return nil, fmt.Errorf("OpFor body must be []OpCode, got %T", op.Args[3])
 	}
 
-	postBlock, _ := opcode.Args[2].([]compiler.OpCode)
+	postBlock, _ := op.Args[2].([]opcode.OpCode)
 
 	// Loop
 	var lastResult any
 	for {
 		// Check condition (if present)
-		if opcode.Args[1] != nil {
-			conditionVal, err := vm.evaluateValue(opcode.Args[1])
+		if op.Args[1] != nil {
+			conditionVal, err := vm.evaluateValue(op.Args[1])
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate for condition: %w", err)
 			}
@@ -2030,21 +2030,21 @@ func (vm *VM) executeFor(opcode compiler.OpCode) (any, error) {
 // Args: [condition, bodyBlock []OpCode]
 //
 // Requirement 8.7: When OpWhile is executed, system executes loop while condition is true.
-func (vm *VM) executeWhile(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpWhile requires 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeWhile(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpWhile requires 2 arguments, got %d", len(op.Args))
 	}
 
-	bodyBlock, ok := opcode.Args[1].([]compiler.OpCode)
+	bodyBlock, ok := op.Args[1].([]opcode.OpCode)
 	if !ok {
-		return nil, fmt.Errorf("OpWhile body must be []OpCode, got %T", opcode.Args[1])
+		return nil, fmt.Errorf("OpWhile body must be []OpCode, got %T", op.Args[1])
 	}
 
 	var lastResult any
 	for {
 		// Check condition
-		if opcode.Args[0] != nil {
-			conditionVal, err := vm.evaluateValue(opcode.Args[0])
+		if op.Args[0] != nil {
+			conditionVal, err := vm.evaluateValue(op.Args[0])
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate while condition: %w", err)
 			}
@@ -2081,13 +2081,13 @@ func (vm *VM) executeWhile(opcode compiler.OpCode) (any, error) {
 // Each case is a map[string]any with "value" and "body" keys.
 //
 // Requirement 8.8: When OpSwitch is executed, system evaluates value and executes matching case.
-func (vm *VM) executeSwitch(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpSwitch requires at least 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeSwitch(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpSwitch requires at least 2 arguments, got %d", len(op.Args))
 	}
 
 	// Evaluate the switch value
-	switchVal, err := vm.evaluateValue(opcode.Args[0])
+	switchVal, err := vm.evaluateValue(op.Args[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate switch value: %w", err)
 	}
@@ -2095,9 +2095,9 @@ func (vm *VM) executeSwitch(opcode compiler.OpCode) (any, error) {
 	vm.log.Debug("Switch value evaluated", "value", switchVal)
 
 	// Get cases
-	cases, ok := opcode.Args[1].([]any)
+	cases, ok := op.Args[1].([]any)
 	if !ok {
-		return nil, fmt.Errorf("OpSwitch cases must be []any, got %T", opcode.Args[1])
+		return nil, fmt.Errorf("OpSwitch cases must be []any, got %T", op.Args[1])
 	}
 
 	// Find matching case
@@ -2116,7 +2116,7 @@ func (vm *VM) executeSwitch(opcode compiler.OpCode) (any, error) {
 		// Compare values
 		if vm.valuesEqual(switchVal, caseVal) {
 			// Execute case body
-			caseBody, ok := caseClause["body"].([]compiler.OpCode)
+			caseBody, ok := caseClause["body"].([]opcode.OpCode)
 			if !ok {
 				return nil, fmt.Errorf("case body must be []OpCode, got %T", caseClause["body"])
 			}
@@ -2125,10 +2125,10 @@ func (vm *VM) executeSwitch(opcode compiler.OpCode) (any, error) {
 	}
 
 	// No matching case, execute default if present
-	if len(opcode.Args) >= 3 && opcode.Args[2] != nil {
-		defaultBlock, ok := opcode.Args[2].([]compiler.OpCode)
+	if len(op.Args) >= 3 && op.Args[2] != nil {
+		defaultBlock, ok := op.Args[2].([]opcode.OpCode)
 		if !ok {
-			return nil, fmt.Errorf("OpSwitch default block must be []OpCode, got %T", opcode.Args[2])
+			return nil, fmt.Errorf("OpSwitch default block must be []OpCode, got %T", op.Args[2])
 		}
 		return vm.executeBlock(defaultBlock)
 	}
@@ -2141,7 +2141,7 @@ func (vm *VM) executeSwitch(opcode compiler.OpCode) (any, error) {
 // Args: []
 //
 // Requirement 8.9: When OpBreak is executed, system exits current loop.
-func (vm *VM) executeBreak(_ compiler.OpCode) (any, error) {
+func (vm *VM) executeBreak(_ opcode.OpCode) (any, error) {
 	vm.log.Debug("Break executed")
 	return &breakSignal{}, nil
 }
@@ -2151,14 +2151,14 @@ func (vm *VM) executeBreak(_ compiler.OpCode) (any, error) {
 // Args: []
 //
 // Requirement 8.10: When OpContinue is executed, system skips to next loop iteration.
-func (vm *VM) executeContinue(_ compiler.OpCode) (any, error) {
+func (vm *VM) executeContinue(_ opcode.OpCode) (any, error) {
 	vm.log.Debug("Continue executed")
 	return &continueSignal{}, nil
 }
 
 // executeBlock executes a block of OpCodes and returns the last result.
 // It handles break, continue, and wait signals by propagating them up.
-func (vm *VM) executeBlock(opcodes []compiler.OpCode) (any, error) {
+func (vm *VM) executeBlock(opcodes []opcode.OpCode) (any, error) {
 	var lastResult any
 	for _, op := range opcodes {
 		result, err := vm.Execute(op)
@@ -2240,15 +2240,15 @@ func (vm *VM) valuesEqual(a, b any) bool {
 // Requirement 2.6: When mes(RBDOWN) handler is registered, system calls it on right mouse button press.
 // Requirement 2.7: When mes(RBDBLCLK) handler is registered, system calls it on right mouse button double-click.
 // Requirement 2.8: When handler is registered inside another handler, system supports nested handler registration.
-func (vm *VM) executeRegisterEventHandler(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpRegisterEventHandler requires 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeRegisterEventHandler(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpRegisterEventHandler requires 2 arguments, got %d", len(op.Args))
 	}
 
 	// Get event type
-	eventTypeStr, ok := opcode.Args[0].(string)
+	eventTypeStr, ok := op.Args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("OpRegisterEventHandler event type must be string, got %T", opcode.Args[0])
+		return nil, fmt.Errorf("OpRegisterEventHandler event type must be string, got %T", op.Args[0])
 	}
 
 	// Convert string to EventType
@@ -2263,9 +2263,9 @@ func (vm *VM) executeRegisterEventHandler(opcode compiler.OpCode) (any, error) {
 	}
 
 	// Get body OpCodes
-	bodyOpcodes, ok := opcode.Args[1].([]compiler.OpCode)
+	bodyOpcodes, ok := op.Args[1].([]opcode.OpCode)
 	if !ok {
-		return nil, fmt.Errorf("OpRegisterEventHandler body must be []OpCode, got %T", opcode.Args[1])
+		return nil, fmt.Errorf("OpRegisterEventHandler body must be []OpCode, got %T", op.Args[1])
 	}
 
 	// Create and register the handler with the current scope
@@ -2286,14 +2286,14 @@ func (vm *VM) executeRegisterEventHandler(opcode compiler.OpCode) (any, error) {
 	return id, nil
 }
 
-func (vm *VM) executeWait(opcode compiler.OpCode) (any, error) {
+func (vm *VM) executeWait(op opcode.OpCode) (any, error) {
 	// Requirement 6.2: When OpWait OpCode is executed, system pauses execution until next event.
 	// Requirement 6.3: When event occurs during step execution, system proceeds to next step.
 
 	// Get the comma count from arguments (number of commas in the step block)
 	commaCount := 1 // Default to 1 if not specified
-	if len(opcode.Args) >= 1 {
-		waitValue, err := vm.evaluateValue(opcode.Args[0])
+	if len(op.Args) >= 1 {
+		waitValue, err := vm.evaluateValue(op.Args[0])
 		if err != nil {
 			return nil, fmt.Errorf("failed to evaluate comma count: %w", err)
 		}
@@ -2337,17 +2337,17 @@ func (vm *VM) executeWait(opcode compiler.OpCode) (any, error) {
 	return nil, nil
 }
 
-func (vm *VM) executeSetStep(opcode compiler.OpCode) (any, error) {
+func (vm *VM) executeSetStep(op opcode.OpCode) (any, error) {
 	// Requirement 6.1: When OpSetStep OpCode is executed, system initializes step counter with specified count.
 	// The step count represents the number of TIME events to wait per comma in step() blocks.
 	// Since TIME events are generated every 50ms, step(n) means each comma waits n × 50ms.
 	// For example, step(65) means each comma waits 65 × 50ms = 3250ms.
-	if len(opcode.Args) < 1 {
-		return nil, fmt.Errorf("OpSetStep requires 1 argument, got %d", len(opcode.Args))
+	if len(op.Args) < 1 {
+		return nil, fmt.Errorf("OpSetStep requires 1 argument, got %d", len(op.Args))
 	}
 
 	// Evaluate the step value (number of TIME events per comma)
-	stepValue, err := vm.evaluateValue(opcode.Args[0])
+	stepValue, err := vm.evaluateValue(op.Args[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate step value: %w", err)
 	}

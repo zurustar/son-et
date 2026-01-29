@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // evaluateValue evaluates a value that may be a Variable, OpCode, or literal.
@@ -24,7 +24,7 @@ func (vm *VM) evaluateValue(value any) (any, error) {
 	}
 
 	switch v := value.(type) {
-	case compiler.Variable:
+	case opcode.Variable:
 		// Resolve variable from scope
 		// Requirement 9.5: When variable is accessed, system searches local scope first, then global scope.
 		resolved, ok := vm.GetCurrentScope().Get(string(v))
@@ -35,7 +35,7 @@ func (vm *VM) evaluateValue(value any) (any, error) {
 		}
 		return resolved, nil
 
-	case compiler.OpCode:
+	case opcode.OpCode:
 		// Execute nested OpCode
 		return vm.Execute(v)
 
@@ -144,19 +144,19 @@ func isFloat(v any) bool {
 // Args: [Variable(name), value]
 //
 // Requirement 8.2: When OpAssign is executed, system assigns value to specified variable.
-func (vm *VM) executeAssign(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpAssign requires 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeAssign(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpAssign requires 2 arguments, got %d", len(op.Args))
 	}
 
 	// Get variable name
-	varName, ok := opcode.Args[0].(compiler.Variable)
+	varName, ok := op.Args[0].(opcode.Variable)
 	if !ok {
-		return nil, fmt.Errorf("OpAssign first argument must be Variable, got %T", opcode.Args[0])
+		return nil, fmt.Errorf("OpAssign first argument must be Variable, got %T", op.Args[0])
 	}
 
 	// Evaluate the value
-	value, err := vm.evaluateValue(opcode.Args[1])
+	value, err := vm.evaluateValue(op.Args[1])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate value: %w", err)
 	}
@@ -175,19 +175,19 @@ func (vm *VM) executeAssign(opcode compiler.OpCode) (any, error) {
 //
 // Requirement 8.3: When OpArrayAssign is executed, system assigns value to specified array element.
 // Requirement 19.5: When array index exceeds array size, system automatically expands array.
-func (vm *VM) executeArrayAssign(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 3 {
-		return nil, fmt.Errorf("OpArrayAssign requires 3 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeArrayAssign(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 3 {
+		return nil, fmt.Errorf("OpArrayAssign requires 3 arguments, got %d", len(op.Args))
 	}
 
 	// Get array name
-	arrayName, ok := opcode.Args[0].(compiler.Variable)
+	arrayName, ok := op.Args[0].(opcode.Variable)
 	if !ok {
-		return nil, fmt.Errorf("OpArrayAssign first argument must be Variable, got %T", opcode.Args[0])
+		return nil, fmt.Errorf("OpArrayAssign first argument must be Variable, got %T", op.Args[0])
 	}
 
 	// Evaluate the index
-	indexVal, err := vm.evaluateValue(opcode.Args[1])
+	indexVal, err := vm.evaluateValue(op.Args[1])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate index: %w", err)
 	}
@@ -203,7 +203,7 @@ func (vm *VM) executeArrayAssign(opcode compiler.OpCode) (any, error) {
 	}
 
 	// Evaluate the value
-	value, err := vm.evaluateValue(opcode.Args[2])
+	value, err := vm.evaluateValue(op.Args[2])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate value: %w", err)
 	}
@@ -253,22 +253,22 @@ func (vm *VM) executeArrayAssign(opcode compiler.OpCode) (any, error) {
 //
 // Requirement 8.4: When OpCall is executed, system calls specified function with arguments.
 // Requirement 10.8: When unknown function is called, system logs error and continues execution.
-func (vm *VM) executeCall(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 1 {
+func (vm *VM) executeCall(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 1 {
 		return nil, fmt.Errorf("OpCall requires at least 1 argument (function name)")
 	}
 
 	// Get function name
-	funcName, ok := opcode.Args[0].(string)
+	funcName, ok := op.Args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("OpCall first argument must be string, got %T", opcode.Args[0])
+		return nil, fmt.Errorf("OpCall first argument must be string, got %T", op.Args[0])
 	}
 
 	// Handle special "return" call
 	if funcName == "return" {
 		var returnValue any = int64(0)
-		if len(opcode.Args) > 1 {
-			val, err := vm.evaluateValue(opcode.Args[1])
+		if len(op.Args) > 1 {
+			val, err := vm.evaluateValue(op.Args[1])
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate return value: %w", err)
 			}
@@ -283,9 +283,9 @@ func (vm *VM) executeCall(opcode compiler.OpCode) (any, error) {
 	}
 
 	// Evaluate arguments
-	args := make([]any, 0, len(opcode.Args)-1)
-	for i := 1; i < len(opcode.Args); i++ {
-		val, err := vm.evaluateValue(opcode.Args[i])
+	args := make([]any, 0, len(op.Args)-1)
+	for i := 1; i < len(op.Args); i++ {
+		val, err := vm.evaluateValue(op.Args[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to evaluate argument %d: %w", i, err)
 		}
@@ -427,23 +427,23 @@ func (vm *VM) callUserFunction(fn *FunctionDef, args []any) (any, error) {
 // Args: [operator, leftOperand, rightOperand]
 //
 // Requirement 8.11: When OpBinaryOp is executed, system evaluates binary operation and returns result.
-func (vm *VM) executeBinaryOp(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 3 {
-		return nil, fmt.Errorf("OpBinaryOp requires 3 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeBinaryOp(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 3 {
+		return nil, fmt.Errorf("OpBinaryOp requires 3 arguments, got %d", len(op.Args))
 	}
 
-	operator, ok := opcode.Args[0].(string)
+	operator, ok := op.Args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("OpBinaryOp operator must be string, got %T", opcode.Args[0])
+		return nil, fmt.Errorf("OpBinaryOp operator must be string, got %T", op.Args[0])
 	}
 
 	// Evaluate operands
-	left, err := vm.evaluateValue(opcode.Args[1])
+	left, err := vm.evaluateValue(op.Args[1])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate left operand: %w", err)
 	}
 
-	right, err := vm.evaluateValue(opcode.Args[2])
+	right, err := vm.evaluateValue(op.Args[2])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate right operand: %w", err)
 	}
@@ -653,18 +653,18 @@ func (vm *VM) executeLogicalOp(operator string, left, right any) (any, error) {
 // Args: [operator, operand]
 //
 // Requirement 8.12: When OpUnaryOp is executed, system evaluates unary operation and returns result.
-func (vm *VM) executeUnaryOp(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpUnaryOp requires 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeUnaryOp(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpUnaryOp requires 2 arguments, got %d", len(op.Args))
 	}
 
-	operator, ok := opcode.Args[0].(string)
+	operator, ok := op.Args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("OpUnaryOp operator must be string, got %T", opcode.Args[0])
+		return nil, fmt.Errorf("OpUnaryOp operator must be string, got %T", op.Args[0])
 	}
 
 	// Evaluate operand
-	operand, err := vm.evaluateValue(opcode.Args[1])
+	operand, err := vm.evaluateValue(op.Args[1])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate operand: %w", err)
 	}
@@ -695,19 +695,19 @@ func (vm *VM) executeUnaryOp(opcode compiler.OpCode) (any, error) {
 //
 // Requirement 8.13: When OpArrayAccess is executed, system returns value at specified array index.
 // Requirement 11.4: When array index is out of range, system logs error and returns zero.
-func (vm *VM) executeArrayAccess(opcode compiler.OpCode) (any, error) {
-	if len(opcode.Args) < 2 {
-		return nil, fmt.Errorf("OpArrayAccess requires 2 arguments, got %d", len(opcode.Args))
+func (vm *VM) executeArrayAccess(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpArrayAccess requires 2 arguments, got %d", len(op.Args))
 	}
 
 	// Evaluate the array (could be a Variable or nested expression)
-	arrayVal, err := vm.evaluateValue(opcode.Args[0])
+	arrayVal, err := vm.evaluateValue(op.Args[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate array: %w", err)
 	}
 
 	// Evaluate the index
-	indexVal, err := vm.evaluateValue(opcode.Args[1])
+	indexVal, err := vm.evaluateValue(op.Args[1])
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate index: %w", err)
 	}

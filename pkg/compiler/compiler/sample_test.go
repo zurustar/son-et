@@ -12,6 +12,7 @@ import (
 
 	"github.com/zurustar/son-et/pkg/compiler/lexer"
 	"github.com/zurustar/son-et/pkg/compiler/parser"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // convertShiftJISToUTF8 converts Shift-JIS encoded data to UTF-8.
@@ -27,7 +28,7 @@ func convertShiftJISToUTF8(data []byte) (string, error) {
 
 // TestCompileSampleFile tests the Compiler with the sample file samples/robot/ROBOT.TFY.
 // This test validates that the Compiler can correctly compile a real FILLY script.
-// Validates Requirements 4.1-4.17: Complete OpCode generation from AST.
+// Validates Requirements 4.1-4.17: Complete opcode.OpCode generation from AST.
 func TestCompileSampleFile(t *testing.T) {
 	// Find the sample file relative to the workspace root
 	samplePath := filepath.Join("..", "..", "..", "samples", "robot", "ROBOT.TFY")
@@ -99,7 +100,7 @@ func TestCompileSampleFile(t *testing.T) {
 	opcodeCounts := countOpcodeTypes(opcodes)
 
 	// Log opcode statistics
-	t.Logf("OpCode type counts:")
+	t.Logf("opcode.OpCode type counts:")
 	for opType, count := range opcodeCounts {
 		t.Logf("  %s: %d", opType, count)
 	}
@@ -109,28 +110,28 @@ func TestCompileSampleFile(t *testing.T) {
 }
 
 // countOpcodeTypes counts the types of opcodes in the sequence.
-func countOpcodeTypes(opcodes []OpCode) map[OpCmd]int {
-	counts := make(map[OpCmd]int)
+func countOpcodeTypes(opcodes []opcode.OpCode) map[opcode.Cmd]int {
+	counts := make(map[opcode.Cmd]int)
 
-	var countOpcode func(op OpCode)
-	countOpcode = func(op OpCode) {
+	var countOpcode func(op opcode.OpCode)
+	countOpcode = func(op opcode.OpCode) {
 		counts[op.Cmd]++
 
 		// Count nested opcodes in Args
 		for _, arg := range op.Args {
 			switch v := arg.(type) {
-			case OpCode:
+			case opcode.OpCode:
 				countOpcode(v)
-			case []OpCode:
+			case []opcode.OpCode:
 				for _, nested := range v {
 					countOpcode(nested)
 				}
 			case []any:
 				for _, item := range v {
-					if nestedOp, ok := item.(OpCode); ok {
+					if nestedOp, ok := item.(opcode.OpCode); ok {
 						countOpcode(nestedOp)
 					}
-					if nestedSlice, ok := item.([]OpCode); ok {
+					if nestedSlice, ok := item.([]opcode.OpCode); ok {
 						for _, nested := range nestedSlice {
 							countOpcode(nested)
 						}
@@ -148,44 +149,44 @@ func countOpcodeTypes(opcodes []OpCode) map[OpCmd]int {
 }
 
 // verifyKeyOpcodesPresent checks that key opcodes from the sample file are correctly generated.
-func verifyKeyOpcodesPresent(t *testing.T, opcodes []OpCode) {
+func verifyKeyOpcodesPresent(t *testing.T, opcodes []opcode.OpCode) {
 	t.Helper()
 
 	// Track what we find
-	foundOpcodes := make(map[OpCmd]bool)
+	foundOpcodes := make(map[opcode.Cmd]bool)
 
 	// Expected opcodes that should be found in the compiled sample file
-	expectedOpcodes := []OpCmd{
-		OpDefineFunction,       // Function definitions (main, start, BIRD, etc.)
-		OpRegisterEventHandler, // mes() blocks
-		OpCall,                 // Function calls (LoadPic, CreatePic, etc.)
-		OpAssign,               // Variable assignments
-		OpFor,                  // For loops
-		OpIf,                   // If statements
-		OpSetStep,              // step() blocks with count
-		OpWait,                 // Wait commands from commas in step blocks
+	expectedOpcodes := []opcode.Cmd{
+		opcode.DefineFunction,       // Function definitions (main, start, BIRD, etc.)
+		opcode.RegisterEventHandler, // mes() blocks
+		opcode.Call,                 // Function calls (LoadPic, CreatePic, etc.)
+		opcode.Assign,               // opcode.Variable assignments
+		opcode.For,                  // For loops
+		opcode.If,                   // If statements
+		opcode.SetStep,              // step() blocks with count
+		opcode.Wait,                 // Wait commands from commas in step blocks
 	}
 
 	// Walk through opcodes
-	var walkOpcode func(op OpCode)
-	walkOpcode = func(op OpCode) {
+	var walkOpcode func(op opcode.OpCode)
+	walkOpcode = func(op opcode.OpCode) {
 		foundOpcodes[op.Cmd] = true
 
 		// Walk nested opcodes in Args
 		for _, arg := range op.Args {
 			switch v := arg.(type) {
-			case OpCode:
+			case opcode.OpCode:
 				walkOpcode(v)
-			case []OpCode:
+			case []opcode.OpCode:
 				for _, nested := range v {
 					walkOpcode(nested)
 				}
 			case []any:
 				for _, item := range v {
-					if nestedOp, ok := item.(OpCode); ok {
+					if nestedOp, ok := item.(opcode.OpCode); ok {
 						walkOpcode(nestedOp)
 					}
-					if nestedSlice, ok := item.([]OpCode); ok {
+					if nestedSlice, ok := item.([]opcode.OpCode); ok {
 						for _, nested := range nestedSlice {
 							walkOpcode(nested)
 						}
@@ -211,8 +212,8 @@ func verifyKeyOpcodesPresent(t *testing.T, opcodes []OpCode) {
 }
 
 // getOpcodeKeys returns the keys of a map as a slice.
-func getOpcodeKeys(m map[OpCmd]bool) []OpCmd {
-	keys := make([]OpCmd, 0, len(m))
+func getOpcodeKeys(m map[opcode.Cmd]bool) []opcode.Cmd {
+	keys := make([]opcode.Cmd, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
@@ -220,7 +221,7 @@ func getOpcodeKeys(m map[OpCmd]bool) []OpCmd {
 }
 
 // TestCompileSampleFileMesBlocks tests that mes() blocks are correctly compiled.
-// Validates Requirement 4.12: mes(EVENT) blocks generate OpRegisterEventHandler.
+// Validates Requirement 4.12: mes(EVENT) blocks generate opcode.RegisterEventHandler.
 func TestCompileSampleFileMesBlocks(t *testing.T) {
 	input := `mes(TIME){step(20){,start();end_step;del_me;}}`
 
@@ -243,9 +244,9 @@ func TestCompileSampleFileMesBlocks(t *testing.T) {
 		t.Fatalf("expected 1 opcode, got %d", len(opcodes))
 	}
 
-	// Should be OpRegisterEventHandler
-	if opcodes[0].Cmd != OpRegisterEventHandler {
-		t.Errorf("expected OpRegisterEventHandler, got %s", opcodes[0].Cmd)
+	// Should be opcode.RegisterEventHandler
+	if opcodes[0].Cmd != opcode.RegisterEventHandler {
+		t.Errorf("expected opcode.RegisterEventHandler, got %s", opcodes[0].Cmd)
 	}
 
 	// First arg should be event type "TIME"
@@ -264,7 +265,7 @@ func TestCompileSampleFileMesBlocks(t *testing.T) {
 }
 
 // TestCompileSampleFileStepBlocks tests that step() blocks are correctly compiled.
-// Validates Requirements 4.13-4.15: step() generates OpSetStep and OpWait.
+// Validates Requirements 4.13-4.15: step() generates opcode.SetStep and opcode.Wait.
 func TestCompileSampleFileStepBlocks(t *testing.T) {
 	input := `step(10){func1();, func2();,, end_step; del_me;}`
 
@@ -289,31 +290,31 @@ func TestCompileSampleFileStepBlocks(t *testing.T) {
 		t.Logf("  [%d] %s: %v", i, op.Cmd, op.Args)
 	}
 
-	// First opcode should be OpSetStep with count 10
+	// First opcode should be opcode.SetStep with count 10
 	if len(opcodes) < 1 {
 		t.Fatal("expected at least 1 opcode")
 	}
 
-	if opcodes[0].Cmd != OpSetStep {
-		t.Errorf("expected first opcode to be OpSetStep, got %s", opcodes[0].Cmd)
+	if opcodes[0].Cmd != opcode.SetStep {
+		t.Errorf("expected first opcode to be opcode.SetStep, got %s", opcodes[0].Cmd)
 	}
 
-	// Count OpWait opcodes
+	// Count opcode.Wait opcodes
 	waitCount := 0
 	for _, op := range opcodes {
-		if op.Cmd == OpWait {
+		if op.Cmd == opcode.Wait {
 			waitCount++
 		}
 	}
 
-	// Should have at least 2 OpWait (one for single comma, one for double comma)
+	// Should have at least 2 opcode.Wait (one for single comma, one for double comma)
 	if waitCount < 2 {
-		t.Errorf("expected at least 2 OpWait opcodes, got %d", waitCount)
+		t.Errorf("expected at least 2 opcode.Wait opcodes, got %d", waitCount)
 	}
 }
 
 // TestCompileSampleFileForLoop tests that for loops are correctly compiled.
-// Validates Requirement 4.6: for loops generate OpFor.
+// Validates Requirement 4.6: for loops generate opcode.For.
 func TestCompileSampleFileForLoop(t *testing.T) {
 	input := `for(i=0;i<=1;i=i+1){
     LPic[i]=LoadPic(StrPrint("ROBOT%03d.BMP",i));
@@ -338,19 +339,19 @@ func TestCompileSampleFileForLoop(t *testing.T) {
 		t.Fatalf("expected 1 opcode, got %d", len(opcodes))
 	}
 
-	// Should be OpFor
-	if opcodes[0].Cmd != OpFor {
-		t.Errorf("expected OpFor, got %s", opcodes[0].Cmd)
+	// Should be opcode.For
+	if opcodes[0].Cmd != opcode.For {
+		t.Errorf("expected opcode.For, got %s", opcodes[0].Cmd)
 	}
 
 	// Should have 4 args: init, condition, post, body
 	if len(opcodes[0].Args) != 4 {
-		t.Errorf("expected 4 args for OpFor, got %d", len(opcodes[0].Args))
+		t.Errorf("expected 4 args for opcode.For, got %d", len(opcodes[0].Args))
 	}
 }
 
 // TestCompileSampleFileFunctionDefinition tests that function definitions are correctly compiled.
-// Validates Requirement 4.1: AST is compiled to OpCode instructions.
+// Validates Requirement 4.1: AST is compiled to opcode.OpCode instructions.
 func TestCompileSampleFileFunctionDefinition(t *testing.T) {
 	input := `main(){
   CapTitle("");
@@ -376,9 +377,9 @@ func TestCompileSampleFileFunctionDefinition(t *testing.T) {
 		t.Fatalf("expected 1 opcode, got %d", len(opcodes))
 	}
 
-	// Should be OpDefineFunction
-	if opcodes[0].Cmd != OpDefineFunction {
-		t.Errorf("expected OpDefineFunction, got %s", opcodes[0].Cmd)
+	// Should be opcode.DefineFunction
+	if opcodes[0].Cmd != opcode.DefineFunction {
+		t.Errorf("expected opcode.DefineFunction, got %s", opcodes[0].Cmd)
 	}
 
 	// First arg should be function name "main"
@@ -397,7 +398,7 @@ func TestCompileSampleFileFunctionDefinition(t *testing.T) {
 }
 
 // TestCompileSampleFileArrayAssignment tests that array assignments are correctly compiled.
-// Validates Requirement 4.3: Array assignment generates OpArrayAssign.
+// Validates Requirement 4.3: Array assignment generates opcode.ArrayAssign.
 func TestCompileSampleFileArrayAssignment(t *testing.T) {
 	input := `LPic[i]=LoadPic("test.bmp");`
 
@@ -420,20 +421,20 @@ func TestCompileSampleFileArrayAssignment(t *testing.T) {
 		t.Fatalf("expected 1 opcode, got %d", len(opcodes))
 	}
 
-	// Should be OpArrayAssign
-	if opcodes[0].Cmd != OpArrayAssign {
-		t.Errorf("expected OpArrayAssign, got %s", opcodes[0].Cmd)
+	// Should be opcode.ArrayAssign
+	if opcodes[0].Cmd != opcode.ArrayAssign {
+		t.Errorf("expected opcode.ArrayAssign, got %s", opcodes[0].Cmd)
 	}
 
 	// Should have 3 args: array name, index, value
 	if len(opcodes[0].Args) != 3 {
-		t.Errorf("expected 3 args for OpArrayAssign, got %d", len(opcodes[0].Args))
+		t.Errorf("expected 3 args for opcode.ArrayAssign, got %d", len(opcodes[0].Args))
 	}
 
-	// First arg should be Variable("LPic")
-	arrayName, ok := opcodes[0].Args[0].(Variable)
+	// First arg should be opcode.Variable("LPic")
+	arrayName, ok := opcodes[0].Args[0].(opcode.Variable)
 	if !ok {
-		t.Fatalf("expected Variable for array name, got %T", opcodes[0].Args[0])
+		t.Fatalf("expected opcode.Variable for array name, got %T", opcodes[0].Args[0])
 	}
 
 	if string(arrayName) != "LPic" {
@@ -442,7 +443,7 @@ func TestCompileSampleFileArrayAssignment(t *testing.T) {
 }
 
 // TestCompileSampleFileIfStatement tests that if statements are correctly compiled.
-// Validates Requirement 4.5: if statements generate OpIf.
+// Validates Requirement 4.5: if statements generate opcode.If.
 func TestCompileSampleFileIfStatement(t *testing.T) {
 	input := `if(l!=0){
     if(l<0){l=-l; d=1;}
@@ -467,19 +468,19 @@ func TestCompileSampleFileIfStatement(t *testing.T) {
 		t.Fatalf("expected 1 opcode, got %d", len(opcodes))
 	}
 
-	// Should be OpIf
-	if opcodes[0].Cmd != OpIf {
-		t.Errorf("expected OpIf, got %s", opcodes[0].Cmd)
+	// Should be opcode.If
+	if opcodes[0].Cmd != opcode.If {
+		t.Errorf("expected opcode.If, got %s", opcodes[0].Cmd)
 	}
 
 	// Should have 3 args: condition, then block, else block
 	if len(opcodes[0].Args) != 3 {
-		t.Errorf("expected 3 args for OpIf, got %d", len(opcodes[0].Args))
+		t.Errorf("expected 3 args for opcode.If, got %d", len(opcodes[0].Args))
 	}
 }
 
 // TestCompileSampleFileNestedMesBlocks tests compilation of nested mes blocks.
-// Validates Requirement 4.12: Nested mes blocks generate nested OpRegisterEventHandler.
+// Validates Requirement 4.12: Nested mes blocks generate nested opcode.RegisterEventHandler.
 func TestCompileSampleFileNestedMesBlocks(t *testing.T) {
 	input := `mes(MIDI_TIME){step{
     mes(MIDI_TIME){step(8){
@@ -503,11 +504,11 @@ func TestCompileSampleFileNestedMesBlocks(t *testing.T) {
 		t.Fatalf("unexpected compile errors: %v", compileErrs)
 	}
 
-	// Count OpRegisterEventHandler opcodes (including nested)
+	// Count opcode.RegisterEventHandler opcodes (including nested)
 	counts := countOpcodeTypes(opcodes)
 
-	if counts[OpRegisterEventHandler] != 2 {
-		t.Errorf("expected 2 OpRegisterEventHandler opcodes, got %d", counts[OpRegisterEventHandler])
+	if counts[opcode.RegisterEventHandler] != 2 {
+		t.Errorf("expected 2 opcode.RegisterEventHandler opcodes, got %d", counts[opcode.RegisterEventHandler])
 	}
 }
 
@@ -538,9 +539,9 @@ func TestCompileSampleFileFunctionWithDefaultParams(t *testing.T) {
 		t.Fatalf("expected 1 opcode, got %d", len(opcodes))
 	}
 
-	// Should be OpDefineFunction
-	if opcodes[0].Cmd != OpDefineFunction {
-		t.Errorf("expected OpDefineFunction, got %s", opcodes[0].Cmd)
+	// Should be opcode.DefineFunction
+	if opcodes[0].Cmd != opcode.DefineFunction {
+		t.Errorf("expected opcode.DefineFunction, got %s", opcodes[0].Cmd)
 	}
 
 	// Check function name

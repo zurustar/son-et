@@ -4,16 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // TestExecuteAssign tests the OpAssign execution.
 func TestExecuteAssign(t *testing.T) {
 	t.Run("assigns integer value to variable", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpAssign,
-			Args: []any{compiler.Variable("x"), int64(42)},
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Assign,
+			Args: []any{opcode.Variable("x"), int64(42)},
 		}
 
 		result, err := vm.executeAssign(opcode)
@@ -35,10 +35,10 @@ func TestExecuteAssign(t *testing.T) {
 	})
 
 	t.Run("assigns string value to variable", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpAssign,
-			Args: []any{compiler.Variable("name"), "hello"},
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Assign,
+			Args: []any{opcode.Variable("name"), "hello"},
 		}
 
 		_, err := vm.executeAssign(opcode)
@@ -53,14 +53,14 @@ func TestExecuteAssign(t *testing.T) {
 	})
 
 	t.Run("assigns result of binary operation", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// x = 10 + 5
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpAssign,
+		opcode := opcode.OpCode{
+			Cmd: opcode.Assign,
 			Args: []any{
-				compiler.Variable("x"),
-				compiler.OpCode{
-					Cmd:  compiler.OpBinaryOp,
+				opcode.Variable("x"),
+				opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
 					Args: []any{"+", int64(10), int64(5)},
 				},
 			},
@@ -78,13 +78,13 @@ func TestExecuteAssign(t *testing.T) {
 	})
 
 	t.Run("assigns value from another variable", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("y", int64(100))
 
 		// x = y
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpAssign,
-			Args: []any{compiler.Variable("x"), compiler.Variable("y")},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Assign,
+			Args: []any{opcode.Variable("x"), opcode.Variable("y")},
 		}
 
 		_, err := vm.executeAssign(opcode)
@@ -99,10 +99,10 @@ func TestExecuteAssign(t *testing.T) {
 	})
 
 	t.Run("returns error for insufficient arguments", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpAssign,
-			Args: []any{compiler.Variable("x")},
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Assign,
+			Args: []any{opcode.Variable("x")},
 		}
 
 		_, err := vm.executeAssign(opcode)
@@ -115,9 +115,9 @@ func TestExecuteAssign(t *testing.T) {
 // TestExecuteBinaryOp tests the OpBinaryOp execution.
 func TestExecuteBinaryOp(t *testing.T) {
 	t.Run("addition", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"+", int64(10), int64(5)},
 		}
 
@@ -131,9 +131,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("subtraction", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"-", int64(10), int64(3)},
 		}
 
@@ -147,9 +147,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("multiplication", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"*", int64(6), int64(7)},
 		}
 
@@ -163,9 +163,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("division", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"/", int64(20), int64(4)},
 		}
 
@@ -179,9 +179,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("division by zero returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"/", int64(10), int64(0)},
 		}
 
@@ -195,9 +195,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("modulo", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"%", int64(17), int64(5)},
 		}
 
@@ -211,9 +211,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("comparison equal", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"==", int64(5), int64(5)},
 		}
 
@@ -227,9 +227,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("comparison not equal", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"!=", int64(5), int64(3)},
 		}
 
@@ -243,9 +243,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("comparison less than", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"<", int64(3), int64(5)},
 		}
 
@@ -259,9 +259,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("comparison greater than", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{">", int64(10), int64(5)},
 		}
 
@@ -275,9 +275,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("logical AND", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"&&", int64(1), int64(1)},
 		}
 
@@ -291,9 +291,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("logical OR", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"||", int64(0), int64(1)},
 		}
 
@@ -307,9 +307,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("string concatenation", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"+", "hello", " world"},
 		}
 
@@ -323,9 +323,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 	})
 
 	t.Run("float arithmetic", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"+", float64(1.5), float64(2.5)},
 		}
 
@@ -342,9 +342,9 @@ func TestExecuteBinaryOp(t *testing.T) {
 // TestExecuteUnaryOp tests the OpUnaryOp execution.
 func TestExecuteUnaryOp(t *testing.T) {
 	t.Run("negation of integer", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpUnaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.UnaryOp,
 			Args: []any{"-", int64(42)},
 		}
 
@@ -358,9 +358,9 @@ func TestExecuteUnaryOp(t *testing.T) {
 	})
 
 	t.Run("negation of float", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpUnaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.UnaryOp,
 			Args: []any{"-", float64(3.14)},
 		}
 
@@ -374,9 +374,9 @@ func TestExecuteUnaryOp(t *testing.T) {
 	})
 
 	t.Run("logical NOT of true", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpUnaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.UnaryOp,
 			Args: []any{"!", int64(1)},
 		}
 
@@ -390,9 +390,9 @@ func TestExecuteUnaryOp(t *testing.T) {
 	})
 
 	t.Run("logical NOT of false", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpUnaryOp,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.UnaryOp,
 			Args: []any{"!", int64(0)},
 		}
 
@@ -409,10 +409,10 @@ func TestExecuteUnaryOp(t *testing.T) {
 // TestExecuteArrayAssign tests the OpArrayAssign execution.
 func TestExecuteArrayAssign(t *testing.T) {
 	t.Run("assigns value to new array", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(0), int64(42)},
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(0), int64(42)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -435,18 +435,18 @@ func TestExecuteArrayAssign(t *testing.T) {
 	})
 
 	t.Run("auto-expands array", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// First assign at index 0
-		opcode1 := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(0), int64(1)},
+		opcode1 := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(0), int64(1)},
 		}
 		vm.executeArrayAssign(opcode1)
 
 		// Then assign at index 5 (should auto-expand)
-		opcode2 := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(5), int64(100)},
+		opcode2 := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(5), int64(100)},
 		}
 		_, err := vm.executeArrayAssign(opcode2)
 		if err != nil {
@@ -470,10 +470,10 @@ func TestExecuteArrayAssign(t *testing.T) {
 	})
 
 	t.Run("negative index returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(-1), int64(42)},
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(-1), int64(42)},
 		}
 
 		result, err := vm.executeArrayAssign(opcode)
@@ -489,12 +489,12 @@ func TestExecuteArrayAssign(t *testing.T) {
 // TestExecuteArrayAccess tests the OpArrayAccess execution.
 func TestExecuteArrayAccess(t *testing.T) {
 	t.Run("accesses array element", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20), int64(30)}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAccess,
-			Args: []any{compiler.Variable("arr"), int64(1)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAccess,
+			Args: []any{opcode.Variable("arr"), int64(1)},
 		}
 
 		result, err := vm.executeArrayAccess(opcode)
@@ -507,12 +507,12 @@ func TestExecuteArrayAccess(t *testing.T) {
 	})
 
 	t.Run("out of range returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20)}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAccess,
-			Args: []any{compiler.Variable("arr"), int64(10)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAccess,
+			Args: []any{opcode.Variable("arr"), int64(10)},
 		}
 
 		result, err := vm.executeArrayAccess(opcode)
@@ -525,12 +525,12 @@ func TestExecuteArrayAccess(t *testing.T) {
 	})
 
 	t.Run("negative index returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20)}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAccess,
-			Args: []any{compiler.Variable("arr"), int64(-1)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAccess,
+			Args: []any{opcode.Variable("arr"), int64(-1)},
 		}
 
 		result, err := vm.executeArrayAccess(opcode)
@@ -546,15 +546,15 @@ func TestExecuteArrayAccess(t *testing.T) {
 // TestExecuteCall tests the OpCall execution.
 func TestExecuteCall(t *testing.T) {
 	t.Run("calls built-in function", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.RegisterBuiltinFunction("add", func(vm *VM, args []any) (any, error) {
 			a, _ := toInt64(args[0])
 			b, _ := toInt64(args[1])
 			return a + b, nil
 		})
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"add", int64(10), int64(5)},
 		}
 
@@ -568,9 +568,9 @@ func TestExecuteCall(t *testing.T) {
 	})
 
 	t.Run("unknown function returns error", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"unknownFunc"},
 		}
 
@@ -584,29 +584,29 @@ func TestExecuteCall(t *testing.T) {
 	})
 
 	t.Run("calls user-defined function", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Register a user-defined function
 		vm.functions["double"] = &FunctionDef{
 			Name: "double",
 			Parameters: []FunctionParam{
 				{Name: "x", Type: "int", IsArray: false},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd: compiler.OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"return",
-						compiler.OpCode{
-							Cmd:  compiler.OpBinaryOp,
-							Args: []any{"*", compiler.Variable("x"), int64(2)},
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"*", opcode.Variable("x"), int64(2)},
 						},
 					},
 				},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"double", int64(21)},
 		}
 
@@ -620,13 +620,13 @@ func TestExecuteCall(t *testing.T) {
 	})
 
 	t.Run("case-insensitive function lookup", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.RegisterBuiltinFunction("MyFunc", func(vm *VM, args []any) (any, error) {
 			return int64(123), nil
 		})
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"myfunc"},
 		}
 
@@ -643,7 +643,7 @@ func TestExecuteCall(t *testing.T) {
 // TestEvaluateValue tests the evaluateValue helper function.
 func TestEvaluateValue(t *testing.T) {
 	t.Run("evaluates literal values", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Integer
 		result, err := vm.evaluateValue(int64(42))
@@ -674,10 +674,10 @@ func TestEvaluateValue(t *testing.T) {
 	})
 
 	t.Run("evaluates variable references", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("x", int64(100))
 
-		result, err := vm.evaluateValue(compiler.Variable("x"))
+		result, err := vm.evaluateValue(opcode.Variable("x"))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -687,9 +687,9 @@ func TestEvaluateValue(t *testing.T) {
 	})
 
 	t.Run("undefined variable returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
-		result, err := vm.evaluateValue(compiler.Variable("undefined"))
+		result, err := vm.evaluateValue(opcode.Variable("undefined"))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -699,10 +699,10 @@ func TestEvaluateValue(t *testing.T) {
 	})
 
 	t.Run("evaluates nested OpCode", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBinaryOp,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.BinaryOp,
 			Args: []any{"+", int64(10), int64(5)},
 		}
 
@@ -716,7 +716,7 @@ func TestEvaluateValue(t *testing.T) {
 	})
 
 	t.Run("evaluates nil", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		result, err := vm.evaluateValue(nil)
 		if err != nil {
@@ -827,16 +827,16 @@ func TestHelperFunctions(t *testing.T) {
 // TestExecuteIf tests the OpIf execution.
 func TestExecuteIf(t *testing.T) {
 	t.Run("executes then block when condition is true", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// if (1) { x = 10 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpIf,
+		opcode := opcode.OpCode{
+			Cmd: opcode.If,
 			Args: []any{
 				int64(1), // condition (true)
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(10)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(10)}},
 				},
-				[]compiler.OpCode{}, // else block (empty)
+				[]opcode.OpCode{}, // else block (empty)
 			},
 		}
 
@@ -855,17 +855,17 @@ func TestExecuteIf(t *testing.T) {
 	})
 
 	t.Run("executes else block when condition is false", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// if (0) { x = 10 } else { x = 20 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpIf,
+		opcode := opcode.OpCode{
+			Cmd: opcode.If,
 			Args: []any{
 				int64(0), // condition (false)
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(10)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(10)}},
 				},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(20)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(20)}},
 				},
 			},
 		}
@@ -882,26 +882,26 @@ func TestExecuteIf(t *testing.T) {
 	})
 
 	t.Run("handles nested if-else", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("a", int64(5))
 		// if (a > 10) { x = 1 } else if (a > 3) { x = 2 } else { x = 3 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpIf,
+		opcode := opcode.OpCode{
+			Cmd: opcode.If,
 			Args: []any{
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{">", compiler.Variable("a"), int64(10)}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(1)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("a"), int64(10)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(1)}},
 				},
-				[]compiler.OpCode{
+				[]opcode.OpCode{
 					{
-						Cmd: compiler.OpIf,
+						Cmd: opcode.If,
 						Args: []any{
-							compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{">", compiler.Variable("a"), int64(3)}},
-							[]compiler.OpCode{
-								{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(2)}},
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("a"), int64(3)}},
+							[]opcode.OpCode{
+								{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(2)}},
 							},
-							[]compiler.OpCode{
-								{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(3)}},
+							[]opcode.OpCode{
+								{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(3)}},
 							},
 						},
 					},
@@ -921,17 +921,17 @@ func TestExecuteIf(t *testing.T) {
 	})
 
 	t.Run("handles condition with comparison", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("y", int64(15))
 		// if (y > 10) { x = 100 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpIf,
+		opcode := opcode.OpCode{
+			Cmd: opcode.If,
 			Args: []any{
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{">", compiler.Variable("y"), int64(10)}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(100)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{">", opcode.Variable("y"), int64(10)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(100)}},
 				},
-				[]compiler.OpCode{},
+				[]opcode.OpCode{},
 			},
 		}
 
@@ -950,30 +950,30 @@ func TestExecuteIf(t *testing.T) {
 // TestExecuteFor tests the OpFor execution.
 func TestExecuteFor(t *testing.T) {
 	t.Run("executes simple for loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// sum = 0; for (i = 0; i < 5; i = i + 1) { sum = sum + i }
 		vm.GetCurrentScope().Set("sum", int64(0))
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpFor,
+		opcode := opcode.OpCode{
+			Cmd: opcode.For,
 			Args: []any{
 				// init: i = 0
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("i"), int64(0)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
 				},
 				// condition: i < 5
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), int64(5)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(5)}},
 				// post: i = i + 1
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
 				// body: sum = sum + i
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("sum"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("sum"), compiler.Variable("i")}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("sum"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("sum"), opcode.Variable("i")}},
 					}},
 				},
 			},
@@ -992,34 +992,34 @@ func TestExecuteFor(t *testing.T) {
 	})
 
 	t.Run("handles break in for loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("count", int64(0))
 		// for (i = 0; i < 10; i = i + 1) { if (i == 3) { break } count = count + 1 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpFor,
+		opcode := opcode.OpCode{
+			Cmd: opcode.For,
 			Args: []any{
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("i"), int64(0)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
 				},
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), int64(10)}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(10)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
-				[]compiler.OpCode{
+				[]opcode.OpCode{
 					{
-						Cmd: compiler.OpIf,
+						Cmd: opcode.If,
 						Args: []any{
-							compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"==", compiler.Variable("i"), int64(3)}},
-							[]compiler.OpCode{{Cmd: compiler.OpBreak, Args: []any{}}},
-							[]compiler.OpCode{},
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("i"), int64(3)}},
+							[]opcode.OpCode{{Cmd: opcode.Break, Args: []any{}}},
+							[]opcode.OpCode{},
 						},
 					},
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("count"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("count"), int64(1)}},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("count"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("count"), int64(1)}},
 					}},
 				},
 			},
@@ -1038,34 +1038,34 @@ func TestExecuteFor(t *testing.T) {
 	})
 
 	t.Run("handles continue in for loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("sum", int64(0))
 		// for (i = 0; i < 5; i = i + 1) { if (i == 2) { continue } sum = sum + i }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpFor,
+		opcode := opcode.OpCode{
+			Cmd: opcode.For,
 			Args: []any{
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("i"), int64(0)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
 				},
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), int64(5)}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(5)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
-				[]compiler.OpCode{
+				[]opcode.OpCode{
 					{
-						Cmd: compiler.OpIf,
+						Cmd: opcode.If,
 						Args: []any{
-							compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"==", compiler.Variable("i"), int64(2)}},
-							[]compiler.OpCode{{Cmd: compiler.OpContinue, Args: []any{}}},
-							[]compiler.OpCode{},
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("i"), int64(2)}},
+							[]opcode.OpCode{{Cmd: opcode.Continue, Args: []any{}}},
+							[]opcode.OpCode{},
 						},
 					},
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("sum"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("sum"), compiler.Variable("i")}},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("sum"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("sum"), opcode.Variable("i")}},
 					}},
 				},
 			},
@@ -1087,22 +1087,22 @@ func TestExecuteFor(t *testing.T) {
 // TestExecuteWhile tests the OpWhile execution.
 func TestExecuteWhile(t *testing.T) {
 	t.Run("executes simple while loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("i", int64(0))
 		vm.GetCurrentScope().Set("sum", int64(0))
 		// while (i < 5) { sum = sum + i; i = i + 1 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpWhile,
+		opcode := opcode.OpCode{
+			Cmd: opcode.While,
 			Args: []any{
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), int64(5)}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("sum"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("sum"), compiler.Variable("i")}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(5)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("sum"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("sum"), opcode.Variable("i")}},
 					}},
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
 			},
@@ -1120,25 +1120,25 @@ func TestExecuteWhile(t *testing.T) {
 	})
 
 	t.Run("handles break in while loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("i", int64(0))
 		// while (1) { if (i == 5) { break } i = i + 1 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpWhile,
+		opcode := opcode.OpCode{
+			Cmd: opcode.While,
 			Args: []any{
 				int64(1), // infinite loop
-				[]compiler.OpCode{
+				[]opcode.OpCode{
 					{
-						Cmd: compiler.OpIf,
+						Cmd: opcode.If,
 						Args: []any{
-							compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"==", compiler.Variable("i"), int64(5)}},
-							[]compiler.OpCode{{Cmd: compiler.OpBreak, Args: []any{}}},
-							[]compiler.OpCode{},
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("i"), int64(5)}},
+							[]opcode.OpCode{{Cmd: opcode.Break, Args: []any{}}},
+							[]opcode.OpCode{},
 						},
 					},
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
 			},
@@ -1156,30 +1156,30 @@ func TestExecuteWhile(t *testing.T) {
 	})
 
 	t.Run("handles continue in while loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("i", int64(0))
 		vm.GetCurrentScope().Set("sum", int64(0))
 		// while (i < 5) { i = i + 1; if (i == 3) { continue } sum = sum + i }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpWhile,
+		opcode := opcode.OpCode{
+			Cmd: opcode.While,
 			Args: []any{
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), int64(5)}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(5)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 					{
-						Cmd: compiler.OpIf,
+						Cmd: opcode.If,
 						Args: []any{
-							compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"==", compiler.Variable("i"), int64(3)}},
-							[]compiler.OpCode{{Cmd: compiler.OpContinue, Args: []any{}}},
-							[]compiler.OpCode{},
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"==", opcode.Variable("i"), int64(3)}},
+							[]opcode.OpCode{{Cmd: opcode.Continue, Args: []any{}}},
+							[]opcode.OpCode{},
 						},
 					},
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("sum"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("sum"), compiler.Variable("i")}},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("sum"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("sum"), opcode.Variable("i")}},
 					}},
 				},
 			},
@@ -1201,24 +1201,24 @@ func TestExecuteWhile(t *testing.T) {
 // TestExecuteSwitch tests the OpSwitch execution.
 func TestExecuteSwitch(t *testing.T) {
 	t.Run("executes matching case", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("x", int64(2))
 		// switch (x) { case 1: y = 10; case 2: y = 20; default: y = 0 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpSwitch,
+		opcode := opcode.OpCode{
+			Cmd: opcode.Switch,
 			Args: []any{
-				compiler.Variable("x"),
+				opcode.Variable("x"),
 				[]any{
 					map[string]any{
 						"value": int64(1),
-						"body":  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(10)}}},
+						"body":  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}}},
 					},
 					map[string]any{
 						"value": int64(2),
-						"body":  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(20)}}},
+						"body":  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(20)}}},
 					},
 				},
-				[]compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(0)}}},
+				[]opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(0)}}},
 			},
 		}
 
@@ -1234,20 +1234,20 @@ func TestExecuteSwitch(t *testing.T) {
 	})
 
 	t.Run("executes default when no case matches", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("x", int64(99))
 		// switch (x) { case 1: y = 10; default: y = 0 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpSwitch,
+		opcode := opcode.OpCode{
+			Cmd: opcode.Switch,
 			Args: []any{
-				compiler.Variable("x"),
+				opcode.Variable("x"),
 				[]any{
 					map[string]any{
 						"value": int64(1),
-						"body":  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(10)}}},
+						"body":  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}}},
 					},
 				},
-				[]compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(0)}}},
+				[]opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(0)}}},
 			},
 		}
 
@@ -1263,24 +1263,24 @@ func TestExecuteSwitch(t *testing.T) {
 	})
 
 	t.Run("handles string case values", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("cmd", "start")
 		// switch (cmd) { case "start": result = 1; case "stop": result = 2 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpSwitch,
+		opcode := opcode.OpCode{
+			Cmd: opcode.Switch,
 			Args: []any{
-				compiler.Variable("cmd"),
+				opcode.Variable("cmd"),
 				[]any{
 					map[string]any{
 						"value": "start",
-						"body":  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("result"), int64(1)}}},
+						"body":  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("result"), int64(1)}}},
 					},
 					map[string]any{
 						"value": "stop",
-						"body":  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("result"), int64(2)}}},
+						"body":  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("result"), int64(2)}}},
 					},
 				},
-				[]compiler.OpCode{},
+				[]opcode.OpCode{},
 			},
 		}
 
@@ -1296,17 +1296,17 @@ func TestExecuteSwitch(t *testing.T) {
 	})
 
 	t.Run("handles no matching case and no default", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("x", int64(99))
 		// switch (x) { case 1: y = 10 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpSwitch,
+		opcode := opcode.OpCode{
+			Cmd: opcode.Switch,
 			Args: []any{
-				compiler.Variable("x"),
+				opcode.Variable("x"),
 				[]any{
 					map[string]any{
 						"value": int64(1),
-						"body":  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("y"), int64(10)}}},
+						"body":  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("y"), int64(10)}}},
 					},
 				},
 				nil, // no default
@@ -1329,9 +1329,9 @@ func TestExecuteSwitch(t *testing.T) {
 // TestExecuteBreak tests the OpBreak execution.
 func TestExecuteBreak(t *testing.T) {
 	t.Run("returns break signal", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpBreak,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Break,
 			Args: []any{},
 		}
 
@@ -1349,9 +1349,9 @@ func TestExecuteBreak(t *testing.T) {
 // TestExecuteContinue tests the OpContinue execution.
 func TestExecuteContinue(t *testing.T) {
 	t.Run("returns continue signal", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpContinue,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Continue,
 			Args: []any{},
 		}
 
@@ -1370,7 +1370,7 @@ func TestExecuteContinue(t *testing.T) {
 // Requirement 20.5: System supports recursive function calls.
 func TestRecursiveFunctionCalls(t *testing.T) {
 	t.Run("factorial function", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Define factorial function:
 		// func factorial(n) {
 		//     if (n <= 1) { return 1 }
@@ -1381,33 +1381,33 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "n", Type: "int", IsArray: false},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd: compiler.OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<=", compiler.Variable("n"), int64(1)}},
-						[]compiler.OpCode{
-							{Cmd: compiler.OpCall, Args: []any{"return", int64(1)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<=", opcode.Variable("n"), int64(1)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"return", int64(1)}},
 						},
-						[]compiler.OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 				{
-					Cmd: compiler.OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"return",
-						compiler.OpCode{
-							Cmd: compiler.OpBinaryOp,
+						opcode.OpCode{
+							Cmd: opcode.BinaryOp,
 							Args: []any{
 								"*",
-								compiler.Variable("n"),
-								compiler.OpCode{
-									Cmd: compiler.OpCall,
+								opcode.Variable("n"),
+								opcode.OpCode{
+									Cmd: opcode.Call,
 									Args: []any{
 										"factorial",
-										compiler.OpCode{
-											Cmd:  compiler.OpBinaryOp,
-											Args: []any{"-", compiler.Variable("n"), int64(1)},
+										opcode.OpCode{
+											Cmd:  opcode.BinaryOp,
+											Args: []any{"-", opcode.Variable("n"), int64(1)},
 										},
 									},
 								},
@@ -1419,8 +1419,8 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 		}
 
 		// Call factorial(5) = 120
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"factorial", int64(5)},
 		}
 
@@ -1434,7 +1434,7 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 	})
 
 	t.Run("fibonacci function", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Define fibonacci function:
 		// func fib(n) {
 		//     if (n <= 1) { return n }
@@ -1445,42 +1445,42 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "n", Type: "int", IsArray: false},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd: compiler.OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<=", compiler.Variable("n"), int64(1)}},
-						[]compiler.OpCode{
-							{Cmd: compiler.OpCall, Args: []any{"return", compiler.Variable("n")}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<=", opcode.Variable("n"), int64(1)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"return", opcode.Variable("n")}},
 						},
-						[]compiler.OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 				{
-					Cmd: compiler.OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"return",
-						compiler.OpCode{
-							Cmd: compiler.OpBinaryOp,
+						opcode.OpCode{
+							Cmd: opcode.BinaryOp,
 							Args: []any{
 								"+",
-								compiler.OpCode{
-									Cmd: compiler.OpCall,
+								opcode.OpCode{
+									Cmd: opcode.Call,
 									Args: []any{
 										"fib",
-										compiler.OpCode{
-											Cmd:  compiler.OpBinaryOp,
-											Args: []any{"-", compiler.Variable("n"), int64(1)},
+										opcode.OpCode{
+											Cmd:  opcode.BinaryOp,
+											Args: []any{"-", opcode.Variable("n"), int64(1)},
 										},
 									},
 								},
-								compiler.OpCode{
-									Cmd: compiler.OpCall,
+								opcode.OpCode{
+									Cmd: opcode.Call,
 									Args: []any{
 										"fib",
-										compiler.OpCode{
-											Cmd:  compiler.OpBinaryOp,
-											Args: []any{"-", compiler.Variable("n"), int64(2)},
+										opcode.OpCode{
+											Cmd:  opcode.BinaryOp,
+											Args: []any{"-", opcode.Variable("n"), int64(2)},
 										},
 									},
 								},
@@ -1492,8 +1492,8 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 		}
 
 		// Call fib(10) = 55
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"fib", int64(10)},
 		}
 
@@ -1507,7 +1507,7 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 	})
 
 	t.Run("stack depth tracking during recursion", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		maxDepthReached := 0
 
 		// Define a function that tracks max depth
@@ -1516,28 +1516,28 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "n", Type: "int", IsArray: false},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd: compiler.OpIf,
+					Cmd: opcode.If,
 					Args: []any{
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<=", compiler.Variable("n"), int64(0)}},
-						[]compiler.OpCode{
-							{Cmd: compiler.OpCall, Args: []any{"return", int64(0)}},
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<=", opcode.Variable("n"), int64(0)}},
+						[]opcode.OpCode{
+							{Cmd: opcode.Call, Args: []any{"return", int64(0)}},
 						},
-						[]compiler.OpCode{},
+						[]opcode.OpCode{},
 					},
 				},
 				{
-					Cmd: compiler.OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"return",
-						compiler.OpCode{
-							Cmd: compiler.OpCall,
+						opcode.OpCode{
+							Cmd: opcode.Call,
 							Args: []any{
 								"trackDepth",
-								compiler.OpCode{
-									Cmd:  compiler.OpBinaryOp,
-									Args: []any{"-", compiler.Variable("n"), int64(1)},
+								opcode.OpCode{
+									Cmd:  opcode.BinaryOp,
+									Args: []any{"-", opcode.Variable("n"), int64(1)},
 								},
 							},
 						},
@@ -1556,8 +1556,8 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 		})
 
 		// Call trackDepth(10)
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"trackDepth", int64(10)},
 		}
 
@@ -1578,17 +1578,17 @@ func TestRecursiveFunctionCalls(t *testing.T) {
 // Requirement 20.4: When function has no return value, system returns zero.
 func TestFunctionReturnValue(t *testing.T) {
 	t.Run("function with explicit return value", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.functions["getValue"] = &FunctionDef{
 			Name:       "getValue",
 			Parameters: []FunctionParam{},
-			Body: []compiler.OpCode{
-				{Cmd: compiler.OpCall, Args: []any{"return", int64(42)}},
+			Body: []opcode.OpCode{
+				{Cmd: opcode.Call, Args: []any{"return", int64(42)}},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"getValue"},
 		}
 
@@ -1602,18 +1602,18 @@ func TestFunctionReturnValue(t *testing.T) {
 	})
 
 	t.Run("function without return statement returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.functions["noReturn"] = &FunctionDef{
 			Name:       "noReturn",
 			Parameters: []FunctionParam{},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				// Just assign a variable, no return
-				{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(100)}},
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(100)}},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"noReturn"},
 		}
 
@@ -1627,19 +1627,19 @@ func TestFunctionReturnValue(t *testing.T) {
 	})
 
 	t.Run("function with return in middle of body", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.functions["earlyReturn"] = &FunctionDef{
 			Name:       "earlyReturn",
 			Parameters: []FunctionParam{},
-			Body: []compiler.OpCode{
-				{Cmd: compiler.OpCall, Args: []any{"return", int64(10)}},
+			Body: []opcode.OpCode{
+				{Cmd: opcode.Call, Args: []any{"return", int64(10)}},
 				// This should not be executed
-				{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(999)}},
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(999)}},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"earlyReturn"},
 		}
 
@@ -1665,18 +1665,18 @@ func TestFunctionReturnValue(t *testing.T) {
 // Requirement 20.8: When stack overflow occurs, system logs error and terminates execution.
 func TestStackOverflowDetection(t *testing.T) {
 	t.Run("detects stack overflow in recursive function", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Define an infinitely recursive function
 		vm.functions["infinite"] = &FunctionDef{
 			Name:       "infinite",
 			Parameters: []FunctionParam{},
-			Body: []compiler.OpCode{
-				{Cmd: compiler.OpCall, Args: []any{"infinite"}},
+			Body: []opcode.OpCode{
+				{Cmd: opcode.Call, Args: []any{"infinite"}},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"infinite"},
 		}
 
@@ -1694,29 +1694,29 @@ func TestStackOverflowDetection(t *testing.T) {
 // Requirement 9.7: When function parameters are passed, system binds them to local scope.
 func TestFunctionParameterBinding(t *testing.T) {
 	t.Run("binds parameters to local scope", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.functions["add"] = &FunctionDef{
 			Name: "add",
 			Parameters: []FunctionParam{
 				{Name: "a", Type: "int", IsArray: false},
 				{Name: "b", Type: "int", IsArray: false},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd: compiler.OpCall,
+					Cmd: opcode.Call,
 					Args: []any{
 						"return",
-						compiler.OpCode{
-							Cmd:  compiler.OpBinaryOp,
-							Args: []any{"+", compiler.Variable("a"), compiler.Variable("b")},
+						opcode.OpCode{
+							Cmd:  opcode.BinaryOp,
+							Args: []any{"+", opcode.Variable("a"), opcode.Variable("b")},
 						},
 					},
 				},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"add", int64(10), int64(20)},
 		}
 
@@ -1730,20 +1730,20 @@ func TestFunctionParameterBinding(t *testing.T) {
 	})
 
 	t.Run("uses default parameter values", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.functions["greet"] = &FunctionDef{
 			Name: "greet",
 			Parameters: []FunctionParam{
 				{Name: "name", Type: "string", IsArray: false, Default: "World", HasDefault: true},
 			},
-			Body: []compiler.OpCode{
-				{Cmd: compiler.OpCall, Args: []any{"return", compiler.Variable("name")}},
+			Body: []opcode.OpCode{
+				{Cmd: opcode.Call, Args: []any{"return", opcode.Variable("name")}},
 			},
 		}
 
 		// Call without argument - should use default
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"greet"},
 		}
 
@@ -1757,7 +1757,7 @@ func TestFunctionParameterBinding(t *testing.T) {
 	})
 
 	t.Run("parameter does not affect global variable", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetGlobalScope().Set("x", int64(100))
 
 		vm.functions["modifyX"] = &FunctionDef{
@@ -1765,15 +1765,15 @@ func TestFunctionParameterBinding(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "x", Type: "int", IsArray: false},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				// Modify local x
-				{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), int64(999)}},
-				{Cmd: compiler.OpCall, Args: []any{"return", compiler.Variable("x")}},
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), int64(999)}},
+				{Cmd: opcode.Call, Args: []any{"return", opcode.Variable("x")}},
 			},
 		}
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
 			Args: []any{"modifyX", int64(50)},
 		}
 
@@ -1797,9 +1797,9 @@ func TestFunctionParameterBinding(t *testing.T) {
 // Requirement 6.1: When OpSetStep OpCode is executed, system initializes step counter with specified count.
 func TestExecuteSetStep(t *testing.T) {
 	t.Run("initializes VM step counter with literal int64", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpSetStep,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.SetStep,
 			Args: []any{int64(10)},
 		}
 
@@ -1815,13 +1815,13 @@ func TestExecuteSetStep(t *testing.T) {
 	})
 
 	t.Run("initializes VM step counter with variable", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Set variable n = 20
 		vm.GetCurrentScope().Set("n", int64(20))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpSetStep,
-			Args: []any{compiler.Variable("n")},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.SetStep,
+			Args: []any{opcode.Variable("n")},
 		}
 
 		_, err := vm.executeSetStep(opcode)
@@ -1836,16 +1836,16 @@ func TestExecuteSetStep(t *testing.T) {
 	})
 
 	t.Run("initializes VM step counter with expression", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Set variable x = 5
 		vm.GetCurrentScope().Set("x", int64(5))
 
 		// step(x + 3) should result in step counter = 8
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpSetStep,
-			Args: []any{compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
-				Args: []any{"+", compiler.Variable("x"), int64(3)},
+		opcode := opcode.OpCode{
+			Cmd: opcode.SetStep,
+			Args: []any{opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
+				Args: []any{"+", opcode.Variable("x"), int64(3)},
 			}},
 		}
 
@@ -1861,14 +1861,14 @@ func TestExecuteSetStep(t *testing.T) {
 	})
 
 	t.Run("initializes handler step counter when handler is executing", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create and set a current handler
-		handler := NewEventHandler("test_handler", EventTIME, []compiler.OpCode{}, vm, nil)
+		handler := NewEventHandler("test_handler", EventTIME, []opcode.OpCode{}, vm, nil)
 		vm.SetCurrentHandler(handler)
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpSetStep,
+		opcode := opcode.OpCode{
+			Cmd:  opcode.SetStep,
 			Args: []any{int64(15)},
 		}
 
@@ -1888,9 +1888,9 @@ func TestExecuteSetStep(t *testing.T) {
 	})
 
 	t.Run("handles zero step count", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpSetStep,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.SetStep,
 			Args: []any{int64(0)},
 		}
 
@@ -1905,9 +1905,9 @@ func TestExecuteSetStep(t *testing.T) {
 	})
 
 	t.Run("handles float step count by truncating", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpSetStep,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.SetStep,
 			Args: []any{float64(7.9)},
 		}
 
@@ -1923,9 +1923,9 @@ func TestExecuteSetStep(t *testing.T) {
 	})
 
 	t.Run("returns error when no arguments provided", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpSetStep,
+		vm := New([]opcode.OpCode{})
+		opcode := opcode.OpCode{
+			Cmd:  opcode.SetStep,
 			Args: []any{},
 		}
 

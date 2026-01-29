@@ -3,18 +3,18 @@ package vm
 import (
 	"testing"
 
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // TestArrayDynamicAllocation tests dynamic array allocation.
 // Requirement 19.1: When array is declared, system allocates storage for array.
 func TestArrayDynamicAllocation(t *testing.T) {
 	t.Run("creates array on first assignment", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// arr[0] = 42
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(0), int64(42)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(0), int64(42)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -36,11 +36,11 @@ func TestArrayDynamicAllocation(t *testing.T) {
 	})
 
 	t.Run("creates array with correct initial size", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// arr[9] = 100 (should create array of size 10)
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(9), int64(100)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(9), int64(100)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -61,14 +61,14 @@ func TestArrayDynamicAllocation(t *testing.T) {
 // Requirement 19.6: System supports dynamic array resizing.
 func TestArrayAutoExpansion(t *testing.T) {
 	t.Run("expands array when index exceeds size", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Create initial array with 3 elements
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(1), int64(2), int64(3)}))
 
 		// Assign to index 10 (should expand)
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(10), int64(999)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(10), int64(999)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -88,14 +88,14 @@ func TestArrayAutoExpansion(t *testing.T) {
 	})
 
 	t.Run("preserves existing elements during expansion", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Create initial array
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20), int64(30)}))
 
 		// Expand array
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(5), int64(60)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(5), int64(60)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -126,11 +126,11 @@ func TestArrayAutoExpansion(t *testing.T) {
 // Requirement 19.7: System initializes new array elements to zero.
 func TestArrayZeroInitialization(t *testing.T) {
 	t.Run("initializes new elements to zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Create array by assigning to index 5
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(5), int64(100)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(5), int64(100)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -151,14 +151,14 @@ func TestArrayZeroInitialization(t *testing.T) {
 	})
 
 	t.Run("initializes expanded elements to zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		// Create initial array
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(1), int64(2)}))
 
 		// Expand array
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(5), int64(100)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(5), int64(100)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -183,7 +183,7 @@ func TestArrayZeroInitialization(t *testing.T) {
 // Requirement 19.8: When array is passed to function, system passes it by reference.
 func TestArrayPassByReference(t *testing.T) {
 	t.Run("modifications in function affect original array", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create array in global scope using Array type
 		vm.GetGlobalScope().Set("myArr", NewArrayFromSlice([]any{int64(1), int64(2), int64(3)}))
@@ -195,18 +195,18 @@ func TestArrayPassByReference(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "arr", Type: "int", IsArray: true},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd:  compiler.OpArrayAssign,
-					Args: []any{compiler.Variable("arr"), int64(0), int64(999)},
+					Cmd:  opcode.ArrayAssign,
+					Args: []any{opcode.Variable("arr"), int64(0), int64(999)},
 				},
 			},
 		}
 
 		// Call function with array
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
-			Args: []any{"modifyArray", compiler.Variable("myArr")},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
+			Args: []any{"modifyArray", opcode.Variable("myArr")},
 		}
 
 		_, err := vm.executeCall(opcode)
@@ -224,7 +224,7 @@ func TestArrayPassByReference(t *testing.T) {
 	})
 
 	t.Run("array expansion in function affects original", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create small array in global scope using Array type
 		vm.GetGlobalScope().Set("smallArr", NewArrayFromSlice([]any{int64(1), int64(2)}))
@@ -236,18 +236,18 @@ func TestArrayPassByReference(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "arr", Type: "int", IsArray: true},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd:  compiler.OpArrayAssign,
-					Args: []any{compiler.Variable("arr"), int64(10), int64(100)},
+					Cmd:  opcode.ArrayAssign,
+					Args: []any{opcode.Variable("arr"), int64(10), int64(100)},
 				},
 			},
 		}
 
 		// Call function with array
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
-			Args: []any{"expandArray", compiler.Variable("smallArr")},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
+			Args: []any{"expandArray", opcode.Variable("smallArr")},
 		}
 
 		_, err := vm.executeCall(opcode)
@@ -268,7 +268,7 @@ func TestArrayPassByReference(t *testing.T) {
 	})
 
 	t.Run("nested function calls preserve reference", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// Create array in global scope using Array type
 		vm.GetGlobalScope().Set("nestedArr", NewArrayFromSlice([]any{int64(0), int64(0), int64(0)}))
@@ -280,10 +280,10 @@ func TestArrayPassByReference(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "arr", Type: "int", IsArray: true},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd:  compiler.OpArrayAssign,
-					Args: []any{compiler.Variable("arr"), int64(2), int64(333)},
+					Cmd:  opcode.ArrayAssign,
+					Args: []any{opcode.Variable("arr"), int64(2), int64(333)},
 				},
 			},
 		}
@@ -295,22 +295,22 @@ func TestArrayPassByReference(t *testing.T) {
 			Parameters: []FunctionParam{
 				{Name: "arr", Type: "int", IsArray: true},
 			},
-			Body: []compiler.OpCode{
+			Body: []opcode.OpCode{
 				{
-					Cmd:  compiler.OpArrayAssign,
-					Args: []any{compiler.Variable("arr"), int64(1), int64(222)},
+					Cmd:  opcode.ArrayAssign,
+					Args: []any{opcode.Variable("arr"), int64(1), int64(222)},
 				},
 				{
-					Cmd:  compiler.OpCall,
-					Args: []any{"innerModify", compiler.Variable("arr")},
+					Cmd:  opcode.Call,
+					Args: []any{"innerModify", opcode.Variable("arr")},
 				},
 			},
 		}
 
 		// Call outer function
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpCall,
-			Args: []any{"outerModify", compiler.Variable("nestedArr")},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.Call,
+			Args: []any{"outerModify", opcode.Variable("nestedArr")},
 		}
 
 		_, err := vm.executeCall(opcode)
@@ -336,12 +336,12 @@ func TestArrayPassByReference(t *testing.T) {
 // Requirement 19.4: When array index is negative, system logs error and returns zero.
 func TestArrayNegativeIndex(t *testing.T) {
 	t.Run("negative index on access returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20), int64(30)}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAccess,
-			Args: []any{compiler.Variable("arr"), int64(-1)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAccess,
+			Args: []any{opcode.Variable("arr"), int64(-1)},
 		}
 
 		result, err := vm.executeArrayAccess(opcode)
@@ -354,12 +354,12 @@ func TestArrayNegativeIndex(t *testing.T) {
 	})
 
 	t.Run("negative index on assign returns zero", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20), int64(30)}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(-5), int64(999)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(-5), int64(999)},
 		}
 
 		result, err := vm.executeArrayAssign(opcode)
@@ -383,7 +383,7 @@ func TestArrayNegativeIndex(t *testing.T) {
 // Requirement 19.2: When array element is accessed, system returns value at specified index.
 func TestArrayElementAccess(t *testing.T) {
 	t.Run("accesses elements at various indices", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(100), int64(200), int64(300), int64(400), int64(500)}))
 
 		testCases := []struct {
@@ -398,9 +398,9 @@ func TestArrayElementAccess(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpArrayAccess,
-				Args: []any{compiler.Variable("arr"), tc.index},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.ArrayAccess,
+				Args: []any{opcode.Variable("arr"), tc.index},
 			}
 
 			result, err := vm.executeArrayAccess(opcode)
@@ -414,12 +414,12 @@ func TestArrayElementAccess(t *testing.T) {
 	})
 
 	t.Run("accesses string elements", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("names", NewArrayFromSlice([]any{"Alice", "Bob", "Charlie"}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAccess,
-			Args: []any{compiler.Variable("names"), int64(1)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAccess,
+			Args: []any{opcode.Variable("names"), int64(1)},
 		}
 
 		result, err := vm.executeArrayAccess(opcode)
@@ -436,12 +436,12 @@ func TestArrayElementAccess(t *testing.T) {
 // Requirement 19.3: When array element is assigned, system stores value at specified index.
 func TestArrayElementAssignment(t *testing.T) {
 	t.Run("assigns to existing element", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(1), int64(2), int64(3)}))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("arr"), int64(1), int64(999)},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("arr"), int64(1), int64(999)},
 		}
 
 		_, err := vm.executeArrayAssign(opcode)
@@ -458,25 +458,25 @@ func TestArrayElementAssignment(t *testing.T) {
 	})
 
 	t.Run("assigns different types", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("mixed", NewArrayFromSlice([]any{nil, nil, nil}))
 
 		// Assign integer
-		vm.executeArrayAssign(compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("mixed"), int64(0), int64(42)},
+		vm.executeArrayAssign(opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("mixed"), int64(0), int64(42)},
 		})
 
 		// Assign string
-		vm.executeArrayAssign(compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("mixed"), int64(1), "hello"},
+		vm.executeArrayAssign(opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("mixed"), int64(1), "hello"},
 		})
 
 		// Assign float
-		vm.executeArrayAssign(compiler.OpCode{
-			Cmd:  compiler.OpArrayAssign,
-			Args: []any{compiler.Variable("mixed"), int64(2), float64(3.14)},
+		vm.executeArrayAssign(opcode.OpCode{
+			Cmd:  opcode.ArrayAssign,
+			Args: []any{opcode.Variable("mixed"), int64(2), float64(3.14)},
 		})
 
 		val, _ := vm.GetCurrentScope().Get("mixed")
@@ -501,13 +501,13 @@ func TestArrayElementAssignment(t *testing.T) {
 // TestArrayWithExpressionIndex tests array access with expression indices.
 func TestArrayWithExpressionIndex(t *testing.T) {
 	t.Run("accesses with variable index", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(10), int64(20), int64(30)}))
 		vm.GetCurrentScope().Set("i", int64(2))
 
-		opcode := compiler.OpCode{
-			Cmd:  compiler.OpArrayAccess,
-			Args: []any{compiler.Variable("arr"), compiler.Variable("i")},
+		opcode := opcode.OpCode{
+			Cmd:  opcode.ArrayAccess,
+			Args: []any{opcode.Variable("arr"), opcode.Variable("i")},
 		}
 
 		result, err := vm.executeArrayAccess(opcode)
@@ -520,16 +520,16 @@ func TestArrayWithExpressionIndex(t *testing.T) {
 	})
 
 	t.Run("accesses with computed index", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(100), int64(200), int64(300), int64(400)}))
 
 		// arr[1 + 2] = arr[3]
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpArrayAccess,
+		opcode := opcode.OpCode{
+			Cmd: opcode.ArrayAccess,
 			Args: []any{
-				compiler.Variable("arr"),
-				compiler.OpCode{
-					Cmd:  compiler.OpBinaryOp,
+				opcode.Variable("arr"),
+				opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
 					Args: []any{"+", int64(1), int64(2)},
 				},
 			},
@@ -545,18 +545,18 @@ func TestArrayWithExpressionIndex(t *testing.T) {
 	})
 
 	t.Run("assigns with computed index", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(0), int64(0), int64(0), int64(0)}))
 		vm.GetCurrentScope().Set("offset", int64(2))
 
 		// arr[offset + 1] = 999
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpArrayAssign,
+		opcode := opcode.OpCode{
+			Cmd: opcode.ArrayAssign,
 			Args: []any{
-				compiler.Variable("arr"),
-				compiler.OpCode{
-					Cmd:  compiler.OpBinaryOp,
-					Args: []any{"+", compiler.Variable("offset"), int64(1)},
+				opcode.Variable("arr"),
+				opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
+					Args: []any{"+", opcode.Variable("offset"), int64(1)},
 				},
 				int64(999),
 			},
@@ -579,31 +579,31 @@ func TestArrayWithExpressionIndex(t *testing.T) {
 // TestArrayInLoops tests array usage in loops.
 func TestArrayInLoops(t *testing.T) {
 	t.Run("populates array in for loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 
 		// for (i = 0; i < 5; i = i + 1) { arr[i] = i * 10 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpFor,
+		opcode := opcode.OpCode{
+			Cmd: opcode.For,
 			Args: []any{
 				// init: i = 0
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("i"), int64(0)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
 				},
 				// condition: i < 5
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), int64(5)}},
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(5)}},
 				// post: i = i + 1
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
 				// body: arr[i] = i * 10
-				[]compiler.OpCode{
-					{Cmd: compiler.OpArrayAssign, Args: []any{
-						compiler.Variable("arr"),
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"*", compiler.Variable("i"), int64(10)}},
+				[]opcode.OpCode{
+					{Cmd: opcode.ArrayAssign, Args: []any{
+						opcode.Variable("arr"),
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"*", opcode.Variable("i"), int64(10)}},
 					}},
 				},
 			},
@@ -630,35 +630,35 @@ func TestArrayInLoops(t *testing.T) {
 	})
 
 	t.Run("sums array elements in while loop", func(t *testing.T) {
-		vm := New([]compiler.OpCode{})
+		vm := New([]opcode.OpCode{})
 		vm.GetCurrentScope().Set("arr", NewArrayFromSlice([]any{int64(1), int64(2), int64(3), int64(4), int64(5)}))
 		vm.GetCurrentScope().Set("sum", int64(0))
 		vm.GetCurrentScope().Set("i", int64(0))
 		vm.GetCurrentScope().Set("len", int64(5))
 
 		// while (i < len) { sum = sum + arr[i]; i = i + 1 }
-		opcode := compiler.OpCode{
-			Cmd: compiler.OpWhile,
+		opcode := opcode.OpCode{
+			Cmd: opcode.While,
 			Args: []any{
-				compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"<", compiler.Variable("i"), compiler.Variable("len")}},
-				[]compiler.OpCode{
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("sum"),
-						compiler.OpCode{
-							Cmd: compiler.OpBinaryOp,
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), opcode.Variable("len")}},
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("sum"),
+						opcode.OpCode{
+							Cmd: opcode.BinaryOp,
 							Args: []any{
 								"+",
-								compiler.Variable("sum"),
-								compiler.OpCode{
-									Cmd:  compiler.OpArrayAccess,
-									Args: []any{compiler.Variable("arr"), compiler.Variable("i")},
+								opcode.Variable("sum"),
+								opcode.OpCode{
+									Cmd:  opcode.ArrayAccess,
+									Args: []any{opcode.Variable("arr"), opcode.Variable("i")},
 								},
 							},
 						},
 					}},
-					{Cmd: compiler.OpAssign, Args: []any{
-						compiler.Variable("i"),
-						compiler.OpCode{Cmd: compiler.OpBinaryOp, Args: []any{"+", compiler.Variable("i"), int64(1)}},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
 					}},
 				},
 			},

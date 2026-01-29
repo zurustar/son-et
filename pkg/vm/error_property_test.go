@@ -6,7 +6,7 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // Feature: execution-engine, Property 19: エラー後の実行継続
@@ -25,8 +25,8 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			vm := New(nil)
 
 			// Create division by zero operation
-			divOp := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			divOp := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"/", dividend, int64(0)},
 			}
 
@@ -53,8 +53,8 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			vm := New(nil)
 
 			// Create modulo by zero operation
-			modOp := compiler.OpCode{
-				Cmd:  compiler.OpBinaryOp,
+			modOp := opcode.OpCode{
+				Cmd:  opcode.BinaryOp,
 				Args: []any{"%", dividend, int64(0)},
 			}
 
@@ -94,9 +94,9 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			vm.globalScope.Set("testArray", arr)
 
 			// Create array access with negative index
-			accessOp := compiler.OpCode{
-				Cmd:  compiler.OpArrayAccess,
-				Args: []any{compiler.Variable("testArray"), negIndex},
+			accessOp := opcode.OpCode{
+				Cmd:  opcode.ArrayAccess,
+				Args: []any{opcode.Variable("testArray"), negIndex},
 			}
 
 			result, err := vm.Execute(accessOp)
@@ -137,9 +137,9 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 
 			// Access beyond array bounds
 			outOfRangeIndex := int64(arraySize + extraIndex)
-			accessOp := compiler.OpCode{
-				Cmd:  compiler.OpArrayAccess,
-				Args: []any{compiler.Variable("testArray"), outOfRangeIndex},
+			accessOp := opcode.OpCode{
+				Cmd:  opcode.ArrayAccess,
+				Args: []any{opcode.Variable("testArray"), outOfRangeIndex},
 			}
 
 			result, err := vm.Execute(accessOp)
@@ -170,7 +170,7 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			vm := New(nil)
 
 			// Try to access undefined variable
-			result, err := vm.evaluateValue(compiler.Variable(varName))
+			result, err := vm.evaluateValue(opcode.Variable(varName))
 			if err != nil {
 				return false // Should not return error
 			}
@@ -197,8 +197,8 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			vm := New(nil)
 
 			// Call unknown function
-			callOp := compiler.OpCode{
-				Cmd:  compiler.OpCall,
+			callOp := opcode.OpCode{
+				Cmd:  opcode.Call,
 				Args: []any{funcName},
 			}
 
@@ -224,8 +224,8 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			// Execute multiple operations that cause non-fatal errors
 			for i := 0; i < errorCount; i++ {
 				// Division by zero
-				divOp := compiler.OpCode{
-					Cmd:  compiler.OpBinaryOp,
+				divOp := opcode.OpCode{
+					Cmd:  opcode.BinaryOp,
 					Args: []any{"/", int64(i + 1), int64(0)},
 				}
 				_, err := vm.Execute(divOp)
@@ -235,9 +235,9 @@ func TestProperty19_ExecutionContinuesAfterNonFatalError(t *testing.T) {
 			}
 
 			// After all errors, VM should still be able to execute normal operations
-			assignOp := compiler.OpCode{
-				Cmd:  compiler.OpAssign,
-				Args: []any{compiler.Variable("result"), int64(42)},
+			assignOp := opcode.OpCode{
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable("result"), int64(42)},
 			}
 			result, err := vm.Execute(assignOp)
 			if err != nil {

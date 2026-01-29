@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zurustar/son-et/pkg/compiler/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 	"github.com/zurustar/son-et/pkg/script"
 )
 
@@ -132,7 +132,7 @@ func TestCompileSimpleAssignment(t *testing.T) {
 		t.Fatalf("Compile() expected 1 opcode, got %d", len(opcodes))
 	}
 
-	if opcodes[0].Cmd != compiler.OpAssign {
+	if opcodes[0].Cmd != opcode.Assign {
 		t.Errorf("Compile() expected OpAssign, got %s", opcodes[0].Cmd)
 	}
 
@@ -141,7 +141,7 @@ func TestCompileSimpleAssignment(t *testing.T) {
 	}
 
 	// Check variable name
-	varName, ok := opcodes[0].Args[0].(compiler.Variable)
+	varName, ok := opcodes[0].Args[0].(opcode.Variable)
 	if !ok {
 		t.Errorf("Compile() expected Variable type for first arg, got %T", opcodes[0].Args[0])
 	}
@@ -172,7 +172,7 @@ func TestCompileFunctionCall(t *testing.T) {
 		t.Fatalf("Compile() expected 1 opcode, got %d", len(opcodes))
 	}
 
-	if opcodes[0].Cmd != compiler.OpCall {
+	if opcodes[0].Cmd != opcode.Call {
 		t.Errorf("Compile() expected OpCall, got %s", opcodes[0].Cmd)
 	}
 
@@ -212,7 +212,7 @@ func TestCompileIfStatement(t *testing.T) {
 		t.Fatalf("Compile() expected 1 opcode, got %d", len(opcodes))
 	}
 
-	if opcodes[0].Cmd != compiler.OpIf {
+	if opcodes[0].Cmd != opcode.If {
 		t.Errorf("Compile() expected OpIf, got %s", opcodes[0].Cmd)
 	}
 
@@ -234,7 +234,7 @@ func TestCompileMesStatement(t *testing.T) {
 		t.Fatalf("Compile() expected 1 opcode, got %d", len(opcodes))
 	}
 
-	if opcodes[0].Cmd != compiler.OpRegisterEventHandler {
+	if opcodes[0].Cmd != opcode.RegisterEventHandler {
 		t.Errorf("Compile() expected OpRegisterEventHandler, got %s", opcodes[0].Cmd)
 	}
 
@@ -267,7 +267,7 @@ func TestCompileStepStatement(t *testing.T) {
 	}
 
 	// First should be OpSetStep
-	if opcodes[0].Cmd != compiler.OpSetStep {
+	if opcodes[0].Cmd != opcode.SetStep {
 		t.Errorf("Compile() expected OpSetStep, got %s", opcodes[0].Cmd)
 	}
 }
@@ -376,11 +376,11 @@ func TestConvertShiftJISToUTF8(t *testing.T) {
 // TestReExportedTypes tests that re-exported types work correctly.
 func TestReExportedTypes(t *testing.T) {
 	// Test that OpCode type alias works
-	var opcode OpCode
-	opcode.Cmd = OpAssign
-	opcode.Args = []any{Variable("x"), 5}
+	var op OpCode
+	op.Cmd = OpAssign
+	op.Args = []any{Variable("x"), 5}
 
-	if opcode.Cmd != compiler.OpAssign {
+	if op.Cmd != opcode.Assign {
 		t.Errorf("OpCode type alias not working correctly")
 	}
 
@@ -391,13 +391,13 @@ func TestReExportedTypes(t *testing.T) {
 	}
 
 	// Test that OpCmd constants are correctly re-exported
-	if OpAssign != compiler.OpAssign {
+	if OpAssign != opcode.Assign {
 		t.Errorf("OpAssign constant not correctly re-exported")
 	}
-	if OpCall != compiler.OpCall {
+	if OpCall != opcode.Call {
 		t.Errorf("OpCall constant not correctly re-exported")
 	}
-	if OpIf != compiler.OpIf {
+	if OpIf != opcode.If {
 		t.Errorf("OpIf constant not correctly re-exported")
 	}
 }
@@ -449,15 +449,15 @@ func TestCompilePipeline(t *testing.T) {
 
 	for _, op := range opcodes {
 		switch op.Cmd {
-		case compiler.OpAssign:
+		case opcode.Assign:
 			hasAssign = true
-		case compiler.OpDefineFunction:
+		case opcode.DefineFunction:
 			hasDefineFunction = true
-		case compiler.OpIf:
+		case opcode.If:
 			hasIf = true
-		case compiler.OpFor:
+		case opcode.For:
 			hasFor = true
-		case compiler.OpRegisterEventHandler:
+		case opcode.RegisterEventHandler:
 			hasRegisterEventHandler = true
 		}
 	}
@@ -522,7 +522,7 @@ func TestCompileScripts(t *testing.T) {
 		if len(opcodes) != 1 {
 			t.Errorf("CompileScripts() expected 1 opcode for test1.tfy, got %d", len(opcodes))
 		}
-		if opcodes[0].Cmd != compiler.OpAssign {
+		if opcodes[0].Cmd != opcode.Assign {
 			t.Errorf("CompileScripts() expected OpAssign for test1.tfy, got %s", opcodes[0].Cmd)
 		}
 	}
@@ -754,7 +754,7 @@ func TestCompileDirectoryWithResultsNotFound(t *testing.T) {
 func TestCompileResultType(t *testing.T) {
 	result := CompileResult{
 		FileName: "test.tfy",
-		OpCodes:  []compiler.OpCode{{Cmd: compiler.OpAssign, Args: []any{compiler.Variable("x"), 5}}},
+		OpCodes:  []opcode.OpCode{{Cmd: opcode.Assign, Args: []any{opcode.Variable("x"), 5}}},
 		Errors:   nil,
 	}
 

@@ -7,7 +7,7 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // Property-based tests for StrPrint built-in function.
@@ -29,7 +29,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.2: System supports %ld format specifier for decimal integers, converting to Go's %d.
 	properties.Property("%ld format produces same result as fmt.Sprintf with %d", prop.ForAll(
 		func(n int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%ld", n})
@@ -47,7 +47,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.3: System supports %lx format specifier for hexadecimal, converting to Go's %x.
 	properties.Property("%lx format produces same result as fmt.Sprintf with %x", prop.ForAll(
 		func(n int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%lx", n})
@@ -65,7 +65,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.5: System supports width and padding specifiers like %03d.
 	properties.Property("%03ld format produces same result as fmt.Sprintf with %03d", prop.ForAll(
 		func(n int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%03ld", n})
@@ -83,7 +83,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.5: System supports width and padding specifiers like %03d.
 	properties.Property("%05ld format produces same result as fmt.Sprintf with %05d", prop.ForAll(
 		func(n int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%05ld", n})
@@ -101,7 +101,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.5: System supports width and padding specifiers like %03d.
 	properties.Property("%08lx format produces same result as fmt.Sprintf with %08x", prop.ForAll(
 		func(n int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%08lx", n})
@@ -119,7 +119,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.4: System supports %s format specifier for strings.
 	properties.Property("%s format produces same result as fmt.Sprintf with %s", prop.ForAll(
 		func(s string) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%s", s})
@@ -137,7 +137,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.1: When StrPrint is called with format string and arguments, system returns formatted string.
 	properties.Property("multiple format specifiers produce correct result", prop.ForAll(
 		func(s string, n1 int64, n2 int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%s: %ld (0x%lx)", s, n1, n2})
@@ -165,7 +165,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 				n = n % 1000
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"ROBOT%03d.BMP", n})
@@ -188,7 +188,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 				n = -n - 1
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			result, err := fn(vm, []any{"%ld", n})
@@ -206,7 +206,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 	// Requirement 1.2, 1.3: System supports %ld and %lx format specifiers.
 	properties.Property("zero is handled correctly with %ld and %lx", prop.ForAll(
 		func(_ bool) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			// Test %ld with zero
@@ -244,7 +244,7 @@ func TestProperty1_StrPrintFormatConversionCorrectness(t *testing.T) {
 				width = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 			fn := vm.builtins["StrPrint"]
 
 			// Create format string with width

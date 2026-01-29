@@ -6,7 +6,7 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
-	"github.com/zurustar/son-et/pkg/compiler"
+	"github.com/zurustar/son-et/pkg/opcode"
 )
 
 // Property-based tests for Array operations.
@@ -173,7 +173,7 @@ func TestProperty21_ArrayAutoExpansion(t *testing.T) {
 				return true
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create initial array
 			if initialSize > 0 {
@@ -185,9 +185,9 @@ func TestProperty21_ArrayAutoExpansion(t *testing.T) {
 			}
 
 			// Execute OpArrayAssign
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpArrayAssign,
-				Args: []any{compiler.Variable("arr"), targetIndex, value},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.ArrayAssign,
+				Args: []any{opcode.Variable("arr"), targetIndex, value},
 			}
 
 			_, err := vm.executeArrayAssign(opcode)
@@ -249,7 +249,7 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 				modifyIndex = int64(len(initialValues)) - 1
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create array in global scope
 			elements := make([]any, len(initialValues))
@@ -266,18 +266,18 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 					{Name: "idx", Type: "int", IsArray: false},
 					{Name: "val", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd:  compiler.OpArrayAssign,
-						Args: []any{compiler.Variable("arr"), compiler.Variable("idx"), compiler.Variable("val")},
+						Cmd:  opcode.ArrayAssign,
+						Args: []any{opcode.Variable("arr"), opcode.Variable("idx"), opcode.Variable("val")},
 					},
 				},
 			}
 
 			// Call function with array
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpCall,
-				Args: []any{"modifyElement", compiler.Variable("testArr"), modifyIndex, newValue},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Call,
+				Args: []any{"modifyElement", opcode.Variable("testArr"), modifyIndex, newValue},
 			}
 
 			_, err := vm.executeCall(opcode)
@@ -314,7 +314,7 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 				expandIndex = 100
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create small array in global scope
 			elements := make([]any, initialSize)
@@ -331,18 +331,18 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 					{Name: "idx", Type: "int", IsArray: false},
 					{Name: "val", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd:  compiler.OpArrayAssign,
-						Args: []any{compiler.Variable("arr"), compiler.Variable("idx"), compiler.Variable("val")},
+						Cmd:  opcode.ArrayAssign,
+						Args: []any{opcode.Variable("arr"), opcode.Variable("idx"), opcode.Variable("val")},
 					},
 				},
 			}
 
 			// Call function with array
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpCall,
-				Args: []any{"expandArray", compiler.Variable("smallArr"), expandIndex, value},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Call,
+				Args: []any{"expandArray", opcode.Variable("smallArr"), expandIndex, value},
 			}
 
 			_, err := vm.executeCall(opcode)
@@ -371,7 +371,7 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 	// Property: Nested function calls preserve reference
 	properties.Property("nested function calls preserve array reference", prop.ForAll(
 		func(value1 int64, value2 int64) bool {
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create array in global scope
 			vm.GetGlobalScope().Set("nestedArr", NewArrayFromSlice([]any{int64(0), int64(0), int64(0)}))
@@ -383,10 +383,10 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 					{Name: "arr", Type: "int", IsArray: true},
 					{Name: "val", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd:  compiler.OpArrayAssign,
-						Args: []any{compiler.Variable("arr"), int64(2), compiler.Variable("val")},
+						Cmd:  opcode.ArrayAssign,
+						Args: []any{opcode.Variable("arr"), int64(2), opcode.Variable("val")},
 					},
 				},
 			}
@@ -399,22 +399,22 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 					{Name: "val1", Type: "int", IsArray: false},
 					{Name: "val2", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd:  compiler.OpArrayAssign,
-						Args: []any{compiler.Variable("arr"), int64(1), compiler.Variable("val1")},
+						Cmd:  opcode.ArrayAssign,
+						Args: []any{opcode.Variable("arr"), int64(1), opcode.Variable("val1")},
 					},
 					{
-						Cmd:  compiler.OpCall,
-						Args: []any{"innerModify", compiler.Variable("arr"), compiler.Variable("val2")},
+						Cmd:  opcode.Call,
+						Args: []any{"innerModify", opcode.Variable("arr"), opcode.Variable("val2")},
 					},
 				},
 			}
 
 			// Call outer function
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpCall,
-				Args: []any{"outerModify", compiler.Variable("nestedArr"), value1, value2},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Call,
+				Args: []any{"outerModify", opcode.Variable("nestedArr"), value1, value2},
 			}
 
 			_, err := vm.executeCall(opcode)
@@ -446,7 +446,7 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 				values = values[:10]
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create array in global scope
 			elements := make([]any, len(values))
@@ -463,19 +463,19 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 					{Name: "idx", Type: "int", IsArray: false},
 					{Name: "val", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd:  compiler.OpArrayAssign,
-						Args: []any{compiler.Variable("arr"), compiler.Variable("idx"), compiler.Variable("val")},
+						Cmd:  opcode.ArrayAssign,
+						Args: []any{opcode.Variable("arr"), opcode.Variable("idx"), opcode.Variable("val")},
 					},
 				},
 			}
 
 			// Call function multiple times with different indices
 			for i, val := range values {
-				opcode := compiler.OpCode{
-					Cmd:  compiler.OpCall,
-					Args: []any{"setElement", compiler.Variable("multiArr"), int64(i), val},
+				opcode := opcode.OpCode{
+					Cmd:  opcode.Call,
+					Args: []any{"setElement", opcode.Variable("multiArr"), int64(i), val},
 				}
 
 				_, err := vm.executeCall(opcode)
@@ -511,7 +511,7 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 				depth = 20
 			}
 
-			vm := New([]compiler.OpCode{})
+			vm := New([]opcode.OpCode{})
 
 			// Create array in global scope
 			elements := make([]any, depth)
@@ -534,54 +534,54 @@ func TestProperty22_ArrayPassByReference(t *testing.T) {
 					{Name: "d", Type: "int", IsArray: false},
 					{Name: "val", Type: "int", IsArray: false},
 				},
-				Body: []compiler.OpCode{
+				Body: []opcode.OpCode{
 					{
-						Cmd: compiler.OpIf,
+						Cmd: opcode.If,
 						Args: []any{
 							// condition: d > 0
-							compiler.OpCode{
-								Cmd:  compiler.OpBinaryOp,
-								Args: []any{">", compiler.Variable("d"), int64(0)},
+							opcode.OpCode{
+								Cmd:  opcode.BinaryOp,
+								Args: []any{">", opcode.Variable("d"), int64(0)},
 							},
 							// then block
-							[]compiler.OpCode{
+							[]opcode.OpCode{
 								// arr[d-1] = val
 								{
-									Cmd: compiler.OpArrayAssign,
+									Cmd: opcode.ArrayAssign,
 									Args: []any{
-										compiler.Variable("arr"),
-										compiler.OpCode{
-											Cmd:  compiler.OpBinaryOp,
-											Args: []any{"-", compiler.Variable("d"), int64(1)},
+										opcode.Variable("arr"),
+										opcode.OpCode{
+											Cmd:  opcode.BinaryOp,
+											Args: []any{"-", opcode.Variable("d"), int64(1)},
 										},
-										compiler.Variable("val"),
+										opcode.Variable("val"),
 									},
 								},
 								// recursiveModify(arr, d-1, val)
 								{
-									Cmd: compiler.OpCall,
+									Cmd: opcode.Call,
 									Args: []any{
 										"recursiveModify",
-										compiler.Variable("arr"),
-										compiler.OpCode{
-											Cmd:  compiler.OpBinaryOp,
-											Args: []any{"-", compiler.Variable("d"), int64(1)},
+										opcode.Variable("arr"),
+										opcode.OpCode{
+											Cmd:  opcode.BinaryOp,
+											Args: []any{"-", opcode.Variable("d"), int64(1)},
 										},
-										compiler.Variable("val"),
+										opcode.Variable("val"),
 									},
 								},
 							},
 							// else block (empty)
-							[]compiler.OpCode{},
+							[]opcode.OpCode{},
 						},
 					},
 				},
 			}
 
 			// Call recursive function
-			opcode := compiler.OpCode{
-				Cmd:  compiler.OpCall,
-				Args: []any{"recursiveModify", compiler.Variable("recursiveArr"), int64(depth), value},
+			opcode := opcode.OpCode{
+				Cmd:  opcode.Call,
+				Args: []any{"recursiveModify", opcode.Variable("recursiveArr"), int64(depth), value},
 			}
 
 			_, err := vm.executeCall(opcode)
