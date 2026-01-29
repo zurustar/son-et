@@ -62,3 +62,7 @@ cmd/son-et/titles/*
 # Zip files
 *.zip
 
+
+# Test coverage
+coverage.out
+coverage.html
