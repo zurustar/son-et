@@ -105,7 +105,8 @@ func TestSpriteSystemIntegration_CastSpriteAsChild(t *testing.T) {
 	}
 
 	// キャストを配置
-	castID, err := gs.PutCast(winID, picID, 10, 20, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, err := gs.PutCast(picID, picID, 10, 20, 0, 0, 50, 50)
 	if err != nil {
 		t.Fatalf("PutCast failed: %v", err)
 	}
@@ -138,26 +139,35 @@ func TestSpriteSystemIntegration_CastSpriteAsChild(t *testing.T) {
 func TestSpriteSystemIntegration_GlobalZOrder(t *testing.T) {
 	gs := NewGraphicsSystem("")
 
-	// ピクチャーを作成
-	picID, err := gs.CreatePic(200, 150)
+	// ピクチャーを作成（各ウインドウに別のピクチャーを使用）
+	picID1, err := gs.CreatePic(200, 150)
 	if err != nil {
-		t.Fatalf("CreatePic failed: %v", err)
+		t.Fatalf("CreatePic 1 failed: %v", err)
+	}
+	picID2, err := gs.CreatePic(200, 150)
+	if err != nil {
+		t.Fatalf("CreatePic 2 failed: %v", err)
+	}
+	spritePicID, err := gs.CreatePic(50, 50)
+	if err != nil {
+		t.Fatalf("CreatePic sprite failed: %v", err)
 	}
 
 	// 2つのウインドウを開く
-	winID1, err := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
+	_, err = gs.OpenWin(picID1, 0, 0, 200, 150, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("OpenWin 1 failed: %v", err)
 	}
 
-	winID2, err := gs.OpenWin(picID, 100, 100, 200, 150, 0, 0, 0)
+	_, err = gs.OpenWin(picID2, 100, 100, 200, 150, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("OpenWin 2 failed: %v", err)
 	}
 
 	// 各ウインドウにキャストを配置
-	castID1, _ := gs.PutCast(winID1, picID, 10, 10, 0, 0, 50, 50)
-	castID2, _ := gs.PutCast(winID2, picID, 10, 10, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID1, _ := gs.PutCast(spritePicID, picID1, 10, 10, 0, 0, 50, 50)
+	castID2, _ := gs.PutCast(spritePicID, picID2, 10, 10, 0, 0, 50, 50)
 
 	// CastSpriteを取得
 	csm := gs.GetCastSpriteManager()
@@ -193,12 +203,14 @@ func TestSpriteSystemIntegration_CloseWindowRemovesSprites(t *testing.T) {
 
 	// ピクチャーを作成
 	picID, _ := gs.CreatePic(200, 150)
+	spritePicID, _ := gs.CreatePic(50, 50)
 
 	// ウインドウを開く
 	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// キャストを配置
-	castID, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, _ := gs.PutCast(spritePicID, picID, 10, 10, 0, 0, 50, 50)
 
 	// スプライトが存在することを確認
 	wsm := gs.GetWindowSpriteManager()
@@ -233,10 +245,11 @@ func TestSpriteSystemIntegration_ParentChildPositionInheritance(t *testing.T) {
 	picID, _ := gs.CreatePic(200, 150)
 
 	// ウインドウを開く（位置: 100, 50）
-	winID, _ := gs.OpenWin(picID, 100, 50, 200, 150, 0, 0, 0)
+	_, _ = gs.OpenWin(picID, 100, 50, 200, 150, 0, 0, 0)
 
 	// キャストを配置（相対位置: 10, 20）
-	castID, _ := gs.PutCast(winID, picID, 10, 20, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, _ := gs.PutCast(picID, picID, 10, 20, 0, 0, 50, 50)
 
 	// CastSpriteを取得
 	csm := gs.GetCastSpriteManager()
@@ -266,7 +279,8 @@ func TestSpriteSystemIntegration_ParentChildVisibilityInheritance(t *testing.T) 
 	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// キャストを配置
-	castID, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, _ := gs.PutCast(picID, picID, 10, 10, 0, 0, 50, 50)
 
 	// CastSpriteを取得
 	csm := gs.GetCastSpriteManager()
@@ -301,12 +315,13 @@ func TestSpriteSystemIntegration_MultipleCastsZOrder(t *testing.T) {
 	picID, _ := gs.CreatePic(200, 150)
 
 	// ウインドウを開く
-	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
+	_, _ = gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// 複数のキャストを配置
-	castID1, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
-	castID2, _ := gs.PutCast(winID, picID, 20, 20, 0, 0, 50, 50)
-	castID3, _ := gs.PutCast(winID, picID, 30, 30, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID1, _ := gs.PutCast(picID, picID, 10, 10, 0, 0, 50, 50)
+	castID2, _ := gs.PutCast(picID, picID, 20, 20, 0, 0, 50, 50)
+	castID3, _ := gs.PutCast(picID, picID, 30, 30, 0, 0, 50, 50)
 
 	// CastSpriteを取得
 	csm := gs.GetCastSpriteManager()
@@ -342,10 +357,11 @@ func TestSpriteSystemIntegration_DrawWithSpriteManager(t *testing.T) {
 	picID, _ := gs.CreatePic(200, 150)
 
 	// ウインドウを開く
-	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
+	_, _ = gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// キャストを配置
-	gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	gs.PutCast(picID, picID, 10, 10, 0, 0, 50, 50)
 
 	// テスト用のスクリーンを作成
 	screen := ebiten.NewImage(1024, 768)
@@ -367,10 +383,11 @@ func TestSpriteSystemIntegration_MoveCastUpdatesSprite(t *testing.T) {
 	picID, _ := gs.CreatePic(200, 150)
 
 	// ウインドウを開く
-	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
+	_, _ = gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// キャストを配置
-	castID, _ := gs.PutCast(winID, picID, 10, 20, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, _ := gs.PutCast(picID, picID, 10, 20, 0, 0, 50, 50)
 
 	// CastSpriteを取得
 	csm := gs.GetCastSpriteManager()
@@ -405,10 +422,11 @@ func TestSpriteSystemIntegration_DelCastRemovesSprite(t *testing.T) {
 	picID, _ := gs.CreatePic(200, 150)
 
 	// ウインドウを開く
-	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
+	_, _ = gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// キャストを配置
-	castID, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, _ := gs.PutCast(picID, picID, 10, 10, 0, 0, 50, 50)
 
 	// CastSpriteが存在することを確認
 	csm := gs.GetCastSpriteManager()
@@ -433,8 +451,9 @@ func TestSpriteSystemIntegration_CloseWinAllClearsAllSprites(t *testing.T) {
 	// 複数のウインドウとキャストを作成
 	for i := 0; i < 3; i++ {
 		picID, _ := gs.CreatePic(200, 150)
-		winID, _ := gs.OpenWin(picID, i*100, i*50, 200, 150, 0, 0, 0)
-		gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
+		_, _ = gs.OpenWin(picID, i*100, i*50, 200, 150, 0, 0, 0)
+		// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+		gs.PutCast(picID, picID, 10, 10, 0, 0, 50, 50)
 	}
 
 	// スプライトが存在することを確認
@@ -554,8 +573,9 @@ func TestSpriteSystemIntegration_WindowSpriteChildManagement(t *testing.T) {
 	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// 複数のキャストを配置
-	castID1, _ := gs.PutCast(winID, picID, 10, 10, 0, 0, 50, 50)
-	castID2, _ := gs.PutCast(winID, picID, 20, 20, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID1, _ := gs.PutCast(picID, picID, 10, 10, 0, 0, 50, 50)
+	castID2, _ := gs.PutCast(picID, picID, 20, 20, 0, 0, 50, 50)
 
 	// WindowSpriteを取得
 	wsm := gs.GetWindowSpriteManager()
@@ -606,11 +626,12 @@ func TestSpriteSystemIntegration_TransparentColorCast(t *testing.T) {
 	picID, _ := gs.CreatePic(200, 150)
 
 	// ウインドウを開く
-	winID, _ := gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
+	_, _ = gs.OpenWin(picID, 0, 0, 200, 150, 0, 0, 0)
 
 	// 透明色付きでキャストを配置
+	// 新API: PutCastWithTransColor(srcPicID, dstPicID, x, y, srcX, srcY, w, h, transColor)
 	transColor := color.RGBA{0, 0, 0, 255} // 黒を透明色として指定
-	castID, err := gs.PutCastWithTransColor(winID, picID, 10, 10, 0, 0, 50, 50, transColor)
+	castID, err := gs.PutCastWithTransColor(picID, picID, 10, 10, 0, 0, 50, 50, transColor)
 	if err != nil {
 		t.Fatalf("PutCastWithTransColor failed: %v", err)
 	}
@@ -652,8 +673,9 @@ func TestSpriteSystemIntegration_CompleteRenderingPipeline(t *testing.T) {
 	}
 
 	// キャストを配置
-	castID1, _ := gs.PutCast(winID, spritePicID, 10, 10, 0, 0, 50, 50)
-	castID2, _ := gs.PutCast(winID, spritePicID, 60, 60, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID1, _ := gs.PutCast(spritePicID, bgPicID, 10, 10, 0, 0, 50, 50)
+	castID2, _ := gs.PutCast(spritePicID, bgPicID, 60, 60, 0, 0, 50, 50)
 
 	// テキストを描画
 	gs.TextWrite(bgPicID, 10, 200, "Hello World")

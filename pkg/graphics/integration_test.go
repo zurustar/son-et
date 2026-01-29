@@ -49,12 +49,14 @@ func TestIntegrationDrawLoop(t *testing.T) {
 	}
 
 	// Place casts
-	cast1ID, err := gs.PutCast(win1ID, pic2ID, 10, 10, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	// pic2IDがソース、pic1IDが配置先（win1IDのピクチャー）
+	cast1ID, err := gs.PutCast(pic2ID, pic1ID, 10, 10, 0, 0, 50, 50)
 	if err != nil {
 		t.Fatalf("Failed to put cast 1: %v", err)
 	}
 
-	cast2ID, err := gs.PutCast(win1ID, pic2ID, 30, 30, 0, 0, 50, 50)
+	cast2ID, err := gs.PutCast(pic2ID, pic1ID, 30, 30, 0, 0, 50, 50)
 	if err != nil {
 		t.Fatalf("Failed to put cast 2: %v", err)
 	}
@@ -184,13 +186,14 @@ func TestIntegrationCastTransparency(t *testing.T) {
 	gs.mu.Unlock()
 
 	// Open window
-	winID, err := gs.OpenWin(bgPicID, 50, 50, 200, 200, 0, 0, 0)
+	_, err = gs.OpenWin(bgPicID, 50, 50, 200, 200, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to open window: %v", err)
 	}
 
 	// Place cast
-	castID, err := gs.PutCast(winID, spritePicID, 75, 75, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, err := gs.PutCast(spritePicID, bgPicID, 75, 75, 0, 0, 50, 50)
 	if err != nil {
 		t.Fatalf("Failed to put cast: %v", err)
 	}
@@ -371,17 +374,19 @@ func TestIntegrationCastsByWindow(t *testing.T) {
 	gs := NewGraphicsSystem("")
 
 	// Create pictures
-	bgPicID, _ := gs.CreatePic(200, 200)
+	bgPicID1, _ := gs.CreatePic(200, 200)
+	bgPicID2, _ := gs.CreatePic(200, 200)
 	spritePicID, _ := gs.CreatePic(50, 50)
 
-	// Open two windows
-	win1ID, _ := gs.OpenWin(bgPicID, 0, 0, 200, 200, 0, 0, 0)
-	win2ID, _ := gs.OpenWin(bgPicID, 300, 0, 200, 200, 0, 0, 0)
+	// Open two windows with different pictures
+	win1ID, _ := gs.OpenWin(bgPicID1, 0, 0, 200, 200, 0, 0, 0)
+	win2ID, _ := gs.OpenWin(bgPicID2, 300, 0, 200, 200, 0, 0, 0)
 
-	// Place casts on different windows
-	cast1ID, _ := gs.PutCast(win1ID, spritePicID, 10, 10, 0, 0, 50, 50)
-	cast2ID, _ := gs.PutCast(win1ID, spritePicID, 50, 50, 0, 0, 50, 50)
-	cast3ID, _ := gs.PutCast(win2ID, spritePicID, 20, 20, 0, 0, 50, 50)
+	// Place casts on different pictures (which are associated with different windows)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	cast1ID, _ := gs.PutCast(spritePicID, bgPicID1, 10, 10, 0, 0, 50, 50)
+	cast2ID, _ := gs.PutCast(spritePicID, bgPicID1, 50, 50, 0, 0, 50, 50)
+	cast3ID, _ := gs.PutCast(spritePicID, bgPicID2, 20, 20, 0, 0, 50, 50)
 
 	// Verify casts are associated with correct windows
 	gs.mu.RLock()
@@ -635,12 +640,13 @@ func TestIntegrationSampleKuma2(t *testing.T) {
 		}
 
 		// Place casts on the window
+		// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
 		for i := 1; i < len(picIDs) && i < 3; i++ {
 			castPicID := picIDs[i]
 			castWidth := gs.PicWidth(castPicID)
 			castHeight := gs.PicHeight(castPicID)
 
-			castID, err := gs.PutCast(winID, castPicID, i*30, i*30, 0, 0, castWidth, castHeight)
+			castID, err := gs.PutCast(castPicID, bgPicID, i*30, i*30, 0, 0, castWidth, castHeight)
 			if err != nil {
 				t.Errorf("Failed to put cast %d: %v", i, err)
 				continue
@@ -714,25 +720,26 @@ func TestIntegrationErrorHandling(t *testing.T) {
 		t.Logf("✓ Invalid picture for window allowed (window will not display)")
 	}
 
-	// Test 6: Placing cast with invalid window
-	// Note: The system allows placing casts on invalid windows (they just won't display)
-	castID, err := gs.PutCast(999, 0, 0, 0, 0, 0, 50, 50)
+	// Test 6: Placing cast with invalid destination picture
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	// Note: The system allows placing casts on invalid pictures (they just won't display)
+	castID, err := gs.PutCast(0, 999, 0, 0, 0, 0, 50, 50)
 	if castID < 0 {
-		t.Logf("✓ Invalid window for cast handled (returned ID: %d)", castID)
+		t.Logf("✓ Invalid destination picture for cast handled (returned ID: %d)", castID)
 	} else {
-		t.Logf("✓ Invalid window for cast allowed (cast will not display)")
+		t.Logf("✓ Invalid destination picture for cast allowed (cast will not display)")
 	}
 
-	// Test 7: Placing cast with invalid picture
+	// Test 7: Placing cast with invalid source picture
 	// First create a valid window
 	validPicID, _ := gs.CreatePic(100, 100)
-	validWinID, _ := gs.OpenWin(validPicID, 0, 0, 100, 100, 0, 0, 0)
+	_, _ = gs.OpenWin(validPicID, 0, 0, 100, 100, 0, 0, 0)
 
-	castID, err = gs.PutCast(validWinID, 999, 0, 0, 0, 0, 50, 50)
+	castID, err = gs.PutCast(999, validPicID, 0, 0, 0, 0, 50, 50)
 	if castID < 0 {
-		t.Logf("✓ Invalid picture for cast handled (returned ID: %d)", castID)
+		t.Logf("✓ Invalid source picture for cast handled (returned ID: %d)", castID)
 	} else {
-		t.Logf("✓ Invalid picture for cast allowed (cast will not display)")
+		t.Logf("✓ Invalid source picture for cast allowed (cast will not display)")
 	}
 
 	// Test 8: Drawing operations on invalid picture
@@ -782,8 +789,9 @@ func TestIntegrationResourceCleanup(t *testing.T) {
 	spritePicID, _ := gs.CreatePic(50, 50)
 
 	winID, _ := gs.OpenWin(bgPicID, 0, 0, 200, 200, 0, 0, 0)
-	cast1ID, _ := gs.PutCast(winID, spritePicID, 10, 10, 0, 0, 50, 50)
-	cast2ID, _ := gs.PutCast(winID, spritePicID, 50, 50, 0, 0, 50, 50)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	cast1ID, _ := gs.PutCast(spritePicID, bgPicID, 10, 10, 0, 0, 50, 50)
+	cast2ID, _ := gs.PutCast(spritePicID, bgPicID, 50, 50, 0, 0, 50, 50)
 
 	// Close window
 	err = gs.CloseWin(winID)
@@ -803,10 +811,12 @@ func TestIntegrationResourceCleanup(t *testing.T) {
 	t.Logf("✓ Window and cast cleanup verified")
 
 	// Test 3: CloseWinAll cleanup
-	win1ID, _ := gs.OpenWin(bgPicID, 0, 0, 100, 100, 0, 0, 0)
-	win2ID, _ := gs.OpenWin(bgPicID, 100, 100, 100, 100, 0, 0, 0)
-	gs.PutCast(win1ID, spritePicID, 10, 10, 0, 0, 50, 50)
-	gs.PutCast(win2ID, spritePicID, 10, 10, 0, 0, 50, 50)
+	bgPicID2, _ := gs.CreatePic(100, 100)
+	bgPicID3, _ := gs.CreatePic(100, 100)
+	_, _ = gs.OpenWin(bgPicID2, 0, 0, 100, 100, 0, 0, 0)
+	_, _ = gs.OpenWin(bgPicID3, 100, 100, 100, 100, 0, 0, 0)
+	gs.PutCast(spritePicID, bgPicID2, 10, 10, 0, 0, 50, 50)
+	gs.PutCast(spritePicID, bgPicID3, 10, 10, 0, 0, 50, 50)
 
 	gs.CloseWinAll()
 

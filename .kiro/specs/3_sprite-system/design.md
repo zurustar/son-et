@@ -76,7 +76,7 @@
 
 ## コンポーネントとインターフェース
 
-### 1. Sprite (pkg/graphics/sprite.go)
+### 1. Sprite (pkg/sprite/sprite.go)
 
 #### 構造体
 
@@ -149,27 +149,26 @@ func (s *Sprite) SendToBack() {
 }
 ```
 
-### 2. SpriteManager (pkg/graphics/sprite.go)
+### 2. SpriteManager (pkg/sprite/sprite.go)
 
 #### 構造体
 
 ```go
 // SpriteManager はスプライトを管理する
+// 注: pictureSpriteMapはPictureSpriteManagerで管理される（責務の分離）
 type SpriteManager struct {
-    mu               sync.RWMutex
-    sprites          map[int]*Sprite      // ID -> Sprite
-    roots            []*Sprite            // ルートスプライト（ウインドウ）のスライス
-    pictureSpriteMap map[int]*PictureSprite // ピクチャーID -> PictureSprite
-    nextID           int
+    mu      sync.RWMutex
+    sprites map[int]*Sprite // ID -> Sprite
+    roots   []*Sprite       // ルートスプライト（ウインドウ）のスライス
+    nextID  int
 }
 
 // NewSpriteManager は新しいSpriteManagerを作成する
 func NewSpriteManager() *SpriteManager {
     return &SpriteManager{
-        sprites:          make(map[int]*Sprite),
-        roots:            make([]*Sprite, 0),
-        pictureSpriteMap: make(map[int]*PictureSprite),
-        nextID:           1,
+        sprites: make(map[int]*Sprite),
+        roots:   make([]*Sprite, 0),
+        nextID:  1,
     }
 }
 

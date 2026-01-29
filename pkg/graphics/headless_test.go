@@ -150,10 +150,11 @@ func TestHeadlessGraphicsSystem_CastManagement(t *testing.T) {
 
 	// ピクチャーとウィンドウを作成
 	picID, _ := hgs.CreatePic(640, 480)
-	winID, _ := hgs.OpenWin(picID)
+	_, _ = hgs.OpenWin(picID)
 
 	// PutCast
-	castID, err := hgs.PutCast(winID, picID, 10, 20, 0, 0, 32, 32)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	castID, err := hgs.PutCast(picID, picID, 10, 20, 0, 0, 32, 32)
 	if err != nil {
 		t.Fatalf("PutCast failed: %v", err)
 	}
@@ -184,8 +185,9 @@ func TestHeadlessGraphicsSystem_CloseWinAll(t *testing.T) {
 	picID, _ := hgs.CreatePic(640, 480)
 	winID1, _ := hgs.OpenWin(picID)
 	winID2, _ := hgs.OpenWin(picID)
-	hgs.PutCast(winID1, picID, 0, 0, 0, 0, 32, 32)
-	hgs.PutCast(winID2, picID, 0, 0, 0, 0, 32, 32)
+	// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+	hgs.PutCast(picID, picID, 0, 0, 0, 0, 32, 32)
+	hgs.PutCast(picID, picID, 0, 0, 0, 0, 32, 32)
 
 	// CloseWinAll
 	hgs.CloseWinAll()

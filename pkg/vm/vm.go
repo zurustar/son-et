@@ -886,21 +886,15 @@ func (vm *VM) registerDefaultBuiltins() {
 			srcX, _ := toInt64(args[10])
 			srcY, _ := toInt64(args[11])
 
-			// basePicはピクチャーIDなので、対応するウィンドウIDを逆引きする
-			winID, err := v.graphicsSystem.GetWinByPicID(int(basePic))
-			if err != nil {
-				v.log.Warn("PutCast: no window found for base_pic", "basePic", basePic, "error", err)
-				return -1, nil
-			}
-
-			// 透明色を設定
+			// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+			// basePicが配置先ピクチャー、picIDがソースピクチャー
 			transColor := graphics.ColorFromInt(int(transColorInt))
-			castID, err := v.graphicsSystem.PutCastWithTransColor(winID, int(picID), int(x), int(y), int(srcX), int(srcY), int(width), int(height), transColor)
+			castID, err := v.graphicsSystem.PutCastWithTransColor(int(picID), int(basePic), int(x), int(y), int(srcX), int(srcY), int(width), int(height), transColor)
 			if err != nil {
 				v.log.Warn("PutCast failed", "error", err)
 				return -1, nil
 			}
-			v.log.Debug("PutCast called (12 args)", "picID", picID, "basePic", basePic, "winID", winID, "x", x, "y", y, "transColor", transColorInt, "castID", castID)
+			v.log.Debug("PutCast called (12 args)", "srcPicID", picID, "dstPicID", basePic, "x", x, "y", y, "transColor", transColorInt, "castID", castID)
 			return castID, nil
 		}
 
@@ -914,21 +908,15 @@ func (vm *VM) registerDefaultBuiltins() {
 			w := v.graphicsSystem.PicWidth(int(picID))
 			h := v.graphicsSystem.PicHeight(int(picID))
 
-			// basePicはピクチャーIDなので、対応するウィンドウIDを逆引きする
-			winID, err := v.graphicsSystem.GetWinByPicID(int(basePic))
-			if err != nil {
-				v.log.Warn("PutCast: no window found for base_pic", "basePic", basePic, "error", err)
-				return -1, nil
-			}
-
-			// 透明色を設定
+			// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+			// basePicが配置先ピクチャー、picIDがソースピクチャー
 			transColor := graphics.ColorFromInt(int(transColorInt))
-			castID, err := v.graphicsSystem.PutCastWithTransColor(winID, int(picID), int(x), int(y), 0, 0, w, h, transColor)
+			castID, err := v.graphicsSystem.PutCastWithTransColor(int(picID), int(basePic), int(x), int(y), 0, 0, w, h, transColor)
 			if err != nil {
 				v.log.Warn("PutCast failed", "error", err)
 				return -1, nil
 			}
-			v.log.Debug("PutCast called (5 args)", "picID", picID, "basePic", basePic, "winID", winID, "transColor", transColorInt, "castID", castID)
+			v.log.Debug("PutCast called (5 args)", "srcPicID", picID, "dstPicID", basePic, "transColor", transColorInt, "castID", castID)
 			return castID, nil
 		}
 
@@ -947,15 +935,9 @@ func (vm *VM) registerDefaultBuiltins() {
 			w := v.graphicsSystem.PicWidth(int(picID))
 			h := v.graphicsSystem.PicHeight(int(picID))
 
-			// basePicはピクチャーIDなので、対応するウィンドウIDを逆引きする
-			winID, err := v.graphicsSystem.GetWinByPicID(int(basePic))
-			if err != nil {
-				v.log.Warn("PutCast (4 args): no window found for base_pic", "basePic", basePic, "error", err)
-				return -1, nil
-			}
-
-			// 1. キャストを作成（透明色なし）
-			castID, err := v.graphicsSystem.PutCast(winID, int(picID), int(x), int(y), 0, 0, w, h)
+			// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+			// basePicが配置先ピクチャー、picIDがソースピクチャー
+			castID, err := v.graphicsSystem.PutCast(int(picID), int(basePic), int(x), int(y), 0, 0, w, h)
 			if err != nil {
 				v.log.Warn("PutCast (4 args) failed", "error", err)
 				return -1, nil
@@ -969,14 +951,15 @@ func (vm *VM) registerDefaultBuiltins() {
 				// キャストは作成済みなのでエラーでも続行
 			}
 
-			v.log.Debug("PutCast called (4 args)", "picID", picID, "basePic", basePic, "winID", winID, "x", x, "y", y, "castID", castID)
+			v.log.Debug("PutCast called (4 args)", "srcPicID", picID, "dstPicID", basePic, "x", x, "y", y, "castID", castID)
 			return castID, nil
 		}
 
-		// 8 args: PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
+		// 8 args: PutCast(src_pic_no, dst_pic_no, x, y, src_x, src_y, width, height)
+		// 新API: 第1引数はソースピクチャー、第2引数は配置先ピクチャー
 		if len(args) >= 8 {
-			winID, _ := toInt64(args[0])
-			picID, _ := toInt64(args[1])
+			srcPicID, _ := toInt64(args[0])
+			dstPicID, _ := toInt64(args[1])
 			x, _ := toInt64(args[2])
 			y, _ := toInt64(args[3])
 			srcX, _ := toInt64(args[4])
@@ -984,12 +967,12 @@ func (vm *VM) registerDefaultBuiltins() {
 			width, _ := toInt64(args[6])
 			height, _ := toInt64(args[7])
 
-			castID, err := v.graphicsSystem.PutCast(int(winID), int(picID), int(x), int(y), int(srcX), int(srcY), int(width), int(height))
+			castID, err := v.graphicsSystem.PutCast(int(srcPicID), int(dstPicID), int(x), int(y), int(srcX), int(srcY), int(width), int(height))
 			if err != nil {
 				v.log.Warn("PutCast failed", "error", err)
 				return -1, nil
 			}
-			v.log.Debug("PutCast called (8 args)", "winID", winID, "picID", picID, "castID", castID)
+			v.log.Debug("PutCast called (8 args)", "srcPicID", srcPicID, "dstPicID", dstPicID, "castID", castID)
 			return castID, nil
 		}
 

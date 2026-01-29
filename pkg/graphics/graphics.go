@@ -1497,17 +1497,28 @@ func (gs *GraphicsSystem) GetWinByPicID(picID int) (int, error) {
 
 // Cast management
 
-// PutCast places a cast on a window
+// PutCast places a cast on a picture
+// 新API: PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h)
+// - srcPicID: ソースピクチャーID（画像の取得元）
+// - dstPicID: 配置先ピクチャーID（キャストを配置する先）
 // スプライトシステム要件 8.1: キャストをスプライトとして作成する
 // 要件 9.2: ピクチャ内にキャストが配置されたとき、キャストをピクチャの子スプライトとして管理する
 // 要件 11.5: ウインドウに関連付けられていないピクチャに対するCastSetでも、PictureSpriteを親として設定する
 // 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
-func (gs *GraphicsSystem) PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int, error) {
+func (gs *GraphicsSystem) PutCast(srcPicID, dstPicID, x, y, srcX, srcY, w, h int) (int, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// キャストを作成
-	castID, err := gs.casts.PutCast(winID, picID, x, y, srcX, srcY, w, h)
+	// 配置先ピクチャーからウインドウIDを逆引き
+	winID, err := gs.windows.GetWinByPicID(dstPicID)
+	if err != nil {
+		// ウインドウが見つからない場合でもキャストは作成する（ウインドウに関連付けられていないピクチャー）
+		winID = -1
+		gs.log.Debug("PutCast: no window found for dstPicID, creating unattached cast", "dstPicID", dstPicID)
+	}
+
+	// キャストを作成（内部的にはwinIDを使用）
+	castID, err := gs.casts.PutCast(winID, srcPicID, x, y, srcX, srcY, w, h)
 	if err != nil {
 		return -1, err
 	}
@@ -1519,32 +1530,32 @@ func (gs *GraphicsSystem) PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int
 		cast, err := gs.casts.GetCast(castID)
 		if err == nil && cast != nil {
 			// ソース画像を取得
-			srcPic, err := gs.pictures.GetPicWithoutLock(picID)
+			srcPic, err := gs.pictures.GetPicWithoutLock(srcPicID)
 			if err == nil && srcPic != nil && srcPic.Image != nil {
 				// ウインドウのZ順序を取得
-				win, winErr := gs.windows.GetWin(winID)
 				windowZOrder := 0
-				var winPicID int
-				if winErr == nil && win != nil {
-					windowZOrder = win.ZOrder
-					winPicID = win.PicID
+				if winID >= 0 {
+					win, winErr := gs.windows.GetWin(winID)
+					if winErr == nil && win != nil {
+						windowZOrder = win.ZOrder
+					}
 				}
 
 				// Z順序を計算（グローバルZ順序）
 				localZOrder := ZOrderCastBase + cast.ZOrder
 				zOrder := CalculateGlobalZOrder(windowZOrder, localZOrder)
 
-				// 要件 9.2, 11.5: PictureSpriteを親として取得（キャストはピクチャーに配置される）
+				// 要件 9.2, 11.5: PictureSpriteを親として取得（キャストは配置先ピクチャーに配置される）
 				// まずpictureSpriteMapから取得を試みる（LoadPic時に作成されたPictureSprite）
 				// 見つからない場合は従来の方法（GetBackgroundPictureSpriteSprite）を使用
 				var parentSprite *Sprite
 				if gs.pictureSpriteManager != nil {
-					ps := gs.pictureSpriteManager.GetPictureSpriteByPictureID(winPicID)
+					ps := gs.pictureSpriteManager.GetPictureSpriteByPictureID(dstPicID)
 					if ps != nil {
 						parentSprite = ps.GetSprite()
 					} else {
 						// フォールバック: 従来の方法
-						parentSprite = gs.pictureSpriteManager.GetBackgroundPictureSpriteSprite(winPicID)
+						parentSprite = gs.pictureSpriteManager.GetBackgroundPictureSpriteSprite(dstPicID)
 					}
 				}
 
@@ -1554,65 +1565,77 @@ func (gs *GraphicsSystem) PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int
 					// PictureSpriteの子として登録
 					parentSprite.AddChild(cs.GetSprite())
 				}
-				gs.log.Debug("PutCast: created CastSprite", "castID", castID, "winID", winID, "winPicID", winPicID, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
+				gs.log.Debug("PutCast: created CastSprite", "castID", castID, "srcPicID", srcPicID, "dstPicID", dstPicID, "winID", winID, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
 			}
 		}
 	}
 
 	// スプライト構成をダンプ
-	gs.dumpSpriteState(fmt.Sprintf("PutCast(castID=%d, winID=%d, picID=%d)", castID, winID, picID))
+	gs.dumpSpriteState(fmt.Sprintf("PutCast(castID=%d, srcPicID=%d, dstPicID=%d)", castID, srcPicID, dstPicID))
 
 	return castID, nil
 }
 
 // PutCastWithTransColor places a cast on a window with transparent color
+// PutCastWithTransColor places a cast on a picture with transparent color
+// 新API: PutCastWithTransColor(srcPicID, dstPicID, x, y, srcX, srcY, w, h, transColor)
+// - srcPicID: ソースピクチャーID（画像の取得元）
+// - dstPicID: 配置先ピクチャーID（キャストを配置する先）
 // スプライトシステム要件 8.1, 8.4: キャストをスプライトとして作成し、透明色処理をサポートする
 // 要件 9.2: ピクチャ内にキャストが配置されたとき、キャストをピクチャの子スプライトとして管理する
 // 要件 11.5: ウインドウに関連付けられていないピクチャに対するCastSetでも、PictureSpriteを親として設定する
 // 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
-func (gs *GraphicsSystem) PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h int, transColor color.Color) (int, error) {
+func (gs *GraphicsSystem) PutCastWithTransColor(srcPicID, dstPicID, x, y, srcX, srcY, w, h int, transColor color.Color) (int, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// キャストを作成
-	castID, err := gs.casts.PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h, transColor)
+	// 配置先ピクチャーからウインドウIDを逆引き
+	winID, err := gs.windows.GetWinByPicID(dstPicID)
+	if err != nil {
+		// ウインドウが見つからない場合でもキャストは作成する（ウインドウに関連付けられていないピクチャー）
+		winID = -1
+		gs.log.Debug("PutCastWithTransColor: no window found for dstPicID, creating unattached cast", "dstPicID", dstPicID)
+	}
+
+	// キャストを作成（内部的にはwinIDを使用）
+	castID, err := gs.casts.PutCastWithTransColor(winID, srcPicID, x, y, srcX, srcY, w, h, transColor)
 	if err != nil {
 		return -1, err
 	}
 
 	// スプライトシステム要件 8.1, 8.4: CastSpriteを作成する（透明色付き）
-	// 要件 9.2, 11.5: PictureSpriteを親として設定する（キャストはピクチャーに配置される）
+	// 要件 9.2, 11.5: PictureSpriteを親として設定する（キャストは配置先ピクチャーに配置される）
 	// 要件 14.3: グローバルZ順序を使用
 	if gs.castSpriteManager != nil {
 		cast, err := gs.casts.GetCast(castID)
 		if err == nil && cast != nil {
 			// ソース画像を取得
-			srcPic, err := gs.pictures.GetPicWithoutLock(picID)
+			srcPic, err := gs.pictures.GetPicWithoutLock(srcPicID)
 			if err == nil && srcPic != nil && srcPic.Image != nil {
 				// ウインドウのZ順序を取得
-				win, winErr := gs.windows.GetWin(winID)
 				windowZOrder := 0
-				var winPicID int
-				if winErr == nil && win != nil {
-					windowZOrder = win.ZOrder
-					winPicID = win.PicID
+				if winID >= 0 {
+					win, winErr := gs.windows.GetWin(winID)
+					if winErr == nil && win != nil {
+						windowZOrder = win.ZOrder
+					}
 				}
 
 				// Z順序を計算（グローバルZ順序）
 				localZOrder := ZOrderCastBase + cast.ZOrder
 				zOrder := CalculateGlobalZOrder(windowZOrder, localZOrder)
 
-				// 要件 9.2, 11.5: PictureSpriteを親として取得（キャストはピクチャーに配置される）
+				// 要件 9.2, 11.5: PictureSpriteを親として取得（キャストは配置先ピクチャーに配置される）
 				// まずpictureSpriteMapから取得を試みる（LoadPic時に作成されたPictureSprite）
 				// 見つからない場合は従来の方法（GetBackgroundPictureSpriteSprite）を使用
 				var parentSprite *Sprite
 				if gs.pictureSpriteManager != nil {
-					ps := gs.pictureSpriteManager.GetPictureSpriteByPictureID(winPicID)
+					ps := gs.pictureSpriteManager.GetPictureSpriteByPictureID(dstPicID)
 					if ps != nil {
 						parentSprite = ps.GetSprite()
 					} else {
 						// フォールバック: 従来の方法
-						parentSprite = gs.pictureSpriteManager.GetBackgroundPictureSpriteSprite(winPicID)
+						parentSprite = gs.pictureSpriteManager.GetBackgroundPictureSpriteSprite(dstPicID)
 					}
 				}
 
@@ -1622,13 +1645,13 @@ func (gs *GraphicsSystem) PutCastWithTransColor(winID, picID, x, y, srcX, srcY, 
 					// PictureSpriteの子として登録
 					parentSprite.AddChild(cs.GetSprite())
 				}
-				gs.log.Debug("PutCastWithTransColor: created CastSprite", "castID", castID, "winID", winID, "winPicID", winPicID, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
+				gs.log.Debug("PutCastWithTransColor: created CastSprite", "castID", castID, "srcPicID", srcPicID, "dstPicID", dstPicID, "winID", winID, "hasParent", parentSprite != nil, "globalZOrder", zOrder)
 			}
 		}
 	}
 
 	// スプライト構成をダンプ
-	gs.dumpSpriteState(fmt.Sprintf("PutCastWithTransColor(castID=%d, winID=%d, picID=%d)", castID, winID, picID))
+	gs.dumpSpriteState(fmt.Sprintf("PutCastWithTransColor(castID=%d, srcPicID=%d, dstPicID=%d)", castID, srcPicID, dstPicID))
 
 	return castID, nil
 }
