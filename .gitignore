@@ -66,3 +66,4 @@ cmd/son-et/titles/*
 # Test coverage
 coverage.out
 coverage.html
+*.test
