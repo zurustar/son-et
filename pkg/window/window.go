@@ -5,10 +5,7 @@ import (
 	"context"
 	"fmt"
 	"image/color"
-	"image/png"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,11 +55,6 @@ type Game struct {
 	lastMouseX int
 	lastMouseY int
 	mu         sync.RWMutex
-
-	// Screenshot
-	screenshotDir     string        // スクリーンショット保存ディレクトリ
-	screenshotCounter int           // スクリーンショットカウンター
-	lastScreen        *ebiten.Image // 最後に描画した画面（スクリーンショット用）
 }
 
 // GraphicsSystemInterface defines the interface for graphics operations
@@ -101,7 +93,6 @@ func NewGame(mode Mode, titles []title.FillyTitle, timeout time.Duration) *Game 
 		selectedIndex: 0,
 		timeout:       timeout,
 		startTime:     time.Now(),
-		screenshotDir: "screenshots",
 	}
 }
 
@@ -190,11 +181,6 @@ func (g *Game) updateDesktop() error {
 		return ebiten.Termination
 	}
 
-	// Sキーでスクリーンショット保存
-	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		g.saveScreenshot()
-	}
-
 	// VMが停止していたら終了
 	// 要件 14.4: VMが終了したとき、Ebitengineのゲームループを終了する
 	g.mu.RLock()
@@ -221,43 +207,6 @@ func (g *Game) updateDesktop() error {
 	}
 
 	return nil
-}
-
-// saveScreenshot はスクリーンショットを保存する
-func (g *Game) saveScreenshot() {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	if g.lastScreen == nil {
-		fmt.Println("Screenshot: No screen to save")
-		return
-	}
-
-	// ディレクトリを作成
-	if err := os.MkdirAll(g.screenshotDir, 0755); err != nil {
-		fmt.Printf("Screenshot: Failed to create directory: %v\n", err)
-		return
-	}
-
-	// ファイル名を生成
-	filename := filepath.Join(g.screenshotDir, fmt.Sprintf("screenshot_%03d.png", g.screenshotCounter))
-	g.screenshotCounter++
-
-	// ファイルを作成
-	file, err := os.Create(filename)
-	if err != nil {
-		fmt.Printf("Screenshot: Failed to create file: %v\n", err)
-		return
-	}
-	defer file.Close()
-
-	// PNG形式で保存
-	if err := png.Encode(file, g.lastScreen); err != nil {
-		fmt.Printf("Screenshot: Failed to encode PNG: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Screenshot saved: %s\n", filename)
 }
 
 // processMouseEvents はマウスイベントを処理してVMに伝達する
@@ -364,12 +313,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case ModeDesktop:
 		g.drawDesktop(screen)
 	}
-
-	// スクリーンショット用に画面を保存
-	g.mu.Lock()
-	g.lastScreen = ebiten.NewImage(screen.Bounds().Dx(), screen.Bounds().Dy())
-	g.lastScreen.DrawImage(screen, nil)
-	g.mu.Unlock()
 }
 
 // drawSelection タイトル選択画面の描画
