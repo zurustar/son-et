@@ -467,37 +467,63 @@ ReversePic(src_pic, src_x, src_y, width, height, dst_pic, dst_x, dst_y)
 キャストの配置
 
 ```filly
-cast_id = PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)
+cast_id = PutCast(src_pic_no, dst_pic_no, x, y, trans_color, src_x, src_y, width, height)
 ```
 
 **引数**:
-- `win_no`: ウィンドウ番号
-- `pic_no`: ピクチャー番号
-- `x`: 配置位置 X座標
-- `y`: 配置位置 Y座標
-- `src_x`: ピクチャーの切り出し始点 X座標
-- `src_y`: ピクチャーの切り出し始点 Y座標
+- `src_pic_no`: ソースピクチャー番号（画像の取得元）
+- `dst_pic_no`: 配置先ピクチャー番号（キャストを配置する先）
+- `x`: 配置先ピクチャー内での配置位置 X座標
+- `y`: 配置先ピクチャー内での配置位置 Y座標
+- `trans_color`: 透明色（16進数、省略時は黒 0x000000）
+- `src_x`: ソースピクチャーの切り出し始点 X座標
+- `src_y`: ソースピクチャーの切り出し始点 Y座標
 - `width`: 切り出しサイズ 幅
 - `height`: 切り出しサイズ 高さ
 
 **戻り値**: キャストID（0から始まる連番）
+
+**使用例**:
+```filly
+// y_saruサンプルより
+base_pic = CreatePic(25);
+OpenWin(base_pic, 0, 0, winW, winH, winX, winY, 0xffffff);
+PutCast(25, base_pic, 0, 0);  // ピクチャー25からbase_picに背景を配置
+
+// キャストを配置（ソース=17、配置先=base_pic）
+cast = PutCast(17, base_pic, 113, 0, 0xffffff, 0, 0, 89, 77);
+```
+
+**注意**: 
+- 第1引数はソースピクチャー番号（画像の取得元）
+- 第2引数は配置先ピクチャー番号（キャストを配置する先）
+- ウインドウIDではなくピクチャーIDを指定する
 
 ### MoveCast
 キャストの移動
 
 ```filly
 MoveCast(cast_no, x, y)
-MoveCast(cast_no, x, y, src_x, src_y, width, height)
+MoveCast(cast_no, src_pic_no, x, y, src_x, src_y, width, height)
 ```
 
 **引数**:
 - `cast_no`: キャスト番号
+- `src_pic_no`: ソースピクチャー番号（画像の取得元、省略時は元のピクチャーを使用）
 - `x`: 配置位置 X座標
 - `y`: 配置位置 Y座標
-- `src_x`: ピクチャーの切り出し始点 X座標
-- `src_y`: ピクチャーの切り出し始点 Y座標
+- `src_x`: ソースピクチャーの切り出し始点 X座標
+- `src_y`: ソースピクチャーの切り出し始点 Y座標
 - `width`: 切り出しサイズ 幅
 - `height`: 切り出しサイズ 高さ
+
+**使用例**:
+```filly
+// y_saruサンプルより
+cast = PutCast(17, base_pic, 113, 0, 0xffffff, 0, 0, 89, 77);
+MoveCast(cast, 17, 109, 0, 0, 89, 77, 0, 0);  // ソース=17、位置=(109,0)
+MoveCast(cast, 17, 105, 10, 0, 89, 77, 89, 0);  // ソース=17、位置=(105,10)
+```
 
 ### DelCast
 キャストの削除

@@ -106,11 +106,16 @@ Ebitengineの描画APIはメインスレッドでのみ呼び出し可能です�
 
 ### 要件4: キャストシステム
 
-**ユーザーストーリー:** 開発者として、ウィンドウ上にスプライト（キャスト）を配置して動かしたい。そうすることで、アニメーションやインタラクティブな要素を実現できる。
+**ユーザーストーリー:** 開発者として、ピクチャー上にスプライト（キャスト）を配置して動かしたい。そうすることで、アニメーションやインタラクティブな要素を実現できる。
 
 #### 受け入れ基準
 
-4.1. WHEN PutCast(win_no, pic_no, x, y, src_x, src_y, width, height)が呼ばれたとき、THE System SHALL 指定されたウィンドウにキャストを配置し、キャストIDを返す
+4.1. WHEN PutCast(src_pic_no, dst_pic_no, x, y, trans_color, src_x, src_y, width, height)が呼ばれたとき、THE System SHALL ソースピクチャーから切り出した画像を配置先ピクチャーにキャストとして配置し、キャストIDを返す
+  - src_pic_no: ソースピクチャー番号（画像の取得元）
+  - dst_pic_no: 配置先ピクチャー番号（キャストを配置する先）
+  - x, y: 配置先ピクチャー内での配置位置
+  - trans_color: 透明色（省略時は黒 0x000000）
+  - src_x, src_y, width, height: ソースピクチャーからの切り出し領域
 4.2. WHEN PutCastが成功したとき、THE System SHALL 0から始まる連番のキャストIDを割り当てる
 4.3. WHEN MoveCast(cast_no, x, y)が呼ばれたとき、THE System SHALL キャストの位置を変更する
 4.4. WHEN MoveCast(cast_no, x, y, src_x, src_y, width, height)が呼ばれたとき、THE System SHALL キャストの位置とソース領域を変更する
