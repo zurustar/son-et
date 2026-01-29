@@ -510,16 +510,47 @@ func (sm *SpriteManager) GetPictureSpriteByPictureID(pictureID int) *PictureSpri
 
 ## パッケージ構成
 
+スプライトシステムは独立したパッケージ `pkg/sprite/` として実装します。
+これにより、設計書（3_sprite-system）とコードが1対1で対応します。
+
 ```
-pkg/graphics/
-├── sprite.go           # Sprite, SpriteManager
-├── sprite_test.go      # スプライトのユニットテスト
-├── window_sprite.go    # WindowSprite
-├── cast_sprite.go      # CastSprite（PutCast引数修正）
-├── text_sprite.go      # TextSprite
-├── picture_sprite.go   # PictureSprite
+pkg/sprite/                    ← 3_sprite-system に対応
+├── sprite.go                  # Sprite, SpriteManager
+├── sprite_test.go             # スプライトのユニットテスト
+├── sprite_property_test.go    # プロパティベーステスト
+├── window_sprite.go           # WindowSprite
+├── window_sprite_test.go
+├── picture_sprite.go          # PictureSprite
+├── picture_sprite_test.go
+├── cast_sprite.go             # CastSprite
+├── cast_sprite_test.go
+├── text_sprite.go             # TextSprite
+├── text_sprite_test.go
+├── shape_sprite.go            # ShapeSprite
+├── shape_sprite_test.go
+└── errors.go                  # スプライト関連エラー
+
+pkg/graphics/                  ← 4_graphics-system に対応（spriteを使用）
+├── graphics.go                # GraphicsSystem（VM統合）
+├── picture.go                 # Picture管理
+├── window.go                  # Window管理
+├── text.go                    # テキスト描画
+├── transfer.go                # MovePic等の転送
+├── primitives.go              # 描画プリミティブ
+├── bmp.go                     # BMP読み込み
+├── queue.go                   # 描画コマンドキュー
+├── scene_change.go            # シーンチェンジ
 └── ...
 ```
+
+### 依存関係
+
+```
+pkg/graphics → pkg/sprite  （graphicsがspriteを使う）
+pkg/vm → pkg/graphics      （VMがgraphicsを使う）
+```
+
+スプライトシステムは描画システムに依存せず、独立して動作します。
 
 ## 依存関係
 
@@ -529,8 +560,9 @@ pkg/graphics/
 
 ### 内部パッケージ
 
-- **pkg/graphics**: 既存のスプライトシステム
 - **pkg/logger**: ログ出力
+
+**注意**: `pkg/sprite` は `pkg/graphics` に依存しません。逆方向の依存（graphics → sprite）のみ許可されます。
 
 ## 参考資料
 
