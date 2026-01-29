@@ -57,9 +57,8 @@ func TestCreateLineSprite(t *testing.T) {
 	if sprite == nil {
 		t.Fatal("Sprite is nil")
 	}
-	if sprite.ZOrder() != 5 {
-		t.Errorf("Expected ZOrder 5, got %d", sprite.ZOrder())
-	}
+	// Z_Pathはまだ設定されていない（親スプライトなしで作成されたため）
+	// zOrderパラメータは互換性のために残されているが、実際のZ順序はZ_Pathで管理される
 	if !sprite.Visible() {
 		t.Error("Sprite should be visible")
 	}
@@ -299,20 +298,6 @@ func TestShapeSpriteSetPosition(t *testing.T) {
 	}
 }
 
-func TestShapeSpriteSetZOrder(t *testing.T) {
-	sm := NewSpriteManager()
-	ssm := NewShapeSpriteManager(sm)
-
-	ss := ssm.CreateLineSprite(1, 0, 0, 10, 10, color.White, 1, 5)
-
-	ss.SetZOrder(100)
-
-	sprite := ss.GetSprite()
-	if sprite.ZOrder() != 100 {
-		t.Errorf("Expected ZOrder 100, got %d", sprite.ZOrder())
-	}
-}
-
 func TestShapeSpriteSetVisible(t *testing.T) {
 	sm := NewSpriteManager()
 	ssm := NewShapeSpriteManager(sm)
@@ -505,7 +490,6 @@ func TestShapeSpriteWithNilSprite(t *testing.T) {
 
 	// これらのメソッドはnilスプライトでもパニックしない
 	ss.SetPosition(10, 20)
-	ss.SetZOrder(5)
 	ss.SetVisible(true)
 	ss.SetParent(nil)
 }

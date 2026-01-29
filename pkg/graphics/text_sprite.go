@@ -212,9 +212,10 @@ func (tsm *TextSpriteManager) CreateTextSprite(
 	}
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := tsm.spriteManager.CreateSprite(ebiten.NewImageFromImage(img))
 	sprite.SetPosition(float64(x), float64(y))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(true)
 
 	ts := &TextSprite{
@@ -238,6 +239,8 @@ func (tsm *TextSpriteManager) CreateTextSprite(
 // CreateTextSpriteWithParent はテキストからTextSpriteを作成し、親スプライトを設定する
 // 要件 5.1, 5.2: 背景色の上にテキストを描画し、差分を抽出する
 // 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 2.2: PutTextが呼び出されたとき、現在のZ_Order_Counterを使用してLocal_Z_Orderを割り当てる
+// 要件 1.4: 子スプライトが作成されたとき、親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
 func (tsm *TextSpriteManager) CreateTextSpriteWithParent(
 	picID int,
 	x, y int,
@@ -250,6 +253,16 @@ func (tsm *TextSpriteManager) CreateTextSpriteWithParent(
 	ts := tsm.CreateTextSprite(picID, x, y, text, textColor, bgColor, face, zOrder)
 	if ts != nil && parent != nil {
 		ts.SetParent(parent)
+
+		// 要件 2.2, 2.6: 操作順序でLocal_Z_Orderを割り当てる
+		// 要件 1.4: 親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
+		if parent.GetZPath() != nil {
+			// 親のIDを使用してZOrderCounterから次のLocal_Z_Orderを取得
+			localZOrder := tsm.spriteManager.GetZOrderCounter().GetNext(parent.ID())
+			zPath := NewZPathFromParent(parent.GetZPath(), localZOrder)
+			ts.sprite.SetZPath(zPath)
+			tsm.spriteManager.MarkNeedSort()
+		}
 	}
 	return ts
 }
@@ -271,10 +284,11 @@ func (tsm *TextSpriteManager) CreateTextSpriteFromTextLayerEntry(entry *TextLaye
 	}
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := tsm.spriteManager.CreateSprite(img)
 	x, y := entry.GetPosition()
 	sprite.SetPosition(float64(x), float64(y))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(entry.IsVisible())
 
 	ts := &TextSprite{
@@ -290,6 +304,29 @@ func (tsm *TextSpriteManager) CreateTextSpriteFromTextLayerEntry(entry *TextLaye
 	tsm.textSprites[entry.GetPicID()] = append(tsm.textSprites[entry.GetPicID()], ts)
 	tsm.nextID++
 
+	return ts
+}
+
+// CreateTextSpriteFromTextLayerEntryWithParent はTextLayerEntryからTextSpriteを作成し、親スプライトを設定する
+// 既存のTextLayerEntryをスプライトベースに変換するアダプタ
+// 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 2.2: PutTextが呼び出されたとき、現在のZ_Order_Counterを使用してLocal_Z_Orderを割り当てる
+// 要件 1.4: 子スプライトが作成されたとき、親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
+func (tsm *TextSpriteManager) CreateTextSpriteFromTextLayerEntryWithParent(entry *TextLayerEntry, zOrder int, parent *Sprite) *TextSprite {
+	ts := tsm.CreateTextSpriteFromTextLayerEntry(entry, zOrder)
+	if ts != nil && parent != nil {
+		ts.SetParent(parent)
+
+		// 要件 2.2, 2.6: 操作順序でLocal_Z_Orderを割り当てる
+		// 要件 1.4: 親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
+		if parent.GetZPath() != nil {
+			// 親のIDを使用してZOrderCounterから次のLocal_Z_Orderを取得
+			localZOrder := tsm.spriteManager.GetZOrderCounter().GetNext(parent.ID())
+			zPath := NewZPathFromParent(parent.GetZPath(), localZOrder)
+			ts.sprite.SetZPath(zPath)
+			tsm.spriteManager.MarkNeedSort()
+		}
+	}
 	return ts
 }
 
@@ -427,16 +464,6 @@ func (ts *TextSprite) SetPosition(x, y int) {
 	ts.y = y
 	if ts.sprite != nil {
 		ts.sprite.SetPosition(float64(x), float64(y))
-	}
-}
-
-// SetZOrder はZ順序を更新する
-func (ts *TextSprite) SetZOrder(z int) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
-	if ts.sprite != nil {
-		ts.sprite.SetZOrder(z)
 	}
 }
 

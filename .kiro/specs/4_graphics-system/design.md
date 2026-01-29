@@ -1065,3 +1065,912 @@ var (
     debugBgColor        = color.RGBA{0, 0, 0, 200}       // 半透明黒
 )
 ```
+
+
+---
+
+## ~~レイヤーシステム再設計 (Layer System Redesign)~~ [廃止]
+
+> **注意**: このセクションの設計は、スプライトシステムに置き換えられました。
+> レイヤーシステムは実装されましたが、その後スプライトシステムに移行したため、現在は使用されていません。
+> 以下の設計は歴史的な参照のために残されていますが、現在の実装には適用されません。
+> 
+> **現在の実装**: `GetLayerManager()`はnilを返し、すべての描画はスプライトシステム経由で行われます。
+
+<details>
+<summary>廃止された設計（クリックで展開）</summary>
+
+### 概要
+
+このセクションは、グラフィックスレイヤーシステムの再設計を定義します。現在の実装では、レイヤーがPictureIDで管理されていますが、FILLYの設計ではレイヤーはWindowに属するべきです。この再設計により、レイヤーの所属関係を正しく管理し、描画の不具合を解消します。
+
+### 現在の問題点
+
+```
+現在の実装:
+┌─────────────────────────────────────────────────────────────┐
+│ LayerManager                                                 │
+│   layers: map[PictureID]*PictureLayerSet                    │
+│                                                              │
+│   createCastLayer: cast.WinID で登録 ← 正しい               │
+│   drawLayersForWindow: win.PicID で検索 ← 間違い            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+この不一致により、レイヤーが見つからないか、間違ったウィンドウに関連付けられます。
+
+### 新しい設計
+
+```
+新しい実装:
+┌─────────────────────────────────────────────────────────────┐
+│ LayerManager                                                 │
+│   windowLayers: map[WindowID]*WindowLayerSet                │
+│                                                              │
+│   createCastLayer: winID で登録                             │
+│   drawLayersForWindow: win.ID で検索                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### レイヤーモデル
+
+```
+Window
+├── Background Color (fill)
+└── Layer Stack (Z-order)
+    ├── Picture_Layer (MovePicで作成、焼き付け可能)
+    ├── Text_Layer (TextWriteで作成、常に新規)
+    └── Cast_Layer (PutCastで作成、スプライト動作)
+```
+
+### コンポーネント図
+
+```mermaid
+graph TB
+    subgraph GraphicsSystem
+        GS[GraphicsSystem]
+        LM[LayerManager]
+        WM[WindowManager]
+        CM[CastManager]
+        TR[TextRenderer]
+    end
+    
+    subgraph LayerManager
+        WLS[WindowLayerSet]
+        PL[Picture_Layer]
+        TL[Text_Layer]
+        CL[Cast_Layer]
+    end
+    
+    GS --> LM
+    GS --> WM
+    GS --> CM
+    GS --> TR
+    
+    LM --> WLS
+    WLS --> PL
+    WLS --> TL
+    WLS --> CL
+    
+    CM --> LM
+    TR --> LM
+```
+
+### WindowLayerSet（新規）
+
+`PictureLayerSet`を置き換える新しい構造体。ウィンドウIDをキーとして管理します。
+
+```go
+// WindowLayerSet はウィンドウに属するレイヤーの集合
+type WindowLayerSet struct {
+    // ウィンドウID
+    WinID int
+    
+    // 背景色
+    BgColor color.Color
+    
+    // ウィンドウサイズ
+    Width, Height int
+    
+    // レイヤースタック（Z順序でソート）
+    Layers []Layer
+    
+    // 次のZ順序カウンター
+    nextZOrder int
+    
+    // 合成バッファ
+    CompositeBuffer *ebiten.Image
+    
+    // ダーティフラグ
+    FullDirty bool
+    DirtyRegion image.Rectangle
+}
+```
+
+### LayerManager（変更）
+
+```go
+// LayerManager はレイヤーを管理する
+type LayerManager struct {
+    // ウィンドウIDごとのレイヤーセット（新規）
+    windowLayers map[int]*WindowLayerSet
+    
+    // ピクチャーIDごとのレイヤー（後方互換性のために残す）
+    layers map[int]*PictureLayerSet
+    
+    // 次のレイヤーID
+    nextLayerID int
+    
+    // ミューテックス
+    mu sync.RWMutex
+}
+```
+
+**注意: picToWinMappingについて**
+
+設計当初は`picToWinMapping`（ピクチャーIDからウィンドウIDへのマッピング）をLayerManagerに追加することを検討していましたが、以下の理由から不要と判断しました：
+
+1. **WindowManagerが既に逆引き機能を提供**: `WindowManager.GetWinByPicID()`が実装済みで、ピクチャーIDからウィンドウIDへの逆引きが可能
+2. **データの一貫性**: 同じマッピングを複数の場所で管理すると、データの同期が必要になり複雑さが増す
+3. **実際の使用パターン**: `transfer.go`、`vm.go`などで`GetWinByPicID`が使用されており、正常に動作している
+
+要件29.5「ピクチャーIDからウィンドウIDへの逆引きをサポートする」は、WindowManagerの`GetWinByPicID`メソッドで満たされています。
+
+### Picture_Layer（新規）
+
+MovePicで作成されるレイヤー。焼き付け（baking）が可能です。
+
+```go
+// PictureLayer はMovePicで作成されるレイヤー
+type PictureLayer struct {
+    BaseLayer
+    
+    // ウィンドウサイズの透明画像
+    image *ebiten.Image
+    
+    // 焼き付け可能フラグ
+    bakeable bool
+}
+
+// Bake は画像をこのレイヤーに焼き付ける
+func (l *PictureLayer) Bake(src *ebiten.Image, destX, destY int)
+
+// IsBakeable は焼き付け可能かどうかを返す
+func (l *PictureLayer) IsBakeable() bool
+```
+
+### Text_Layer（変更）
+
+TextWriteで作成されるレイヤー。常に新規作成されます。
+
+```go
+// TextLayerEntry はテキストレイヤーのエントリ
+// 既存の実装を維持しつつ、WindowLayerSetに追加
+type TextLayerEntry struct {
+    BaseLayer
+    textLayer *TextLayer
+}
+```
+
+### Cast_Layer（変更）
+
+PutCastで作成されるスプライトレイヤー。
+
+```go
+// CastLayer はキャストを保持するレイヤー
+// 既存の実装を維持しつつ、WindowLayerSetに追加
+type CastLayer struct {
+    BaseLayer
+    // ... 既存のフィールド
+}
+```
+
+### Layer インターフェース（変更）
+
+```go
+// Layer は描画レイヤーの基本インターフェース
+type Layer interface {
+    GetID() int
+    GetBounds() image.Rectangle
+    GetZOrder() int
+    SetZOrder(int)
+    IsVisible() bool
+    IsOpaque() bool
+    IsDirty() bool
+    SetDirty(bool)
+    GetImage() *ebiten.Image
+    Invalidate()
+    
+    // 新規: レイヤータイプを識別
+    GetLayerType() LayerType
+}
+
+// LayerType はレイヤーの種類を表す
+type LayerType int
+
+const (
+    LayerTypePicture LayerType = iota
+    LayerTypeText
+    LayerTypeCast
+)
+```
+
+### レイヤー所属関係
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Window (ID: 0)                                               │
+│   ├── BgColor: RGB(0, 0, 128)                               │
+│   └── Layers:                                                │
+│       ├── Picture_Layer (Z=1) ← MovePic結果                 │
+│       ├── Cast_Layer (Z=2) ← PutCast結果                    │
+│       ├── Picture_Layer (Z=3) ← MovePic結果（新規作成）     │
+│       └── Text_Layer (Z=4) ← TextWrite結果                  │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Window (ID: 1)                                               │
+│   ├── BgColor: RGB(255, 255, 255)                           │
+│   └── Layers:                                                │
+│       ├── Cast_Layer (Z=1)                                   │
+│       └── Text_Layer (Z=2)                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### MovePicの焼き付けロジック
+
+```
+MovePic呼び出し時:
+┌─────────────────────────────────────────────────────────────┐
+│ 1. 最上位レイヤーを確認                                      │
+│                                                              │
+│ 2. IF 最上位がPicture_Layer:                                │
+│       → そのレイヤーに焼き付け                              │
+│                                                              │
+│ 3. ELSE IF 最上位がCast/Text_Layer:                         │
+│       → 新しいPicture_Layer（ウィンドウサイズ、透明）を作成 │
+│       → 新しいレイヤーに焼き付け                            │
+│                                                              │
+│ 4. ELSE (レイヤースタックが空):                             │
+│       → 新しいPicture_Layerを作成                           │
+│       → 新しいレイヤーに焼き付け                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### レイヤーシステムの正しさの性質
+
+*正しさの性質とは、システムのすべての有効な実行において真であるべき特性や振る舞いです。*
+
+#### Property 11: レイヤーのWindowID管理
+
+*任意の*ウィンドウIDとレイヤーに対して、そのウィンドウIDでレイヤーを登録した場合、同じウィンドウIDで検索するとそのレイヤーが見つかる。
+
+**検証: 要件 24.1, 24.5**
+
+#### Property 12: ウィンドウ開閉時のレイヤーセット管理
+
+*任意の*ウィンドウに対して、ウィンドウを開いた後はWindowLayerSetが存在し、ウィンドウを閉じた後はそのウィンドウに属するすべてのレイヤーが削除される。
+
+**検証: 要件 24.2, 24.3**
+
+#### Property 13: レイヤータイプの識別
+
+*任意の*レイヤーに対して、GetLayerType()は正しいレイヤータイプ（Picture、Text、Cast）を返す。
+
+**検証: 要件 25.4**
+
+#### Property 14: MovePicの焼き付けロジック
+
+*任意の*ウィンドウとMovePic呼び出しに対して:
+- 最上位がPicture_Layerの場合、レイヤー数は増えない
+- 最上位がCast/Text_Layerまたはスタックが空の場合、新しいPicture_Layerが作成される
+- 新しいPicture_Layerはウィンドウサイズで透明に初期化される
+- 焼き付け後、対象レイヤーはダーティとしてマークされる
+
+**検証: 要件 26.2, 26.3, 26.4, 26.5, 26.6**
+
+#### Property 15: Text_Layerの新規作成
+
+*任意の*TextWrite呼び出しに対して、常に新しいText_Layerが作成され、既存のレイヤーは再利用されない。
+
+**検証: 要件 25.6, 28.1, 28.2**
+
+#### Property 16: Cast_Layerのスプライト動作
+
+*任意の*Cast_Layerに対して:
+- PutCastで新しいCast_Layerが作成される
+- MoveCastで位置が更新される（Z順序は変わらない）
+- DelCastでCast_Layerが削除される
+- 移動時に古い位置と新しい位置がダーティ領域としてマークされる
+
+**検証: 要件 27.1, 27.2, 27.3, 27.6**
+
+#### Property 17: Z順序の管理
+
+*任意の*レイヤー追加操作に対して:
+- 新しいレイヤーには現在のZ順序カウンターが割り当てられる
+- カウンターは操作ごとに増加する
+- すべてのレイヤータイプで共通のカウンターが使用される
+- レイヤーはZ順序（小さい順）でソートされる
+
+**検証: 要件 23.1, 23.2, 23.5**
+
+#### Property 18: レイヤーのウィンドウ登録
+
+*任意の*レイヤー作成操作（PutCast、MovePic、TextWrite）に対して:
+- レイヤーは正しいウィンドウIDで登録される
+- ピクチャーIDからウィンドウIDへの逆引きが正しく動作する
+
+**検証: 要件 29.1, 29.2, 29.3, 29.5**
+
+#### Property 19: ダーティフラグの動作
+
+*任意の*レイヤー変更操作に対して:
+- 位置変更時にダーティフラグが設定される
+- 内容変更時にダーティフラグが設定される
+- 合成処理完了後にダーティフラグがクリアされる
+
+**検証: 要件 31.1, 31.2**
+
+#### Property 20: エラーハンドリング
+
+*任意の*無効なID（存在しないウィンドウID、レイヤーID）に対して:
+- エラーがログに記録される
+- 処理がスキップされる（クラッシュしない）
+- 実行が継続される
+
+**検証: 要件 32.1, 32.2, 32.3, 32.4**
+
+### レイヤーシステムのエラーハンドリング
+
+| エラー | 処理 |
+|--------|------|
+| 存在しないウィンドウID | ログに記録し、処理をスキップ |
+| 存在しないレイヤーID | ログに記録し、処理をスキップ |
+| レイヤー作成失敗 | ログに記録し、nilを返す |
+| ピクチャーID逆引き失敗 | ログに記録し、処理をスキップ |
+
+### エラーメッセージ形式
+
+```
+[関数名]: [エラー内容], windowID=[ID], layerID=[ID]
+```
+
+例:
+```
+drawLayersForWindow: window layer set not found, windowID=5
+createCastLayer: failed to create layer, windowID=3, castID=10
+```
+
+### レイヤーシステムのテスト戦略
+
+#### 単体テスト
+
+1. **WindowLayerSetの作成と削除**
+   - ウィンドウを開いた後、WindowLayerSetが存在することを確認
+   - ウィンドウを閉じた後、WindowLayerSetが削除されることを確認
+
+2. **レイヤータイプの識別**
+   - 各レイヤータイプがGetLayerType()で正しく識別されることを確認
+
+3. **焼き付けロジックのエッジケース**
+   - 空のスタックでのMovePic
+   - Picture_Layerが最上位でのMovePic
+   - Cast_Layerが最上位でのMovePic
+
+4. **エラーハンドリング**
+   - 存在しないウィンドウIDでの操作
+   - 存在しないレイヤーIDでの操作
+
+#### プロパティベーステスト
+
+**テストライブラリ**: `testing/quick` または `github.com/leanovate/gopter`
+
+**設定**: 各プロパティテストは最低100回の反復を実行
+
+1. **Property 11: レイヤーのWindowID管理**
+   - ランダムなウィンドウIDとレイヤーを生成
+   - 登録と検索が一致することを確認
+   - **Tag**: Feature: layer-system-redesign, Property 11: レイヤーのWindowID管理
+
+2. **Property 12: ウィンドウ開閉時のレイヤーセット管理**
+   - ランダムなウィンドウ操作シーケンスを生成
+   - 開閉後の状態が正しいことを確認
+   - **Tag**: Feature: layer-system-redesign, Property 12: ウィンドウ開閉時のレイヤーセット管理
+
+3. **Property 14: MovePicの焼き付けロジック**
+   - ランダムな初期状態とMovePic呼び出しを生成
+   - 焼き付けロジックが正しく動作することを確認
+   - **Tag**: Feature: layer-system-redesign, Property 14: MovePicの焼き付けロジック
+
+4. **Property 17: Z順序の管理**
+   - ランダムなレイヤー追加シーケンスを生成
+   - Z順序が正しく増加することを確認
+   - **Tag**: Feature: layer-system-redesign, Property 17: Z順序の管理
+
+5. **Property 18: レイヤーのウィンドウ登録**
+   - ランダムなレイヤー作成操作を生成
+   - 正しいウィンドウに登録されることを確認
+   - **Tag**: Feature: layer-system-redesign, Property 18: レイヤーのウィンドウ登録
+
+#### 統合テスト
+
+1. **既存スクリプトの動作確認**
+   - サンプルFILLYタイトルを実行し、描画結果を確認
+   - 回帰がないことを確認
+
+2. **複合操作のテスト**
+   - MovePic → PutCast → TextWrite の順序で操作
+   - 正しいZ順序で描画されることを確認
+
+</details>
+
+---
+
+## スプライトシステム (Sprite System)
+
+### 概要
+
+このセクションは、グラフィックスシステムを簡素化するためのスプライトシステムの設計を定義します。すべての描画要素を統一的なスプライトとして扱い、Ebitengineの機能をラップします。
+
+### 全体構成
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ SpriteManager                                                │
+│   sprites: map[int]*Sprite                                  │
+│   sorted: []*Sprite (Z順序キャッシュ)                       │
+├─────────────────────────────────────────────────────────────┤
+│ Sprite                                                       │
+│   - ID, Image, X, Y, ZOrder, Visible, Alpha, Parent, Dirty  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 描画要素とスプライトの対応
+
+| 描画要素 | スプライトとしての実装 |
+|----------|------------------------|
+| 仮想ウインドウ | 背景色で塗りつぶしたスプライト（子の親となる） |
+| ピクチャ | BMPを読み込んだスプライト |
+| キャスト | 透明色処理済みのスプライト |
+| 文字 | 差分抽出で生成した透過スプライト |
+| 図形 | 描画結果をスプライト化 |
+
+### Sprite構造体
+
+```go
+type Sprite struct {
+    id       int            // 一意のID
+    image    *ebiten.Image  // 描画画像
+    x, y     float64        // 位置（親からの相対位置）
+    localZ   int            // ローカルZ順序（兄弟間での順序）
+    visible  bool           // 可視性
+    alpha    float64        // 透明度（0.0〜1.0）
+    parent   *Sprite        // 親スプライト（オプション）
+    children []*Sprite      // 子スプライトのリスト
+    dirty    bool           // 再描画フラグ
+}
+```
+
+### SpriteManager構造体
+
+```go
+type SpriteManager struct {
+    mu        sync.RWMutex
+    sprites   map[int]*Sprite  // ID→スプライト
+    roots     []*Sprite        // ルートスプライト（親を持たない）
+    nextID    int              // 次のID
+    needSort  bool             // ソート必要フラグ
+}
+```
+
+### 親子関係の処理
+
+#### 絶対位置の計算
+
+```go
+func (s *Sprite) AbsolutePosition() (float64, float64) {
+    x, y := s.x, s.y
+    if s.parent != nil {
+        px, py := s.parent.AbsolutePosition()
+        x += px
+        y += py
+    }
+    return x, y
+}
+```
+
+#### 実効透明度の計算
+
+```go
+func (s *Sprite) EffectiveAlpha() float64 {
+    alpha := s.alpha
+    if s.parent != nil {
+        alpha *= s.parent.EffectiveAlpha()
+    }
+    return alpha
+}
+```
+
+#### 実効可視性の計算
+
+```go
+func (s *Sprite) IsEffectivelyVisible() bool {
+    if !s.visible {
+        return false
+    }
+    if s.parent != nil {
+        return s.parent.IsEffectivelyVisible()
+    }
+    return true
+}
+```
+
+### ウインドウ内スプライトの親子関係管理
+
+ウインドウ内のスプライト（キャスト、テキスト、ピクチャ、図形）は、WindowSpriteを親として設定される。
+これにより、以下の利点がある：
+
+1. **位置計算の自動化**: 子スプライトの位置はウインドウ相対座標で指定でき、絶対位置は親子関係から自動計算される
+2. **可視性の継承**: ウインドウが非表示になると、子スプライトも自動的に非表示になる
+3. **透明度の継承**: ウインドウの透明度が子スプライトにも適用される
+4. **一括削除**: ウインドウが閉じられると、子スプライトも自動的に削除される
+5. **描画順序の継承**: 子スプライトは親の後に描画され、前面のウインドウが背面のウインドウを隠す
+
+#### n次元の親子階層
+
+親子関係は任意の深さをサポートする。例えば：
+
+```
+Root (SpriteManager)
+├── Window0 (localZ=0)
+│   ├── Background (localZ=0)
+│   ├── PictureSprite1 (localZ=1)
+│   │   └── CastSprite1 (localZ=0)  ← ピクチャの子としてキャスト
+│   ├── CastSprite2 (localZ=2)
+│   └── TextSprite1 (localZ=3)
+└── Window1 (localZ=1)  ← Window0より前面
+    ├── Background (localZ=0)
+    └── TextSprite2 (localZ=1)
+```
+
+#### 子スプライトの管理
+
+Spriteは子スプライトのリストを管理し、以下のメソッドを提供する：
+
+```go
+// 子スプライトを追加（ローカルZ順序は自動割り当て）
+func (s *Sprite) AddChild(child *Sprite)
+
+// 子スプライトを削除
+func (s *Sprite) RemoveChild(childID int)
+
+// 子スプライトのリストを取得（ローカルZ順序でソート済み）
+func (s *Sprite) GetChildren() []*Sprite
+
+// 次のローカルZ順序を取得
+func (s *Sprite) GetNextLocalZ() int
+```
+
+### 階層的Z順序（Hierarchical Z-Order）
+
+#### 概要
+
+スプライトシステムでは、Z順序を階層的（n次元）に管理する。
+各スプライトは「ローカルZ順序」を持ち、これは同じ親を持つ兄弟スプライト間での描画順序を決定する。
+描画は深さ優先で行われ、親スプライトの後にその子スプライトがローカルZ順序で描画される。
+
+#### ローカルZ順序
+
+各スプライトは`localZ`フィールドを持ち、これは同じ親を持つ兄弟間での順序を表す。
+子スプライトが追加されるたびに、親は次のローカルZ順序を割り当てる。
+
+```go
+func (s *Sprite) AddChild(child *Sprite) {
+    child.parent = s
+    child.localZ = s.nextLocalZ
+    s.nextLocalZ++
+    s.children = append(s.children, child)
+    s.sortChildren()
+}
+```
+
+#### 描画アルゴリズム
+
+描画は深さ優先で行われる：
+
+```go
+func (sm *SpriteManager) Draw(screen *ebiten.Image) {
+    // ルートスプライトをローカルZ順序でソート
+    sm.sortRoots()
+    
+    // 各ルートスプライトを再帰的に描画
+    for _, root := range sm.roots {
+        sm.drawSpriteRecursive(screen, root)
+    }
+}
+
+func (sm *SpriteManager) drawSpriteRecursive(screen *ebiten.Image, s *Sprite) {
+    if !s.IsEffectivelyVisible() {
+        return
+    }
+    
+    // 1. 自分自身を描画
+    if s.image != nil {
+        op := &ebiten.DrawImageOptions{}
+        x, y := s.AbsolutePosition()
+        op.GeoM.Translate(x, y)
+        
+        alpha := s.EffectiveAlpha()
+        if alpha < 1.0 {
+            op.ColorScale.ScaleAlpha(float32(alpha))
+        }
+        
+        screen.DrawImage(s.image, op)
+    }
+    
+    // 2. 子スプライトをローカルZ順序で描画
+    for _, child := range s.children {
+        sm.drawSpriteRecursive(screen, child)
+    }
+}
+```
+
+### 描画順序の例
+
+```
+Root
+├── Window0 (localZ=0)
+│   ├── Background (localZ=0)
+│   ├── Cast1 (localZ=1)
+│   ├── Text1 (localZ=2)
+│   └── MovePic1 (localZ=3)
+└── Window1 (localZ=1)
+    ├── Background (localZ=0)
+    └── Cast2 (localZ=1)
+```
+
+描画順序：
+1. Window0
+2. Window0/Background
+3. Window0/Cast1
+4. Window0/Text1
+5. Window0/MovePic1
+6. Window1
+7. Window1/Background
+8. Window1/Cast2
+
+この順序により、Window1の内容はWindow0の内容を完全に隠す（正しい動作）。
+
+### テキストスプライト（差分抽出方式）
+
+#### 処理フロー
+
+```
+1. 背景色で塗りつぶした一時画像を作成
+2. 一時画像にテキストを描画（アンチエイリアスあり）
+3. 背景色と異なるピクセルのみを抽出
+4. 抽出結果を透過画像としてスプライト化
+```
+
+#### 実装
+
+```go
+func CreateTextSprite(bg color.Color, text string, textColor color.Color, face font.Face) *image.RGBA {
+    // 1. 背景画像を作成
+    bgImg := image.NewRGBA(bounds)
+    draw.Draw(bgImg, bgImg.Bounds(), image.NewUniform(bg), image.Point{}, draw.Src)
+    
+    // 2. テキストを描画
+    tempImg := image.NewRGBA(bounds)
+    draw.Draw(tempImg, tempImg.Bounds(), bgImg, image.Point{}, draw.Src)
+    drawer := &font.Drawer{Dst: tempImg, Src: image.NewUniform(textColor), Face: face}
+    drawer.DrawString(text)
+    
+    // 3. 差分を抽出
+    result := image.NewRGBA(bounds)
+    for y := 0; y < height; y++ {
+        for x := 0; x < width; x++ {
+            if bgImg.At(x, y) != tempImg.At(x, y) {
+                result.Set(x, y, tempImg.At(x, y))
+            } else {
+                result.Set(x, y, color.RGBA{0, 0, 0, 0}) // 透明
+            }
+        }
+    }
+    return result
+}
+```
+
+#### 背景ブレンド描画
+
+TextSpriteは差分抽出方式で作成されるため、背景色を基準にしている。
+しかし、実際の背景はMovePicで転送された画像であることが多い。
+そのため、TextSpriteを描画する際に、下のスプライト（PictureSpriteなど）の
+画像を参照して、正しくアンチエイリアシングをブレンドする必要がある。
+
+### スプライトシステムの正しさの性質
+
+#### Property 21: スプライトID管理
+
+*任意の*スプライト作成に対して、作成されたスプライトは一意のIDを持ち、そのIDで取得できる。
+
+**検証: 要件 33.1, 35.1, 35.3**
+
+#### Property 22: 親子関係の位置計算
+
+*任意の*親子関係を持つスプライトに対して、子の絶対位置は親の位置と子の相対位置の和である。
+
+**検証: 要件 34.1**
+
+#### Property 23: 親子関係の透明度計算
+
+*任意の*親子関係を持つスプライトに対して、子の実効透明度は親の透明度と子の透明度の積である。
+
+**検証: 要件 34.2**
+
+#### Property 24: 親子関係の可視性
+
+*任意の*親子関係を持つスプライトに対して、親が非表示なら子も非表示として扱われる。
+
+**検証: 要件 34.3, 36.3**
+
+#### Property 25: 階層的Z順序による描画順
+
+*任意の*スプライト階層に対して、描画は以下の順序で行われる：
+1. ルートスプライトはローカルZ順序（小さい順）で描画される
+2. 各スプライトの後に、その子スプライトがローカルZ順序で再帰的に描画される
+
+**検証: 要件 36.1, 36.2**
+
+#### Property 26: 子スプライトのローカルZ順序割り当て
+
+*任意の*子スプライト追加に対して、追加された順序でローカルZ順序が割り当てられる。
+
+**検証: 要件 34.7**
+
+#### Property 27: テキスト差分抽出
+
+*任意の*テキスト描画に対して、差分抽出後の画像は背景色のピクセルを含まない（透明になる）。
+
+**検証: 要件 37.1, 37.2**
+
+#### Property 28: スプライト削除
+
+*任意の*スプライト削除に対して、削除後はそのIDでスプライトを取得できない。
+
+**検証: 要件 35.4**
+
+#### Property 29: 親子階層の深さ
+
+*任意の*親子関係の設定に対して、階層の深さに制限がない。
+
+**検証: 要件 34.8**
+
+#### Property 30: ウインドウ間の重なり
+
+*任意の*複数ウインドウに対して、後から開かれたウインドウ（ローカルZ順序が大きい）の内容は、先に開かれたウインドウの内容を隠す。
+
+**検証: 要件 36.6**
+
+### スプライトシステムのエラーハンドリング
+
+| エラー | 処理 |
+|--------|------|
+| 存在しないIDでの取得 | nilを返す |
+| 存在しないIDでの削除 | 何もしない |
+| nil画像でのスプライト作成 | 許可（後で画像を設定可能） |
+
+### スプライトシステム完全統合
+
+#### 概要
+
+現在の実装では、MovePicなどの操作がピクチャー画像に直接描画（焼き付け）を行い、
+追加でPictureSpriteも作成するという二重管理になっている。
+これを解消し、すべての描画をスプライトシステム経由で行うように変更する。
+
+#### 現在の問題点
+
+1. **二重管理**: MovePicはピクチャー画像に直接描画し、さらにPictureSpriteも作成
+2. **描画の不整合**: ピクチャー画像への焼き付けとスプライト描画が混在
+3. **Z順序の問題**: スプライトのZ順序が正しく反映されない場合がある
+
+#### 解決方針
+
+1. **ピクチャーへの直接描画を廃止**: MovePicはPictureSpriteのみを作成
+2. **スプライトベースの描画**: すべての描画はスプライトシステム経由で行う
+3. **ピクチャースプライトの融合**: 同じ位置に重なるピクチャースプライトは融合
+
+### ピクチャースプライトの融合
+
+#### 概要
+
+MovePicで同じピクチャーに複数回描画する場合、個別のスプライトを作成すると
+スプライト数が増大し、パフォーマンスが低下する。
+同じ位置に重なるピクチャースプライトは、一つのスプライトに融合することで
+効率的な描画を実現する。
+
+#### 融合の条件
+
+以下の条件をすべて満たす場合、ピクチャースプライトを融合する：
+
+1. 同じ転送先ピクチャーID（dstID）を持つ
+2. 同じZ順序を持つ（または近いZ順序）
+3. 領域が重なっている、または隣接している
+
+#### 融合の実装
+
+```go
+// PictureSpriteManagerに融合機能を追加
+func (psm *PictureSpriteManager) MergeOrCreatePictureSprite(
+    srcImg *ebiten.Image,
+    picID int,
+    srcX, srcY, width, height int,
+    destX, destY int,
+    zOrder int,
+    transparent bool,
+) *PictureSprite {
+    // 既存のPictureSpriteで融合可能なものを検索
+    existing := psm.FindMergeableSprite(picID, destX, destY, width, height, zOrder)
+    
+    if existing != nil {
+        // 既存のスプライトに画像を合成
+        existing.MergeImage(srcImg, destX, destY, transparent)
+        return existing
+    }
+    
+    // 新しいPictureSpriteを作成
+    return psm.CreatePictureSprite(srcImg, picID, srcX, srcY, width, height, destX, destY, zOrder, transparent)
+}
+```
+
+#### 融合の利点
+
+1. **スプライト数の削減**: 同じ領域への複数回の描画が1つのスプライトに集約
+2. **パフォーマンス向上**: 描画するスプライト数が減少
+3. **メモリ効率**: 重複する画像データを削減
+
+### 完全統合の試行結果と課題（2026-01-28）
+
+完全統合を試行したところ、以下の問題が発生した：
+
+1. **表示位置のずれ**: スプライトの位置とオフセット（PicX/PicY）が二重に適用される
+2. **テキストのぼやけ**: アンチエイリアシングの問題
+3. **文字化けしたテキスト**: OpenWin前に作成されたテキストが正しく表示されない
+
+これらの問題は、以下の原因によるものと考えられる：
+
+- **座標系の不整合**: ピクチャー座標系とスクリーン座標系の変換が複雑
+- **描画順序の問題**: ウィンドウ装飾とコンテンツの描画順序
+- **オフセット処理の重複**: PicX/PicYオフセットが複数箇所で適用される
+
+**現在の方針**: 
+- 完全統合は一旦保留し、現在の「二重管理」状態を維持
+- ピクチャーへの直接描画（焼き付け）を継続
+- スプライトシステムは補助的な役割として使用
+- 将来的に、座標系の整理とオフセット処理の統一を行った上で再度統合を試みる
+
+### スプライトシステムのテスト戦略
+
+#### 単体テスト
+
+- スプライトの作成と属性設定
+- 親子関係の位置・透明度・可視性計算
+- SpriteManagerのCRUD操作
+- 子スプライトの追加とローカルZ順序の自動割り当て
+- 階層的描画順序の検証
+- ピクチャースプライトの融合
+
+#### プロパティベーステスト
+
+- Property 21〜30の検証
+- ランダムな親子関係での位置計算
+- ランダムな階層構造での描画順序
+- n次元の親子階層での正しい描画
+- ピクチャースプライト融合の正確性
+
+#### 統合テスト
+
+- 複数ウインドウの重なりテスト
+- ウインドウ内の操作順序による描画順序テスト
+- ピクチャの子としてキャストを配置するテスト

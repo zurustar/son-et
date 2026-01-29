@@ -145,10 +145,10 @@ func TestProperty_ParentChildVisibility(t *testing.T) {
 	}
 }
 
-// Property 5: Z順序による描画順
-// 任意のスプライト集合に対して、描画はZ順序の小さい順に行われる
+// Property 5: Z_Pathによる描画順
+// 任意のスプライト集合に対して、描画はZ_Pathの辞書順で行われる
 // **Validates: Requirements 4.1**
-func TestProperty_ZOrderDrawing(t *testing.T) {
+func TestProperty_ZPathDrawing(t *testing.T) {
 	f := func(zOrders []int8) bool {
 		if len(zOrders) == 0 {
 			return true
@@ -160,10 +160,10 @@ func TestProperty_ZOrderDrawing(t *testing.T) {
 
 		sm := NewSpriteManager()
 
-		// スプライトを作成してZ順序を設定
+		// スプライトを作成してZ_Pathを設定
 		for _, z := range zOrders {
 			s := sm.CreateSpriteWithSize(10, 10)
-			s.SetZOrder(int(z))
+			s.SetZPath(NewZPath(int(z)))
 		}
 
 		// ソートを実行
@@ -172,10 +172,14 @@ func TestProperty_ZOrderDrawing(t *testing.T) {
 		sorted := sm.sorted
 		sm.mu.Unlock()
 
-		// Z順序が昇順であることを確認
+		// Z_Pathが辞書順であることを確認
 		for i := 1; i < len(sorted); i++ {
-			if sorted[i-1].ZOrder() > sorted[i].ZOrder() {
-				return false
+			prev := sorted[i-1].GetZPath()
+			curr := sorted[i].GetZPath()
+			if prev != nil && curr != nil {
+				if !prev.Less(curr) && prev.Compare(curr) != 0 {
+					return false
+				}
 			}
 		}
 

@@ -67,9 +67,12 @@ func TestCreateWindowSprite(t *testing.T) {
 		t.Errorf("Expected position (100, 50), got (%v, %v)", x, y)
 	}
 
-	// スプライトのZ順序を確認
-	if ws.GetSprite().ZOrder() != 0 {
-		t.Errorf("Expected ZOrder 0, got %d", ws.GetSprite().ZOrder())
+	// スプライトのZ_Pathを確認
+	// 要件 4.1: ウインドウをRoot_Spriteとして扱う
+	// 要件 1.3: Root_Spriteは単一要素のZ_Path（例: [0]）を持つ
+	expectedZPath := NewZPath(0)
+	if ws.GetSprite().GetZPath().Compare(expectedZPath) != 0 {
+		t.Errorf("Expected Z_Path %v, got %v", expectedZPath.String(), ws.GetSprite().GetZPath().String())
 	}
 
 	// スプライトの可視性を確認
@@ -384,11 +387,11 @@ func TestWindowSpriteUpdateZOrder(t *testing.T) {
 		t.Errorf("Expected window ZOrder 10, got %d", win.ZOrder)
 	}
 
-	// スプライトのZ順序が更新されたことを確認
-	// 要件 14.3: グローバルZ順序が使用される
-	expectedGlobalZOrder := CalculateGlobalZOrder(10, ZOrderWindowBase)
-	if ws.GetSprite().ZOrder() != expectedGlobalZOrder {
-		t.Errorf("Expected sprite ZOrder %d (global), got %d", expectedGlobalZOrder, ws.GetSprite().ZOrder())
+	// スプライトのZ_Pathが更新されたことを確認
+	// 要件 4.4: ウインドウが前面に移動したとき、そのウインドウのZ_Pathを更新する
+	expectedZPath := NewZPath(10)
+	if ws.GetSprite().GetZPath().Compare(expectedZPath) != 0 {
+		t.Errorf("Expected sprite Z_Path %v, got %v", expectedZPath.String(), ws.GetSprite().GetZPath().String())
 	}
 }
 

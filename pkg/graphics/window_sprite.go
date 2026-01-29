@@ -44,6 +44,7 @@ func NewWindowSpriteManager(sm *SpriteManager) *WindowSpriteManager {
 // CreateWindowSprite はウインドウからWindowSpriteを作成する
 // 要件 7.1: 指定サイズ・背景色のウインドウスプライトを作成できる
 // 要件 14.3: Z順序の統一（ウインドウ間、ウインドウ内）
+// 要件 4.1: ウインドウをRoot_Spriteとして扱う
 func (wsm *WindowSpriteManager) CreateWindowSprite(win *Window, pic *Picture) *WindowSprite {
 	wsm.mu.Lock()
 	defer wsm.mu.Unlock()
@@ -76,11 +77,12 @@ func (wsm *WindowSpriteManager) CreateWindowSprite(win *Window, pic *Picture) *W
 	// スプライトを作成
 	sprite := wsm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(win.X), float64(win.Y))
-	// 要件 14.3: グローバルZ順序を使用
-	// ウインドウスプライト自体はウインドウ範囲の先頭に配置
-	globalZOrder := CalculateGlobalZOrder(win.ZOrder, ZOrderWindowBase)
-	sprite.SetZOrder(globalZOrder)
 	sprite.SetVisible(win.Visible)
+
+	// 要件 4.1: ウインドウをRoot_Spriteとして扱う
+	// 要件 1.3: Root_Spriteは単一要素のZ_Path（例: [0]）を持つ
+	// ウインドウスプライトにZ_Pathを設定（ルートスプライトとして）
+	sprite.SetZPath(NewZPath(win.ZOrder))
 
 	ws := &WindowSprite{
 		window:          win,
@@ -186,12 +188,22 @@ func (ws *WindowSprite) GetPicOffset() (int, int) {
 
 // AddChild は子スプライトを追加する
 // 要件 7.2: ウインドウスプライトを親として子スプライトを追加できる
+// 要件 1.4: 子スプライトが作成されたとき、親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
 func (ws *WindowSprite) AddChild(child *Sprite) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
 	child.SetParent(ws.sprite)
 	ws.children = append(ws.children, child)
+
+	// 子スプライトにZ_Pathが設定されていない場合、親のZ_Pathを継承して設定
+	// 注意: 通常、子スプライトのZ_Pathは作成時（CastSprite, TextSprite等）に設定されるべき
+	// このコードは、Z_Pathが設定されていない場合のフォールバックとして機能する
+	if child.GetZPath() == nil && ws.sprite.GetZPath() != nil {
+		// 子スプライトの数をLocal_Z_Orderとして使用（簡易的な実装）
+		localZOrder := len(ws.children) - 1
+		child.SetZPath(NewZPathFromParent(ws.sprite.GetZPath(), localZOrder))
+	}
 }
 
 // RemoveChild は子スプライトを削除する
@@ -226,12 +238,29 @@ func (ws *WindowSprite) UpdatePosition(x, y int) {
 }
 
 // UpdateZOrder はZ順序を更新する
-// 要件 14.3: グローバルZ順序を使用
+// 要件 4.4: ウインドウが前面に移動したとき、そのウインドウのZ_Pathを更新する
+// 注意: このメソッドは互換性のために維持されています。
+// 子スプライトのZ_Path更新が必要な場合は UpdateWindowZOrder() を使用してください。
 func (ws *WindowSprite) UpdateZOrder(z int) {
 	ws.window.ZOrder = z
-	// グローバルZ順序を計算
-	globalZOrder := CalculateGlobalZOrder(z, ZOrderWindowBase)
-	ws.sprite.SetZOrder(globalZOrder)
+
+	// 要件 4.4: ウインドウが前面に移動したとき、そのウインドウのZ_Pathを更新する
+	ws.sprite.SetZPath(NewZPath(z))
+}
+
+// UpdateWindowZOrder はウインドウのZ順序を更新し、子スプライトのZ_Pathも更新する
+// 要件 4.3: ウインドウのZ順序変更時に、そのウインドウの子スプライトのZ_Pathを更新する
+// 要件 4.4: ウインドウが前面に移動したとき、そのウインドウのZ_Pathを更新する
+func (ws *WindowSprite) UpdateWindowZOrder(newZOrder int, sm *SpriteManager) {
+	ws.window.ZOrder = newZOrder
+
+	// ウインドウスプライトのZ_Pathを更新
+	ws.sprite.SetZPath(NewZPath(newZOrder))
+
+	// 子スプライトのZ_Pathを再帰的に更新
+	sm.UpdateChildrenZPaths(ws.sprite)
+
+	sm.MarkNeedSort()
 }
 
 // UpdateVisible は可視性を更新する
@@ -261,6 +290,8 @@ func (ws *WindowSprite) RedrawDecoration(pic *Picture) {
 
 // drawWindowDecorationOnImage はウインドウ装飾を画像に描画する
 // Windows 3.1風のウインドウ装飾を描画
+// 要件 11.2: ピクチャー画像の直接描画は廃止（スプライトシステムで描画）
+// ピクチャー画像はPictureSpriteとして別途描画される
 func drawWindowDecorationOnImage(img *ebiten.Image, win *Window, pic *Picture, winWidth, winHeight, borderThickness, titleBarHeight int) {
 	// Windows 3.1風の色
 	var (
@@ -304,54 +335,8 @@ func drawWindowDecorationOnImage(img *ebiten.Image, win *Window, pic *Picture, w
 			win.BgColor, false)
 	}
 
-	// 4.2 ピクチャーを描画
-	if pic != nil && pic.Image != nil {
-		// PicX/PicYオフセットを考慮した描画位置
-		imgX := contentX - win.PicX
-		imgY := contentY - win.PicY
-
-		// クリッピング計算
-		srcX := 0
-		srcY := 0
-		srcW := pic.Width
-		srcH := pic.Height
-
-		// 描画位置がコンテンツ領域外の場合の調整
-		if imgX < contentX {
-			srcX = contentX - imgX
-			srcW -= srcX
-			imgX = contentX
-		}
-		if imgY < contentY {
-			srcY = contentY - imgY
-			srcH -= srcY
-			imgY = contentY
-		}
-
-		// コンテンツ領域を超える部分のクリッピング
-		if imgX+srcW > contentX+winWidth {
-			srcW = contentX + winWidth - imgX
-		}
-		if imgY+srcH > contentY+winHeight {
-			srcH = contentY + winHeight - imgY
-		}
-
-		// 有効な領域がある場合のみ描画
-		if srcW > 0 && srcH > 0 {
-			subImg := pic.Image.SubImage(pic.Image.Bounds()).(*ebiten.Image)
-			if srcX > 0 || srcY > 0 || srcW < pic.Width || srcH < pic.Height {
-				// サブイメージを切り出す
-				subRect := pic.Image.Bounds()
-				subRect.Min.X = srcX
-				subRect.Min.Y = srcY
-				subRect.Max.X = srcX + srcW
-				subRect.Max.Y = srcY + srcH
-				subImg = pic.Image.SubImage(subRect).(*ebiten.Image)
-			}
-
-			opts := &ebiten.DrawImageOptions{}
-			opts.GeoM.Translate(float64(imgX), float64(imgY))
-			img.DrawImage(subImg, opts)
-		}
-	}
+	// 要件 11.2: ピクチャー画像はスプライトシステムで描画する
+	// ここではウィンドウ装飾（枠、タイトルバー、背景色）のみを描画
+	// ピクチャー画像はOpenWin時にPictureSpriteとして作成され、
+	// drawLayersForWindow()で描画される
 }

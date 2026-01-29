@@ -119,9 +119,10 @@ func (ssm *ShapeSpriteManager) CreateLineSprite(
 	vector.StrokeLine(img, localX1, localY1, localX2, localY2, float32(lineSize), lineColor, false)
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := ssm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(minX-halfLine), float64(minY-halfLine))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(true)
 
 	ss := &ShapeSprite{
@@ -202,9 +203,10 @@ func (ssm *ShapeSpriteManager) CreateRectSprite(
 	vector.StrokeRect(img, localX, localY, localW, localH, float32(lineSize), rectColor, false)
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := ssm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(x1-halfLine), float64(y1-halfLine))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(true)
 
 	ss := &ShapeSprite{
@@ -281,9 +283,10 @@ func (ssm *ShapeSpriteManager) CreateFillRectSprite(
 	vector.DrawFilledRect(img, 0, 0, float32(width), float32(height), fillColor, false)
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := ssm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(x1), float64(y1))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(true)
 
 	ss := &ShapeSprite{
@@ -355,9 +358,10 @@ func (ssm *ShapeSpriteManager) CreateCircleSprite(
 	vector.StrokeCircle(img, localCX, localCY, float32(radius), float32(lineSize), circleColor, false)
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := ssm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(cx-radius-halfLine), float64(cy-radius-halfLine))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(true)
 
 	ss := &ShapeSprite{
@@ -423,9 +427,10 @@ func (ssm *ShapeSpriteManager) CreateFillCircleSprite(
 	vector.DrawFilledCircle(img, localCX, localCY, float32(radius), fillColor, false)
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := ssm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(cx-radius), float64(cy-radius))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(true)
 
 	ss := &ShapeSprite{
@@ -622,16 +627,6 @@ func (ss *ShapeSprite) SetPosition(x, y int) {
 	ss.destY = y
 	if ss.sprite != nil {
 		ss.sprite.SetPosition(float64(x), float64(y))
-	}
-}
-
-// SetZOrder はZ順序を更新する
-func (ss *ShapeSprite) SetZOrder(z int) {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-
-	if ss.sprite != nil {
-		ss.sprite.SetZOrder(z)
 	}
 }
 

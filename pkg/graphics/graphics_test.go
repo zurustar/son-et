@@ -500,20 +500,20 @@ func TestGraphicsSystem_DrawWithSpriteManager_MultipleSprites(t *testing.T) {
 	// SpriteManagerに複数のスプライトを追加
 	sm := gs.GetSpriteManager()
 
-	// 異なるZ順序でスプライトを作成
+	// 異なるZ_Pathでスプライトを作成
 	sprite1 := sm.CreateSpriteWithSize(50, 50)
 	sprite1.SetPosition(10, 10)
-	sprite1.SetZOrder(100)
+	sprite1.SetZPath(NewZPath(100))
 	sprite1.SetVisible(true)
 
 	sprite2 := sm.CreateSpriteWithSize(50, 50)
 	sprite2.SetPosition(20, 20)
-	sprite2.SetZOrder(50) // sprite1より背面
+	sprite2.SetZPath(NewZPath(50)) // sprite1より背面
 	sprite2.SetVisible(true)
 
 	sprite3 := sm.CreateSpriteWithSize(50, 50)
 	sprite3.SetPosition(30, 30)
-	sprite3.SetZOrder(150) // sprite1より前面
+	sprite3.SetZPath(NewZPath(150)) // sprite1より前面
 	sprite3.SetVisible(true)
 
 	// DrawWithSpriteManagerを呼び出す

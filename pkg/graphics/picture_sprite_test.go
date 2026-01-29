@@ -86,9 +86,8 @@ func TestCreatePictureSprite(t *testing.T) {
 		t.Errorf("Expected position (100, 150), got (%v, %v)", x, y)
 	}
 
-	if sprite.ZOrder() != 5 {
-		t.Errorf("Expected ZOrder 5, got %d", sprite.ZOrder())
-	}
+	// Z_Pathはまだ設定されていない（親スプライトなしで作成されたため）
+	// zOrderパラメータは互換性のために残されているが、実際のZ順序はZ_Pathで管理される
 
 	if !sprite.Visible() {
 		t.Error("Expected sprite to be visible")
@@ -132,10 +131,8 @@ func TestCreatePictureSpriteFromDrawingEntry(t *testing.T) {
 		t.Errorf("Expected destY 150, got %d", ps.GetDestY())
 	}
 
-	// スプライトのZ順序を確認
-	if ps.GetSprite().ZOrder() != 10 {
-		t.Errorf("Expected ZOrder 10, got %d", ps.GetSprite().ZOrder())
-	}
+	// Z_Pathはまだ設定されていない（親スプライトなしで作成されたため）
+	// zOrderパラメータは互換性のために残されているが、実際のZ順序はZ_Pathで管理される
 }
 
 // TestCreatePictureSpriteFromDrawingEntryNil はnilのDrawingEntryを渡した場合のテスト
@@ -304,23 +301,6 @@ func TestPictureSpriteSetPosition(t *testing.T) {
 	}
 }
 
-// TestPictureSpriteSetZOrder はZ順序の更新をテストする
-func TestPictureSpriteSetZOrder(t *testing.T) {
-	sm := NewSpriteManager()
-	psm := NewPictureSpriteManager(sm)
-
-	srcImg := ebiten.NewImage(50, 50)
-	ps := psm.CreatePictureSprite(srcImg, 1, 0, 0, 50, 50, 0, 0, 0, false)
-
-	// Z順序を更新
-	ps.SetZOrder(100)
-
-	// スプライトのZ順序が更新されたことを確認
-	if ps.GetSprite().ZOrder() != 100 {
-		t.Errorf("Expected ZOrder 100, got %d", ps.GetSprite().ZOrder())
-	}
-}
-
 // TestPictureSpriteSetVisible は可視性の更新をテストする
 func TestPictureSpriteSetVisible(t *testing.T) {
 	sm := NewSpriteManager()
@@ -406,5 +386,212 @@ func TestGraphicsSystemPictureSpriteIntegration(t *testing.T) {
 	// 初期状態ではPictureSpriteがないことを確認
 	if psm.Count() != 0 {
 		t.Errorf("Expected count 0, got %d", psm.Count())
+	}
+}
+
+// TestCreatePictureSpriteOnLoad はLoadPic時のPictureSprite作成をテストする
+// 要件 11.1: LoadPicが呼び出されたとき、非表示のPictureSpriteを作成する
+// 要件 11.2: PictureSpriteはピクチャ番号をキーとして管理される
+// 要件 12.1: PictureSpriteは「未関連付け」状態で作成される
+// 要件 12.2: 未関連付け状態ではスプライトを描画しない
+func TestCreatePictureSpriteOnLoad(t *testing.T) {
+	sm := NewSpriteManager()
+	psm := NewPictureSpriteManager(sm)
+
+	// テスト用の画像を作成
+	srcImg := ebiten.NewImage(100, 100)
+
+	// LoadPic時にPictureSpriteを作成
+	ps := psm.CreatePictureSpriteOnLoad(srcImg, 35, 100, 100)
+
+	if ps == nil {
+		t.Fatal("CreatePictureSpriteOnLoad returned nil")
+	}
+
+	// 要件 11.2: ピクチャ番号をキーとして管理される
+	retrievedPS := psm.GetPictureSpriteByPictureID(35)
+	if retrievedPS != ps {
+		t.Error("GetPictureSpriteByPictureID should return the created PictureSprite")
+	}
+
+	// 要件 12.1: 未関連付け状態で作成される
+	if ps.GetState() != PictureSpriteUnattached {
+		t.Errorf("Expected state Unattached, got %v", ps.GetState())
+	}
+
+	// 要件 12.2: 未関連付け状態では描画しない
+	if ps.IsEffectivelyVisible() {
+		t.Error("Unattached PictureSprite should not be effectively visible")
+	}
+
+	// スプライトが非表示であることを確認
+	if ps.GetSprite().Visible() {
+		t.Error("Sprite should be invisible when unattached")
+	}
+
+	// ウインドウIDが-1（未関連付け）であることを確認
+	if ps.GetWindowID() != -1 {
+		t.Errorf("Expected windowID -1, got %d", ps.GetWindowID())
+	}
+}
+
+// TestAttachPictureSpriteToWindow はSetPic時の関連付けをテストする
+// 要件 11.3: SetPicが呼び出されたとき、既存のPictureSpriteをウインドウの子として関連付ける
+// 要件 11.4: SetPicが呼び出されたとき、PictureSpriteを表示状態にする
+func TestAttachPictureSpriteToWindow(t *testing.T) {
+	sm := NewSpriteManager()
+	psm := NewPictureSpriteManager(sm)
+
+	// テスト用の画像を作成
+	srcImg := ebiten.NewImage(100, 100)
+
+	// LoadPic時にPictureSpriteを作成
+	ps := psm.CreatePictureSpriteOnLoad(srcImg, 35, 100, 100)
+
+	// ウインドウスプライトを作成（親として使用）
+	windowImg := ebiten.NewImage(640, 480)
+	windowSprite := sm.CreateSprite(windowImg)
+	windowSprite.SetZPath(NewZPath(0))
+	windowSprite.SetVisible(true)
+
+	// PictureSpriteをウインドウに関連付け
+	err := psm.AttachPictureSpriteToWindow(35, windowSprite, 0)
+	if err != nil {
+		t.Fatalf("AttachPictureSpriteToWindow failed: %v", err)
+	}
+
+	// 要件 11.3: ウインドウの子として関連付けられる
+	if ps.GetSprite().Parent() != windowSprite {
+		t.Error("PictureSprite should be a child of WindowSprite")
+	}
+
+	// 要件 11.4: 表示状態になる
+	if !ps.GetSprite().Visible() {
+		t.Error("PictureSprite should be visible after attachment")
+	}
+
+	// 状態がAttachedに変更される
+	if ps.GetState() != PictureSpriteAttached {
+		t.Errorf("Expected state Attached, got %v", ps.GetState())
+	}
+
+	// ウインドウIDが設定される
+	if ps.GetWindowID() != 0 {
+		t.Errorf("Expected windowID 0, got %d", ps.GetWindowID())
+	}
+
+	// Z_Pathが設定される
+	if ps.GetSprite().GetZPath() == nil {
+		t.Error("Z_Path should be set after attachment")
+	}
+
+	// 関連付け後はpictureSpriteMapから削除される
+	if psm.GetPictureSpriteByPictureID(35) != nil {
+		t.Error("PictureSprite should be removed from pictureSpriteMap after attachment")
+	}
+}
+
+// TestFreePictureSprite はFreePic時の削除をテストする
+// 要件 11.8: ピクチャが解放されたとき、対応するPictureSpriteとその子スプライトを削除する
+func TestFreePictureSprite(t *testing.T) {
+	sm := NewSpriteManager()
+	psm := NewPictureSpriteManager(sm)
+
+	// テスト用の画像を作成
+	srcImg := ebiten.NewImage(100, 100)
+
+	// LoadPic時にPictureSpriteを作成
+	ps := psm.CreatePictureSpriteOnLoad(srcImg, 35, 100, 100)
+	spriteID := ps.GetSprite().ID()
+
+	// スプライトが存在することを確認
+	if sm.GetSprite(spriteID) == nil {
+		t.Error("Sprite should exist before FreePictureSprite")
+	}
+
+	// PictureSpriteを削除
+	psm.FreePictureSprite(35)
+
+	// pictureSpriteMapから削除されたことを確認
+	if psm.GetPictureSpriteByPictureID(35) != nil {
+		t.Error("PictureSprite should be removed from pictureSpriteMap")
+	}
+
+	// スプライトも削除されたことを確認
+	if sm.GetSprite(spriteID) != nil {
+		t.Error("Sprite should be removed from SpriteManager")
+	}
+}
+
+// TestPictureSpriteIsEffectivelyVisible は実効的な可視性をテストする
+// 要件 12.2: PictureSpriteが「未関連付け」状態のとき、そのスプライトを描画しない
+// 要件 12.3: PictureSpriteが「関連付け済み」状態のとき、親ウインドウの可視性に従って描画する
+func TestPictureSpriteIsEffectivelyVisible(t *testing.T) {
+	sm := NewSpriteManager()
+	psm := NewPictureSpriteManager(sm)
+
+	// テスト用の画像を作成
+	srcImg := ebiten.NewImage(100, 100)
+
+	// LoadPic時にPictureSpriteを作成（未関連付け状態）
+	ps := psm.CreatePictureSpriteOnLoad(srcImg, 35, 100, 100)
+
+	// 要件 12.2: 未関連付け状態では描画しない
+	if ps.IsEffectivelyVisible() {
+		t.Error("Unattached PictureSprite should not be effectively visible")
+	}
+
+	// ウインドウスプライトを作成（親として使用）
+	windowImg := ebiten.NewImage(640, 480)
+	windowSprite := sm.CreateSprite(windowImg)
+	windowSprite.SetZPath(NewZPath(0))
+	windowSprite.SetVisible(true)
+
+	// PictureSpriteをウインドウに関連付け
+	psm.AttachPictureSpriteToWindow(35, windowSprite, 0)
+
+	// 要件 12.3: 関連付け済み状態では親の可視性に従う
+	if !ps.IsEffectivelyVisible() {
+		t.Error("Attached PictureSprite with visible parent should be effectively visible")
+	}
+
+	// 親を非表示にする
+	windowSprite.SetVisible(false)
+
+	// 親が非表示なので、子も非表示になる
+	if ps.IsEffectivelyVisible() {
+		t.Error("PictureSprite with invisible parent should not be effectively visible")
+	}
+}
+
+// TestPictureSpriteWithChildren は子スプライトを持つPictureSpriteの削除をテストする
+func TestPictureSpriteWithChildren(t *testing.T) {
+	sm := NewSpriteManager()
+	psm := NewPictureSpriteManager(sm)
+
+	// テスト用の画像を作成
+	srcImg := ebiten.NewImage(100, 100)
+
+	// LoadPic時にPictureSpriteを作成
+	ps := psm.CreatePictureSpriteOnLoad(srcImg, 35, 100, 100)
+
+	// 子スプライトを追加
+	childImg := ebiten.NewImage(50, 50)
+	child := sm.CreateSprite(childImg)
+	ps.GetSprite().AddChild(child)
+
+	childID := child.ID()
+
+	// 子スプライトが存在することを確認
+	if sm.GetSprite(childID) == nil {
+		t.Error("Child sprite should exist before FreePictureSprite")
+	}
+
+	// PictureSpriteを削除（子スプライトも削除される）
+	psm.FreePictureSprite(35)
+
+	// 子スプライトも削除されたことを確認
+	if sm.GetSprite(childID) != nil {
+		t.Error("Child sprite should be removed when parent PictureSprite is freed")
 	}
 }

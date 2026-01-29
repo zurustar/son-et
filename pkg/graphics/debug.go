@@ -127,6 +127,31 @@ func (do *DebugOverlay) DrawCastID(screen *ebiten.Image, cast *Cast, x, y int) {
 	do.drawDebugText(screen, label, x, y, debugCastIDColor, true)
 }
 
+// デバッグオーバーレイの色定義（テキストスプライト用）
+var debugTextSpriteIDColor = color.RGBA{255, 128, 255, 255} // マゼンタ
+
+// DrawTextSpriteID はテキストスプライトIDをテキスト位置に描画する
+// テキストスプライトのデバッグ用：IDとテキスト内容の一部を表示
+func (do *DebugOverlay) DrawTextSpriteID(screen *ebiten.Image, id int, text string, x, y int) {
+	do.mu.RLock()
+	defer do.mu.RUnlock()
+
+	if !do.enabled {
+		return
+	}
+
+	// テキストの最初の10文字を表示（長すぎる場合は省略）
+	displayText := text
+	if len(displayText) > 10 {
+		displayText = displayText[:10] + "..."
+	}
+
+	label := fmt.Sprintf("T%d:%s", id, displayText)
+
+	// 半透明黒背景 + マゼンタテキスト
+	do.drawDebugText(screen, label, x, y, debugTextSpriteIDColor, true)
+}
+
 // drawDebugText はデバッグテキストを描画する
 // withBackground が true の場合、半透明の黒背景を描画する
 func (do *DebugOverlay) drawDebugText(screen *ebiten.Image, label string, x, y int, textColor color.Color, withBackground bool) {
@@ -204,4 +229,77 @@ func (do *DebugOverlay) SetEnabledFromLogLevel(level slog.Level) {
 func (do *DebugOverlay) SetEnabledFromLogLevelString(level string) {
 	enabled := level == "debug"
 	do.SetEnabled(enabled)
+}
+
+// デバッグオーバーレイの色定義（Z_Path用）
+var debugZPathColor = color.RGBA{0, 255, 255, 255} // シアン
+
+// DrawZPathOverlay はスプライトのZ_Pathをオーバーレイ表示する
+// 要件 10.4: デバッグモードが有効なとき、Z_Pathをオーバーレイ表示できる
+//
+// 各スプライトの位置にZ_Pathを表示します。
+// 半透明の黒背景にシアン色のテキストで表示されます。
+//
+// 例:
+//
+//	do.DrawZPathOverlay(screen, spriteManager)
+func (do *DebugOverlay) DrawZPathOverlay(screen *ebiten.Image, sm *SpriteManager) {
+	do.mu.RLock()
+	defer do.mu.RUnlock()
+
+	if !do.enabled {
+		return
+	}
+
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	for _, s := range sm.sprites {
+		if !s.IsEffectivelyVisible() {
+			continue
+		}
+
+		x, y := s.AbsolutePosition()
+
+		// Z_Pathの文字列を取得
+		label := "nil"
+		if s.zPath != nil {
+			label = s.zPath.String()
+		}
+
+		// 半透明黒背景 + シアンテキストでZ_Pathを表示
+		do.drawDebugText(screen, label, int(x), int(y), debugZPathColor, true)
+	}
+}
+
+// DrawSpriteZPath は単一スプライトのZ_Pathをオーバーレイ表示する
+// 要件 10.4: デバッグモードが有効なとき、Z_Pathをオーバーレイ表示できる
+//
+// 指定されたスプライトの位置にZ_Pathを表示します。
+//
+// 例:
+//
+//	do.DrawSpriteZPath(screen, sprite)
+func (do *DebugOverlay) DrawSpriteZPath(screen *ebiten.Image, s *Sprite) {
+	do.mu.RLock()
+	defer do.mu.RUnlock()
+
+	if !do.enabled || s == nil {
+		return
+	}
+
+	if !s.IsEffectivelyVisible() {
+		return
+	}
+
+	x, y := s.AbsolutePosition()
+
+	// Z_Pathの文字列を取得
+	label := "nil"
+	if s.zPath != nil {
+		label = s.zPath.String()
+	}
+
+	// 半透明黒背景 + シアンテキストでZ_Pathを表示
+	do.drawDebugText(screen, label, int(x), int(y), debugZPathColor, true)
 }

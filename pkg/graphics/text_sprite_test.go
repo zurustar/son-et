@@ -423,20 +423,6 @@ func TestTextSprite_SetPosition(t *testing.T) {
 	}
 }
 
-func TestTextSprite_SetZOrder(t *testing.T) {
-	sm := NewSpriteManager()
-	tsm := NewTextSpriteManager(sm)
-
-	ts := tsm.CreateTextSprite(1, 10, 20, "Hello", color.Black, color.White, basicfont.Face7x13, 1000)
-
-	ts.SetZOrder(2000)
-
-	sprite := ts.GetSprite()
-	if sprite.ZOrder() != 2000 {
-		t.Errorf("expected zOrder 2000, got %d", sprite.ZOrder())
-	}
-}
-
 func TestTextSprite_SetVisible(t *testing.T) {
 	sm := NewSpriteManager()
 	tsm := NewTextSpriteManager(sm)
@@ -481,26 +467,30 @@ func TestTextSprite_SetParent(t *testing.T) {
 	}
 }
 
-func TestSortTextSpritesByZOrder(t *testing.T) {
+func TestSortTextSpritesByZPath(t *testing.T) {
 	sm := NewSpriteManager()
 	tsm := NewTextSpriteManager(sm)
 
+	// Z_Pathを設定してテスト
 	ts1 := tsm.CreateTextSprite(1, 10, 20, "A", color.Black, color.White, basicfont.Face7x13, 1002)
+	ts1.GetSprite().SetZPath(NewZPath(1002))
 	ts2 := tsm.CreateTextSprite(1, 10, 40, "B", color.Black, color.White, basicfont.Face7x13, 1000)
+	ts2.GetSprite().SetZPath(NewZPath(1000))
 	ts3 := tsm.CreateTextSprite(1, 10, 60, "C", color.Black, color.White, basicfont.Face7x13, 1001)
+	ts3.GetSprite().SetZPath(NewZPath(1001))
 
 	sprites := []*TextSprite{ts1, ts2, ts3}
-	sortTextSpritesByZOrder(sprites)
+	sortTextSpritesByZPath(sprites)
 
-	// Z順序でソートされていることを確認
-	if sprites[0].GetSprite().ZOrder() != 1000 {
-		t.Errorf("expected first sprite zOrder 1000, got %d", sprites[0].GetSprite().ZOrder())
+	// Z_Pathでソートされていることを確認
+	if sprites[0].GetSprite().GetZPath().Path()[0] != 1000 {
+		t.Errorf("expected first sprite Z_Path [1000], got %v", sprites[0].GetSprite().GetZPath().String())
 	}
-	if sprites[1].GetSprite().ZOrder() != 1001 {
-		t.Errorf("expected second sprite zOrder 1001, got %d", sprites[1].GetSprite().ZOrder())
+	if sprites[1].GetSprite().GetZPath().Path()[0] != 1001 {
+		t.Errorf("expected second sprite Z_Path [1001], got %v", sprites[1].GetSprite().GetZPath().String())
 	}
-	if sprites[2].GetSprite().ZOrder() != 1002 {
-		t.Errorf("expected third sprite zOrder 1002, got %d", sprites[2].GetSprite().ZOrder())
+	if sprites[2].GetSprite().GetZPath().Path()[0] != 1002 {
+		t.Errorf("expected third sprite Z_Path [1002], got %v", sprites[2].GetSprite().GetZPath().String())
 	}
 }
 

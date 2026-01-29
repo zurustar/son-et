@@ -22,6 +22,12 @@ type CastSprite struct {
 	srcPicID int           // ソースピクチャーID
 	srcImage *ebiten.Image // ソース画像への参照
 
+	// 前回のソース領域（変更検出用）
+	lastSrcX   int
+	lastSrcY   int
+	lastWidth  int
+	lastHeight int
+
 	// 透明色処理
 	transColor    color.Color // 透明色
 	hasTransColor bool        // 透明色が設定されているか
@@ -69,9 +75,10 @@ func (csm *CastSpriteManager) CreateCastSprite(
 	}
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := csm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(cast.X), float64(cast.Y))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(cast.Visible)
 
 	cs := &CastSprite{
@@ -79,6 +86,10 @@ func (csm *CastSpriteManager) CreateCastSprite(
 		sprite:        sprite,
 		srcPicID:      cast.PicID,
 		srcImage:      srcImage,
+		lastSrcX:      cast.SrcX,
+		lastSrcY:      cast.SrcY,
+		lastWidth:     cast.Width,
+		lastHeight:    cast.Height,
 		transColor:    cast.TransColor,
 		hasTransColor: cast.HasTransColor,
 		cachedImage:   img,
@@ -92,6 +103,8 @@ func (csm *CastSpriteManager) CreateCastSprite(
 // CreateCastSpriteWithParent はキャストからCastSpriteを作成し、親スプライトを設定する
 // 要件 8.1: キャストをスプライトとして作成できる
 // 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 2.2: PutCastが呼び出されたとき、現在のZ_Order_Counterを使用してLocal_Z_Orderを割り当てる
+// 要件 1.4: 子スプライトが作成されたとき、親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
 func (csm *CastSpriteManager) CreateCastSpriteWithParent(
 	cast *Cast,
 	srcImage *ebiten.Image,
@@ -101,6 +114,16 @@ func (csm *CastSpriteManager) CreateCastSpriteWithParent(
 	cs := csm.CreateCastSprite(cast, srcImage, zOrder)
 	if cs != nil && parent != nil {
 		cs.SetParent(parent)
+
+		// 要件 2.2, 2.6: 操作順序でLocal_Z_Orderを割り当てる
+		// 要件 1.4: 親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
+		if parent.GetZPath() != nil {
+			// 親のIDを使用してZOrderCounterから次のLocal_Z_Orderを取得
+			localZOrder := csm.spriteManager.GetZOrderCounter().GetNext(parent.ID())
+			zPath := NewZPathFromParent(parent.GetZPath(), localZOrder)
+			cs.sprite.SetZPath(zPath)
+			csm.spriteManager.MarkNeedSort()
+		}
 	}
 	return cs
 }
@@ -129,9 +152,10 @@ func (csm *CastSpriteManager) CreateCastSpriteWithTransColor(
 	}
 
 	// スプライトを作成
+	// 注意: zOrderパラメータは互換性のために残されているが、
+	// 実際のZ順序はZ_Pathで管理される
 	sprite := csm.spriteManager.CreateSprite(img)
 	sprite.SetPosition(float64(cast.X), float64(cast.Y))
-	sprite.SetZOrder(zOrder)
 	sprite.SetVisible(cast.Visible)
 
 	cs := &CastSprite{
@@ -139,6 +163,10 @@ func (csm *CastSpriteManager) CreateCastSpriteWithTransColor(
 		sprite:        sprite,
 		srcPicID:      cast.PicID,
 		srcImage:      srcImage,
+		lastSrcX:      cast.SrcX,
+		lastSrcY:      cast.SrcY,
+		lastWidth:     cast.Width,
+		lastHeight:    cast.Height,
 		transColor:    transColor,
 		hasTransColor: transColor != nil,
 		cachedImage:   img,
@@ -152,6 +180,8 @@ func (csm *CastSpriteManager) CreateCastSpriteWithTransColor(
 // CreateCastSpriteWithTransColorAndParent は透明色付きでCastSpriteを作成し、親スプライトを設定する
 // 要件 8.4: 透明色処理をサポートする
 // 要件 14.2: ウインドウ内のスプライトをウインドウの子スプライトとして管理する
+// 要件 2.2: PutCastが呼び出されたとき、現在のZ_Order_Counterを使用してLocal_Z_Orderを割り当てる
+// 要件 1.4: 子スプライトが作成されたとき、親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
 func (csm *CastSpriteManager) CreateCastSpriteWithTransColorAndParent(
 	cast *Cast,
 	srcImage *ebiten.Image,
@@ -162,6 +192,16 @@ func (csm *CastSpriteManager) CreateCastSpriteWithTransColorAndParent(
 	cs := csm.CreateCastSpriteWithTransColor(cast, srcImage, zOrder, transColor)
 	if cs != nil && parent != nil {
 		cs.SetParent(parent)
+
+		// 要件 2.2, 2.6: 操作順序でLocal_Z_Orderを割り当てる
+		// 要件 1.4: 親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
+		if parent.GetZPath() != nil {
+			// 親のIDを使用してZOrderCounterから次のLocal_Z_Orderを取得
+			localZOrder := csm.spriteManager.GetZOrderCounter().GetNext(parent.ID())
+			zPath := NewZPathFromParent(parent.GetZPath(), localZOrder)
+			cs.sprite.SetZPath(zPath)
+			csm.spriteManager.MarkNeedSort()
+		}
 	}
 	return cs
 }
@@ -395,17 +435,28 @@ func (cs *CastSprite) UpdatePosition(x, y int) {
 }
 
 // UpdateSource はキャストのソース領域を更新する
+// 値が実際に変更された場合のみdirtyフラグを設定する
 func (cs *CastSprite) UpdateSource(srcX, srcY, width, height int) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
+	// 前回の値と比較して変更があった場合のみdirtyフラグを設定
+	if cs.lastSrcX != srcX || cs.lastSrcY != srcY ||
+		cs.lastWidth != width || cs.lastHeight != height {
+		cs.lastSrcX = srcX
+		cs.lastSrcY = srcY
+		cs.lastWidth = width
+		cs.lastHeight = height
+		cs.dirty = true
+	}
+
+	// castオブジェクトも更新（CastManagerと同期）
 	if cs.cast != nil {
 		cs.cast.SrcX = srcX
 		cs.cast.SrcY = srcY
 		cs.cast.Width = width
 		cs.cast.Height = height
 	}
-	cs.dirty = true
 }
 
 // UpdatePicID はソースピクチャーIDを更新する

@@ -125,11 +125,19 @@ func (gs *GraphicsSystem) movePicInternal(
 		// 通常コピー（mode=0）
 		// 要件 3.1, 3.2, 3.3, 3.4: 焼き付けロジックを使用
 		gs.bakeToPictureLayer(dstID, dstPic, subImg, dstX, dstY, width, height, false)
+		// 要件 12.5: MovePicが呼び出されたとき、転送先ピクチャのPictureSpriteの画像を更新する
+		if gs.pictureSpriteManager != nil {
+			gs.pictureSpriteManager.UpdatePictureSpriteImage(dstID, dstPic.Image)
+		}
 
 	case TransferModeTransparent:
 		// 透明色除外（mode=1）
 		// 要件 3.1, 3.2, 3.3, 3.4: 焼き付けロジックを使用
 		gs.bakeToPictureLayer(dstID, dstPic, subImg, dstX, dstY, width, height, true)
+		// 要件 12.5: MovePicが呼び出されたとき、転送先ピクチャのPictureSpriteの画像を更新する
+		if gs.pictureSpriteManager != nil {
+			gs.pictureSpriteManager.UpdatePictureSpriteImage(dstID, dstPic.Image)
+		}
 
 	default:
 		// シーンチェンジモード（mode=2-9）
@@ -167,8 +175,9 @@ func (gs *GraphicsSystem) movePicInternal(
 }
 
 // bakeToPictureLayer は焼き付けロジックを実装する
-// 要件 3.1: MovePicが呼び出されたときに最上位レイヤーのタイプを確認する
-// スプライトシステム移行: LayerManagerは不要になった（PictureSpriteで管理）
+// 要件 3.1, 3.2, 3.3, 3.4: MovePicはピクチャーに直接描画（焼き付け）する
+// 注意: MovePicはスプライトを作成しない。ピクチャーに直接描画するのみ。
+// スプライトを作成するのはOpenWin、PutCast、TextWriteなどの操作のみ。
 func (gs *GraphicsSystem) bakeToPictureLayer(
 	dstID int,
 	dstPic *Picture,
@@ -176,65 +185,18 @@ func (gs *GraphicsSystem) bakeToPictureLayer(
 	dstX, dstY, width, height int,
 	transparent bool,
 ) {
-	// まず、実際のピクチャーに描画する（これがないと画面に表示されない）
+	// ピクチャーに直接描画（焼き付け）
+	// これがFILLYの元の動作：MovePicはピクチャーに直接描画する
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(float64(dstX), float64(dstY))
+
 	if transparent {
+		// 透明色処理（mode=1）
+		// 黒(0,0,0)を透明として扱う
 		gs.drawWithTransparency(srcImg, dstPic.Image, dstX, dstY, DefaultTransparentColor)
 	} else {
-		opts := &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(float64(dstX), float64(dstY))
+		// 通常コピー（mode=0）
 		dstPic.Image.DrawImage(srcImg, opts)
-	}
-
-	// スプライトシステム要件 6.1〜6.3: PictureSpriteを作成する
-	if gs.pictureSpriteManager != nil {
-		// 転送先ピクチャーIDからウィンドウIDを逆引き
-		winID, err := gs.windows.GetWinByPicID(dstID)
-		if err != nil {
-			// ウィンドウが見つからない場合は、PictureSpriteのみ作成
-			gs.log.Debug("MovePic: no window found for picture, creating PictureSprite only",
-				"dstID", dstID, "error", err)
-			gs.pictureSpriteManager.CreatePictureSprite(
-				srcImg,
-				dstID,
-				0, 0, // ソース座標（すでに切り出し済み）
-				width, height,
-				dstX, dstY,
-				ZOrderDrawing,
-				transparent,
-			)
-			return
-		}
-
-		// ウィンドウ情報を取得
-		win, err := gs.windows.GetWin(winID)
-		if err != nil {
-			gs.log.Error("MovePic: failed to get window",
-				"winID", winID, "error", err)
-			return
-		}
-
-		// Z順序を計算
-		zOrder := CalculateGlobalZOrder(win.ZOrder, ZOrderDrawing)
-
-		ps := gs.pictureSpriteManager.CreatePictureSprite(
-			srcImg,
-			dstID,
-			0, 0, // ソース座標（すでに切り出し済み）
-			width, height,
-			dstX, dstY,
-			zOrder,
-			transparent,
-		)
-
-		// WindowSpriteが存在する場合、子スプライトとして追加
-		if gs.windowSpriteManager != nil {
-			ws := gs.windowSpriteManager.GetWindowSprite(winID)
-			if ws != nil && ps != nil {
-				ws.AddChild(ps.GetSprite())
-				gs.log.Debug("MovePic: added PictureSprite as child of WindowSprite",
-					"winID", winID, "dstID", dstID)
-			}
-		}
 	}
 }
 

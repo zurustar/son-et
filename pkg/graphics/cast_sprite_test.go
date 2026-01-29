@@ -61,9 +61,8 @@ func TestCreateCastSprite(t *testing.T) {
 		t.Errorf("expected position (10, 20), got (%f, %f)", x, y)
 	}
 
-	if sprite.ZOrder() != 100 {
-		t.Errorf("expected ZOrder 100, got %d", sprite.ZOrder())
-	}
+	// Z_Pathはまだ設定されていない（親スプライトなしで作成されたため）
+	// zOrderパラメータは互換性のために残されているが、実際のZ順序はZ_Pathで管理される
 
 	if !sprite.Visible() {
 		t.Error("expected sprite to be visible")
@@ -499,5 +498,217 @@ func TestCastSpriteParentVisibilityInheritance(t *testing.T) {
 	// 親が非表示の場合、子も実効的に非表示
 	if cs.GetSprite().IsEffectivelyVisible() {
 		t.Error("expected child to be effectively invisible when parent is invisible")
+	}
+}
+
+// TestCreateCastSpriteWithParentZPath はCreateCastSpriteWithParentでZ_Pathが正しく設定されることをテストする
+// 要件 1.4: 子スプライトが作成されたとき、親のZ_Pathを継承し、自身のLocal_Z_Orderを追加する
+// 要件 2.2: PutCastが呼び出されたとき、現在のZ_Order_Counterを使用してLocal_Z_Orderを割り当てる
+func TestCreateCastSpriteWithParentZPath(t *testing.T) {
+	sm := NewSpriteManager()
+	csm := NewCastSpriteManager(sm)
+
+	// 親スプライトを作成（ウインドウスプライトを模倣）
+	parentSprite := sm.CreateSpriteWithSize(200, 150)
+	parentSprite.SetPosition(100, 50)
+	// 親にZ_Pathを設定（ウインドウのZ_Path）
+	parentSprite.SetZPath(NewZPath(0))
+
+	srcImage := ebiten.NewImage(64, 64)
+
+	// 最初のキャストを作成
+	cast1 := &Cast{
+		ID:      0,
+		WinID:   0,
+		PicID:   1,
+		X:       10,
+		Y:       20,
+		SrcX:    0,
+		SrcY:    0,
+		Width:   32,
+		Height:  32,
+		Visible: true,
+		ZOrder:  0,
+	}
+	cs1 := csm.CreateCastSpriteWithParent(cast1, srcImage, 100, parentSprite)
+
+	if cs1 == nil {
+		t.Fatal("CreateCastSpriteWithParent returned nil")
+	}
+
+	// Z_Pathが設定されていることを確認
+	zPath1 := cs1.GetSprite().GetZPath()
+	if zPath1 == nil {
+		t.Fatal("Z_Path should be set for cast sprite with parent")
+	}
+
+	// Z_Pathが親のZ_Pathを継承していることを確認
+	// 親のZ_Path: [0], 子のZ_Path: [0, 0]
+	expectedPath1 := []int{0, 0}
+	actualPath1 := zPath1.Path()
+	if len(actualPath1) != len(expectedPath1) {
+		t.Errorf("expected Z_Path length %d, got %d", len(expectedPath1), len(actualPath1))
+	}
+	for i, v := range expectedPath1 {
+		if actualPath1[i] != v {
+			t.Errorf("expected Z_Path[%d] = %d, got %d", i, v, actualPath1[i])
+		}
+	}
+
+	// 2番目のキャストを作成
+	cast2 := &Cast{
+		ID:      1,
+		WinID:   0,
+		PicID:   1,
+		X:       30,
+		Y:       40,
+		SrcX:    0,
+		SrcY:    0,
+		Width:   32,
+		Height:  32,
+		Visible: true,
+		ZOrder:  0,
+	}
+	cs2 := csm.CreateCastSpriteWithParent(cast2, srcImage, 101, parentSprite)
+
+	if cs2 == nil {
+		t.Fatal("CreateCastSpriteWithParent returned nil for second cast")
+	}
+
+	// 2番目のキャストのZ_Pathを確認
+	zPath2 := cs2.GetSprite().GetZPath()
+	if zPath2 == nil {
+		t.Fatal("Z_Path should be set for second cast sprite")
+	}
+
+	// 2番目のキャストのZ_Path: [0, 1]（操作順序でインクリメント）
+	expectedPath2 := []int{0, 1}
+	actualPath2 := zPath2.Path()
+	if len(actualPath2) != len(expectedPath2) {
+		t.Errorf("expected Z_Path length %d, got %d", len(expectedPath2), len(actualPath2))
+	}
+	for i, v := range expectedPath2 {
+		if actualPath2[i] != v {
+			t.Errorf("expected Z_Path[%d] = %d, got %d", i, v, actualPath2[i])
+		}
+	}
+
+	// Z_Pathの比較: cs1 < cs2（操作順序）
+	if !zPath1.Less(zPath2) {
+		t.Error("expected first cast Z_Path to be less than second cast Z_Path")
+	}
+}
+
+// TestCreateCastSpriteWithTransColorAndParentZPath は透明色付きでZ_Pathが正しく設定されることをテストする
+// 要件 1.4, 2.2, 2.6: 操作順序でZ順序を決定
+func TestCreateCastSpriteWithTransColorAndParentZPath(t *testing.T) {
+	sm := NewSpriteManager()
+	csm := NewCastSpriteManager(sm)
+
+	// 親スプライトを作成（ウインドウスプライトを模倣）
+	parentSprite := sm.CreateSpriteWithSize(200, 150)
+	parentSprite.SetPosition(100, 50)
+	// 親にZ_Pathを設定（ウインドウのZ_Path）
+	parentSprite.SetZPath(NewZPath(1))
+
+	srcImage := ebiten.NewImage(64, 64)
+
+	// キャストを作成
+	cast := &Cast{
+		ID:      0,
+		WinID:   0,
+		PicID:   1,
+		X:       10,
+		Y:       20,
+		SrcX:    0,
+		SrcY:    0,
+		Width:   32,
+		Height:  32,
+		Visible: true,
+		ZOrder:  0,
+	}
+	cs := csm.CreateCastSpriteWithTransColorAndParent(cast, srcImage, 100, nil, parentSprite)
+
+	if cs == nil {
+		t.Fatal("CreateCastSpriteWithTransColorAndParent returned nil")
+	}
+
+	// Z_Pathが設定されていることを確認
+	zPath := cs.GetSprite().GetZPath()
+	if zPath == nil {
+		t.Fatal("Z_Path should be set for cast sprite with parent")
+	}
+
+	// Z_Pathが親のZ_Pathを継承していることを確認
+	// 親のZ_Path: [1], 子のZ_Path: [1, 0]
+	expectedPath := []int{1, 0}
+	actualPath := zPath.Path()
+	if len(actualPath) != len(expectedPath) {
+		t.Errorf("expected Z_Path length %d, got %d", len(expectedPath), len(actualPath))
+	}
+	for i, v := range expectedPath {
+		if actualPath[i] != v {
+			t.Errorf("expected Z_Path[%d] = %d, got %d", i, v, actualPath[i])
+		}
+	}
+}
+
+// TestCastSpriteZPathOperationOrder は操作順序でZ順序が決定されることをテストする
+// 要件 2.6: タイプ（キャスト、テキスト、ピクチャ）に関係なく、操作順でZ順序を決定する
+func TestCastSpriteZPathOperationOrder(t *testing.T) {
+	sm := NewSpriteManager()
+	csm := NewCastSpriteManager(sm)
+
+	// 親スプライトを作成
+	parentSprite := sm.CreateSpriteWithSize(200, 150)
+	parentSprite.SetZPath(NewZPath(0))
+
+	srcImage := ebiten.NewImage(64, 64)
+
+	// 複数のキャストを順番に作成
+	casts := make([]*CastSprite, 5)
+	for i := 0; i < 5; i++ {
+		cast := &Cast{
+			ID:      i,
+			WinID:   0,
+			PicID:   1,
+			X:       i * 10,
+			Y:       i * 10,
+			SrcX:    0,
+			SrcY:    0,
+			Width:   32,
+			Height:  32,
+			Visible: true,
+			ZOrder:  0,
+		}
+		casts[i] = csm.CreateCastSpriteWithParent(cast, srcImage, 100+i, parentSprite)
+	}
+
+	// 各キャストのZ_Pathが操作順序を反映していることを確認
+	for i := 0; i < 5; i++ {
+		zPath := casts[i].GetSprite().GetZPath()
+		if zPath == nil {
+			t.Fatalf("Z_Path should be set for cast %d", i)
+		}
+
+		expectedPath := []int{0, i}
+		actualPath := zPath.Path()
+		if len(actualPath) != len(expectedPath) {
+			t.Errorf("cast %d: expected Z_Path length %d, got %d", i, len(expectedPath), len(actualPath))
+		}
+		for j, v := range expectedPath {
+			if actualPath[j] != v {
+				t.Errorf("cast %d: expected Z_Path[%d] = %d, got %d", i, j, v, actualPath[j])
+			}
+		}
+	}
+
+	// 後から作成されたキャストが前面にあることを確認
+	for i := 0; i < 4; i++ {
+		zPath1 := casts[i].GetSprite().GetZPath()
+		zPath2 := casts[i+1].GetSprite().GetZPath()
+		if !zPath1.Less(zPath2) {
+			t.Errorf("expected cast %d Z_Path to be less than cast %d Z_Path", i, i+1)
+		}
 	}
 }
