@@ -1,0 +1,1513 @@
+// Package vm provides the virtual machine for executing FILLY script OpCodes.
+// It implements an event-driven execution model with support for:
+// - OpCode execution
+// - Event handling (TIME, MIDI_TIME, MIDI_END, mouse events)
+// - Scope management (global and local variables)
+// - Built-in function registry
+// - Audio system integration
+// - Headless mode for testing
+// - Timeout functionality
+package vm
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"image/color"
+	"log/slog"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/zurustar/son-et/pkg/graphics"
+	"github.com/zurustar/son-et/pkg/logger"
+	"github.com/zurustar/son-et/pkg/opcode"
+)
+
+// MaxStackDepth is the maximum call stack depth before stack overflow.
+// Requirement 20.7: System maintains maximum stack depth of 1000 frames.
+const MaxStackDepth = 1000
+
+// Windows MessageBox button type constants (lower 4 bits of flags)
+const (
+	MB_OK                = 0x00 // OK button only
+	MB_OKCANCEL          = 0x01 // OK and Cancel buttons
+	MB_ABORTRETRYIGNORE  = 0x03 // Abort, Retry, and Ignore buttons
+	MB_YESNO             = 0x04 // Yes and No buttons
+	MB_RETRYCANCEL       = 0x05 // Retry and Cancel buttons
+	MB_CANCELTRYCONTINUE = 0x06 // Cancel, Try Again, and Continue buttons
+)
+
+// Windows MessageBox icon type constants
+const (
+	MB_ICONERROR       = 0x10 // Error icon
+	MB_ICONQUESTION    = 0x20 // Question icon
+	MB_ICONWARNING     = 0x30 // Warning icon
+	MB_ICONINFORMATION = 0x40 // Information icon
+)
+
+// Windows MessageBox return value constants
+const (
+	IDOK     = 1 // OK button was selected
+	IDCANCEL = 2 // Cancel button was selected
+	IDABORT  = 3 // Abort button was selected
+	IDRETRY  = 4 // Retry button was selected
+	IDIGNORE = 5 // Ignore button was selected
+	IDYES    = 6 // Yes button was selected
+	IDNO     = 7 // No button was selected
+	IDCLOSE  = 8 // Close button was selected
+	IDHELP   = 9 // Help button was selected
+)
+
+// VM represents the virtual machine that executes OpCode instructions.
+// It manages the execution state, scopes, event system, and audio system.
+//
+// Requirement 8.1: When VM receives OpCode sequence, system executes each OpCode in order.
+// Requirement 14.1: System runs main event loop that processes events and executes OpCode.
+type VM struct {
+	// OpCode execution
+	opcodes []opcode.OpCode
+	pc      int // Program counter
+
+	// Scope management
+	globalScope *Scope
+	localScope  *Scope
+	callStack   []*StackFrame
+
+	// User-defined functions
+	functions map[string]*FunctionDef
+
+	// Built-in functions
+	builtins map[string]BuiltinFunc
+
+	// Event system
+	eventQueue      *EventQueue
+	handlerRegistry *HandlerRegistry
+	eventDispatcher *EventDispatcher
+	currentHandler  *EventHandler // Currently executing handler (for del_me)
+
+	// Audio system interface (to avoid import cycle)
+	audioSystem AudioSystemInterface
+
+	// Graphics system interface (to avoid import cycle)
+	graphicsSystem GraphicsSystemInterface
+
+	// Step execution state (for step() blocks outside handlers)
+	// Requirement 6.1: When OpSetStep is executed, system initializes step counter.
+	stepCounter int
+
+	// Execution control
+	running bool
+	mu      sync.RWMutex
+
+	// Configuration
+	headless      bool
+	timeout       time.Duration
+	soundFontPath string
+	titlePath     string // Base path for resolving relative file paths
+
+	// Context for cancellation
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// Logger
+	log *slog.Logger
+}
+
+// AudioSystemInterface defines the interface for audio system operations.
+// This interface is used to avoid import cycles between vm and vm/audio packages.
+type AudioSystemInterface interface {
+	PlayMIDI(filename string) error
+	PlayWAVE(filename string) error
+	SetMuted(muted bool)
+	Update()
+	Shutdown()
+	StartTimer()
+	StopTimer()
+	IsMIDIPlaying() bool
+	IsTimerRunning() bool
+	StartFadeout(duration time.Duration)
+	IsFadingOut() bool
+}
+
+// GraphicsSystemInterface defines the interface for graphics system operations.
+// This interface is used to avoid import cycles between vm and graphics packages.
+type GraphicsSystemInterface interface {
+	// Picture management
+	LoadPic(filename string) (int, error)
+	CreatePic(width, height int) (int, error)
+	CreatePicFrom(srcID int) (int, error)
+	CreatePicWithSize(srcID, width, height int) (int, error)
+	DelPic(id int) error
+	PicWidth(id int) int
+	PicHeight(id int) int
+
+	// Picture transfer
+	MovePic(srcID, srcX, srcY, width, height, dstID, dstX, dstY, mode int) error
+	MovePicWithSpeed(srcID, srcX, srcY, width, height, dstID, dstX, dstY, mode, speed int) error
+	MoveSPic(srcID, srcX, srcY, srcW, srcH, dstID, dstX, dstY, dstW, dstH int) error
+	TransPic(srcID, srcX, srcY, width, height, dstID, dstX, dstY int, transColor any) error
+	ReversePic(srcID, srcX, srcY, width, height, dstID, dstX, dstY int) error
+
+	// Window management
+	OpenWin(picID int, opts ...any) (int, error)
+	MoveWin(id int, opts ...any) error
+	CloseWin(id int) error
+	CloseWinAll()
+	CapTitle(id int, title string) error
+	CapTitleAll(title string)
+	GetPicNo(id int) (int, error)
+	GetWinByPicID(picID int) (int, error)
+	GetWindowCount() int
+
+	// Cast management
+	PutCast(winID, picID, x, y, srcX, srcY, w, h int) (int, error)
+	PutCastWithTransColor(winID, picID, x, y, srcX, srcY, w, h int, transColor color.Color) (int, error)
+	MoveCast(id int, opts ...any) error
+	MoveCastWithOptions(id int, opts ...graphics.CastOption) error
+	DelCast(id int) error
+
+	// Text rendering
+	TextWrite(picID, x, y int, text string) error
+	SetFont(name string, size int, opts ...any) error
+	SetTextColor(c any) error
+	SetBgColor(c any) error
+	SetBackMode(mode int) error
+
+	// Drawing primitives
+	DrawLine(picID, x1, y1, x2, y2 int) error
+	DrawRect(picID, x1, y1, x2, y2, fillMode int) error
+	FillRect(picID, x1, y1, x2, y2 int, c any) error
+	DrawCircle(picID, x, y, radius, fillMode int) error
+	SetLineSize(size int)
+	SetPaintColor(c any) error
+	GetColor(picID, x, y int) (int, error)
+
+	// Virtual desktop info
+	GetVirtualWidth() int
+	GetVirtualHeight() int
+}
+
+// FunctionDef represents a user-defined function.
+type FunctionDef struct {
+	Name       string
+	Parameters []FunctionParam
+	Body       []opcode.OpCode
+}
+
+// FunctionParam represents a function parameter.
+type FunctionParam struct {
+	Name       string
+	Type       string
+	IsArray    bool
+	Default    any
+	HasDefault bool
+}
+
+// StackFrame represents a call stack frame for function calls.
+// Requirement 20.1: When function is called, system pushes new stack frame.
+// Requirement 20.2: When function returns, system pops stack frame.
+type StackFrame struct {
+	FunctionName string
+	LocalScope   *Scope
+	ReturnPC     int
+	ReturnValue  any
+}
+
+// BuiltinFunc is the signature for built-in functions.
+// Built-in functions receive the VM instance and arguments, and return a value and error.
+type BuiltinFunc func(vm *VM, args []any) (any, error)
+
+// Option is a functional option for configuring the VM.
+type Option func(*VM)
+
+// WithHeadless enables headless mode (no GUI, muted audio).
+// Requirement 12.1: When headless mode is enabled, system initializes audio system.
+// Requirement 12.2: When headless mode is enabled, system mutes all audio output.
+func WithHeadless(headless bool) Option {
+	return func(vm *VM) {
+		vm.headless = headless
+	}
+}
+
+// WithTimeout sets the execution timeout.
+// Requirement 13.1: When timeout is specified, system terminates execution after specified duration.
+func WithTimeout(timeout time.Duration) Option {
+	return func(vm *VM) {
+		vm.timeout = timeout
+	}
+}
+
+// WithLogger sets a custom logger.
+func WithLogger(log *slog.Logger) Option {
+	return func(vm *VM) {
+		vm.log = log
+	}
+}
+
+// WithSoundFont sets the SoundFont file path for MIDI playback.
+// Requirement 4.9: When SoundFont file is provided, system uses it for MIDI synthesis.
+func WithSoundFont(path string) Option {
+	return func(vm *VM) {
+		vm.soundFontPath = path
+	}
+}
+
+// WithTitlePath sets the base path for resolving relative file paths.
+// This is used for loading audio and image files relative to the title directory.
+func WithTitlePath(path string) Option {
+	return func(vm *VM) {
+		vm.titlePath = path
+	}
+}
+
+// New creates a new VM instance with the given OpCodes and options.
+// It initializes the global scope, built-in functions, and applies configuration options.
+//
+// Parameters:
+//   - opcodes: The compiled OpCode sequence to execute
+//   - opts: Optional configuration options (headless, timeout, logger, soundFont)
+//
+// Returns:
+//   - *VM: The initialized VM instance
+func New(opcodes []opcode.OpCode, opts ...Option) *VM {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	vm := &VM{
+		opcodes:         opcodes,
+		pc:              0,
+		globalScope:     NewScope(nil),
+		localScope:      nil,
+		callStack:       make([]*StackFrame, 0, 64),
+		functions:       make(map[string]*FunctionDef),
+		builtins:        make(map[string]BuiltinFunc),
+		eventQueue:      NewEventQueue(),
+		handlerRegistry: NewHandlerRegistry(),
+		currentHandler:  nil,
+		audioSystem:     nil,
+		running:         false,
+		headless:        false,
+		timeout:         0,
+		soundFontPath:   "",
+		ctx:             ctx,
+		cancel:          cancel,
+		log:             logger.GetLogger(),
+	}
+
+	// Initialize event dispatcher
+	vm.eventDispatcher = NewEventDispatcher(vm.eventQueue, vm.handlerRegistry, vm)
+
+	// Apply options
+	for _, opt := range opts {
+		opt(vm)
+	}
+
+	// Register default built-in functions
+	vm.registerDefaultBuiltins()
+
+	// Register event type constants in global scope
+	// These are used by PostMes() and other functions that reference event types
+	vm.registerEventTypeConstants()
+
+	return vm
+}
+
+// registerDefaultBuiltins registers all built-in functions by delegating to
+// category-specific registration methods.
+func (vm *VM) registerDefaultBuiltins() {
+	vm.registerMathBuiltins()
+	vm.registerStringBuiltins()
+	vm.registerArrayBuiltins()
+	vm.registerGraphicsBuiltins()
+	vm.registerAudioBuiltins()
+	vm.registerSystemBuiltins()
+}
+
+// RegisterBuiltinFunction registers a built-in function with the given name.
+// Requirement 10.9: System provides registry of built-in functions.
+// Requirement 10.10: System allows registration of custom built-in functions.
+func (vm *VM) RegisterBuiltinFunction(name string, fn BuiltinFunc) {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+	vm.builtins[name] = fn
+}
+
+// registerEventTypeConstants registers event type constants in the global scope.
+// These constants are used by PostMes() and other functions that reference event types.
+// The values match the messageType parameter expected by PostMes:
+//   - TIME = 0
+//   - MIDI_TIME = 1
+//   - MIDI_END = 2
+//   - KEY = 3
+//   - CLICK = 4
+//   - RBDOWN = 5
+//   - RBDBLCLK = 6
+//   - USER = 7 (and above for custom user IDs)
+//   - CHAR = 8 (character input event)
+func (vm *VM) registerEventTypeConstants() {
+	vm.globalScope.Set("TIME", int64(0))
+	vm.globalScope.Set("MIDI_TIME", int64(1))
+	vm.globalScope.Set("MIDI_END", int64(2))
+	vm.globalScope.Set("KEY", int64(3))
+	vm.globalScope.Set("CLICK", int64(4))
+	vm.globalScope.Set("LBDOWN", int64(4)) // LBDOWN is same as CLICK
+	vm.globalScope.Set("RBDOWN", int64(5))
+	vm.globalScope.Set("RBDBLCLK", int64(6))
+	vm.globalScope.Set("USER", int64(7))
+	vm.globalScope.Set("CHAR", int64(8))
+}
+
+// Run starts the VM execution loop.
+// It processes OpCodes sequentially until completion, stop, or timeout.
+// After initial OpCode execution, it enters an event loop to process events.
+//
+// Requirement 14.1: System runs main event loop that processes events and executes OpCode.
+// Requirement 14.2: When event queue is empty, system waits for next event.
+// Requirement 13.1: When timeout is specified, system terminates execution after specified duration.
+//
+// Returns:
+//   - error: Any error that occurred during execution
+func (vm *VM) Run() error {
+	vm.mu.Lock()
+	if vm.running {
+		vm.mu.Unlock()
+		return fmt.Errorf("VM is already running")
+	}
+	vm.running = true
+	vm.mu.Unlock()
+
+	defer func() {
+		vm.mu.Lock()
+		vm.running = false
+		vm.mu.Unlock()
+	}()
+
+	// Set up timeout if specified
+	// Requirement 13.1: When timeout is specified, system terminates execution after specified duration.
+	if vm.timeout > 0 {
+		var timeoutCancel context.CancelFunc
+		vm.ctx, timeoutCancel = context.WithTimeout(vm.ctx, vm.timeout)
+		defer timeoutCancel()
+	}
+
+	vm.log.Info("VM started", "opcode_count", len(vm.opcodes), "headless", vm.headless, "timeout", vm.timeout)
+
+	// First pass: collect function definitions
+	if err := vm.collectFunctionDefinitions(); err != nil {
+		return fmt.Errorf("failed to collect function definitions: %w", err)
+	}
+
+	// Call main function if it exists
+	// This is the entry point for FILLY scripts
+	if mainFunc, ok := vm.functions["main"]; ok {
+		vm.log.Info("Calling main function")
+		if _, err := vm.callUserFunction(mainFunc, []any{}); err != nil {
+			vm.log.Error("main function execution failed", "error", err)
+			return fmt.Errorf("main function execution failed: %w", err)
+		}
+		vm.log.Info("main function completed")
+	}
+
+	// Execute initial OpCodes (main function)
+	// Requirement 8.1: When VM receives OpCode sequence, system executes each OpCode in order.
+	// Skip OpCodes that were already processed in collectFunctionDefinitions
+	for vm.pc < len(vm.opcodes) {
+		// Check for cancellation (timeout or stop)
+		select {
+		case <-vm.ctx.Done():
+			if vm.ctx.Err() == context.DeadlineExceeded {
+				// Requirement 13.3: When timeout expires, system logs timeout message.
+				vm.log.Info("VM execution timed out")
+				return nil
+			}
+			vm.log.Info("VM execution cancelled")
+			return nil
+		default:
+		}
+
+		// Execute current OpCode
+		opcode := vm.opcodes[vm.pc]
+
+		// Skip OpCodes that were already processed in collectFunctionDefinitions
+		if opcode.Cmd == "DefineFunction" || opcode.Cmd == "Assign" || opcode.Cmd == "RegisterEventHandler" {
+			vm.pc++
+			continue
+		}
+
+		_, err := vm.Execute(opcode)
+		if err != nil {
+			// Check if this is a fatal error (use errors.As to unwrap wrapped errors)
+			var runtimeErr *RuntimeError
+			if errors.As(err, &runtimeErr) && runtimeErr.IsFatal() {
+				vm.log.Error("Fatal error, stopping execution", "pc", vm.pc, "cmd", opcode.Cmd, "error", err)
+				return err
+			}
+			// Log error but continue execution for non-fatal errors
+			// Requirement 11.8: System continues execution after non-fatal errors.
+			vm.log.Error("OpCode execution error", "pc", vm.pc, "cmd", opcode.Cmd, "error", err)
+		}
+
+		vm.pc++
+	}
+
+	vm.log.Info("VM initial execution completed, entering event loop")
+
+	// Enter event loop
+	// Requirement 14.1: System runs main event loop that processes events and executes OpCode.
+	// Requirement 15.6: When main function completes, system continues event processing.
+	return vm.runEventLoop()
+}
+
+// runEventLoop runs the main event loop.
+// It processes events from the queue and dispatches them to registered handlers.
+//
+// Requirement 14.1: System runs main event loop that processes events and executes OpCode.
+// Requirement 14.2: When event queue is empty, system waits for next event.
+// Requirement 14.3: When events are available, system processes them in order.
+// Requirement 14.4: When OpCode execution is in progress, system continues until wait point.
+// Requirement 14.5: When wait point is reached, system returns control to event loop.
+// Requirement 14.6: System maintains balance between event processing and OpCode execution.
+func (vm *VM) runEventLoop() error {
+	// If no handlers are registered, exit immediately
+	// This allows simple scripts without event handlers to complete
+	if vm.handlerRegistry.Count() == 0 {
+		vm.log.Info("No event handlers registered, exiting event loop")
+		return nil
+	}
+
+	vm.log.Info("Event loop started", "handler_count", vm.handlerRegistry.Count())
+
+	for {
+		// Check for cancellation (timeout or stop)
+		select {
+		case <-vm.ctx.Done():
+			if vm.ctx.Err() == context.DeadlineExceeded {
+				// Requirement 13.3: When timeout expires, system logs timeout message.
+				vm.log.Info("Event loop timed out")
+				return nil
+			}
+			vm.log.Info("Event loop cancelled")
+			return nil
+		default:
+		}
+
+		// Update audio system to generate MIDI_TIME and MIDI_END events
+		// Requirement 4.3: When MIDI is playing, system generates MIDI_TIME events synchronized to MIDI tempo.
+		// Requirement 4.5: When MIDI playback completes, system generates MIDI_END event.
+		vm.UpdateAudio()
+
+		// Process events from the queue
+		// Requirement 14.3: When events are available, system processes them in order.
+		processed, err := vm.eventDispatcher.ProcessOne()
+		if err != nil {
+			// Check if this is a fatal error (use errors.As to unwrap wrapped errors)
+			var runtimeErr *RuntimeError
+			if errors.As(err, &runtimeErr) && runtimeErr.IsFatal() {
+				vm.log.Error("Fatal error in event loop, stopping execution", "error", err)
+				return err
+			}
+			vm.log.Error("Event processing error", "error", err)
+		}
+
+		// If no events were processed, check if we should continue
+		if !processed {
+			// Requirement 14.2: When event queue is empty, system waits for next event.
+			// Check if there are any handlers left
+			if vm.handlerRegistry.Count() == 0 {
+				// No handlers left - check if MIDI is still playing
+				if vm.audioSystem != nil && vm.audioSystem.IsMIDIPlaying() {
+					vm.log.Debug("All handlers removed, but MIDI is still playing, continuing event loop")
+				} else {
+					vm.log.Info("All handlers removed and no MIDI playing, exiting event loop")
+					return nil
+				}
+			}
+
+			// Small sleep to prevent busy-waiting
+			// In a real implementation with Ebitengine, this would be handled
+			// by the game loop's Update() method
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
+}
+
+// collectFunctionDefinitions scans OpCodes for function definitions and registers them.
+// It also executes global variable initialization (Assign OpCodes at the top level).
+func (vm *VM) collectFunctionDefinitions() error {
+	for _, op := range vm.opcodes {
+		switch op.Cmd {
+		case opcode.DefineFunction:
+			if err := vm.registerFunction(op); err != nil {
+				return err
+			}
+		case opcode.Assign:
+			// Execute global variable initialization before main() is called
+			// This ensures global variables are properly initialized
+			if _, err := vm.executeAssign(op); err != nil {
+				vm.log.Error("Failed to initialize global variable", "error", err)
+				// Continue with other initializations
+			}
+		case opcode.RegisterEventHandler:
+			// Register event handlers at the global level
+			if _, err := vm.executeRegisterEventHandler(op); err != nil {
+				vm.log.Error("Failed to register event handler", "error", err)
+			}
+		}
+	}
+	return nil
+}
+
+// registerFunction registers a function definition from an OpDefineFunction OpCode.
+func (vm *VM) registerFunction(op opcode.OpCode) error {
+	if len(op.Args) < 3 {
+		return fmt.Errorf("OpDefineFunction requires 3 arguments, got %d", len(op.Args))
+	}
+
+	name, ok := op.Args[0].(string)
+	if !ok {
+		return fmt.Errorf("function name must be string, got %T", op.Args[0])
+	}
+
+	// Parse parameters
+	var params []FunctionParam
+	if paramsRaw, ok := op.Args[1].([]any); ok {
+		for _, p := range paramsRaw {
+			if paramMap, ok := p.(map[string]any); ok {
+				param := FunctionParam{
+					Name:    paramMap["name"].(string),
+					Type:    paramMap["type"].(string),
+					IsArray: paramMap["isArray"].(bool),
+				}
+				if defaultVal, hasDefault := paramMap["default"]; hasDefault {
+					param.Default = defaultVal
+					param.HasDefault = true
+				}
+				params = append(params, param)
+			}
+		}
+	}
+
+	// Get body OpCodes
+	body, ok := op.Args[2].([]opcode.OpCode)
+	if !ok {
+		return fmt.Errorf("function body must be []OpCode, got %T", op.Args[2])
+	}
+
+	vm.functions[name] = &FunctionDef{
+		Name:       name,
+		Parameters: params,
+		Body:       body,
+	}
+
+	vm.log.Debug("Function registered", "name", name, "params", len(params))
+	return nil
+}
+
+// Stop stops the VM execution.
+// Requirement 15.4: When ExitTitle is called, system terminates event loop.
+func (vm *VM) Stop() {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+
+	if vm.running {
+		vm.cancel()
+		vm.log.Info("VM stop requested")
+	}
+}
+
+// Execute executes a single OpCode and returns the result.
+// This is the main dispatch method that routes OpCodes to their handlers.
+//
+// Requirement 8.1: When VM receives OpCode sequence, system executes each OpCode in order.
+//
+// Parameters:
+//   - opcode: The OpCode to execute
+//
+// Returns:
+//   - any: The result of the OpCode execution (may be nil)
+//   - error: Any error that occurred during execution
+func (vm *VM) Execute(op opcode.OpCode) (any, error) {
+	vm.log.Debug("Executing OpCode", "cmd", op.Cmd, "pc", vm.pc)
+
+	switch op.Cmd {
+	case opcode.Assign:
+		return vm.executeAssign(op)
+	case opcode.ArrayAssign:
+		return vm.executeArrayAssign(op)
+	case opcode.Call:
+		return vm.executeCall(op)
+	case opcode.BinaryOp:
+		return vm.executeBinaryOp(op)
+	case opcode.UnaryOp:
+		return vm.executeUnaryOp(op)
+	case opcode.ArrayAccess:
+		return vm.executeArrayAccess(op)
+	case opcode.If:
+		return vm.executeIf(op)
+	case opcode.For:
+		return vm.executeFor(op)
+	case opcode.While:
+		return vm.executeWhile(op)
+	case opcode.Switch:
+		return vm.executeSwitch(op)
+	case opcode.Break:
+		return vm.executeBreak(op)
+	case opcode.Continue:
+		return vm.executeContinue(op)
+	case opcode.RegisterEventHandler:
+		return vm.executeRegisterEventHandler(op)
+	case opcode.Wait:
+		return vm.executeWait(op)
+	case opcode.SetStep:
+		return vm.executeSetStep(op)
+	case opcode.DefineFunction:
+		// Function definitions are processed in collectFunctionDefinitions
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unknown OpCode command: %s", op.Cmd)
+	}
+}
+
+// IsRunning returns whether the VM is currently running.
+func (vm *VM) IsRunning() bool {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+	return vm.running
+}
+
+// IsFullyStopped returns whether the VM has completely stopped,
+// including any ongoing audio playback (MIDI draining).
+// Use this to determine when it's safe to close the graphics window.
+func (vm *VM) IsFullyStopped() bool {
+	vm.mu.RLock()
+	running := vm.running
+	audioSystem := vm.audioSystem
+	vm.mu.RUnlock()
+
+	// If VM is still running, not fully stopped
+	if running {
+		return false
+	}
+
+	// If audio system exists and MIDI is still playing (including draining), not fully stopped
+	if audioSystem != nil && audioSystem.IsMIDIPlaying() {
+		return false
+	}
+
+	return true
+}
+
+// GetGlobalScope returns the global scope.
+func (vm *VM) GetGlobalScope() *Scope {
+	return vm.globalScope
+}
+
+// GetCurrentScope returns the current scope (local if in function, global otherwise).
+func (vm *VM) GetCurrentScope() *Scope {
+	if vm.localScope != nil {
+		return vm.localScope
+	}
+	return vm.globalScope
+}
+
+// PushStackFrame pushes a new stack frame for a function call.
+// Requirement 20.1: When function is called, system pushes new stack frame.
+// Requirement 20.6: System detects stack overflow and reports error.
+// Requirement 20.7: System maintains maximum stack depth of 1000 frames.
+func (vm *VM) PushStackFrame(functionName string, localScope *Scope) error {
+	if len(vm.callStack) >= MaxStackDepth {
+		// Requirement 20.8: When stack overflow occurs, system logs error and terminates execution.
+		return NewStackOverflowError(len(vm.callStack) + 1)
+	}
+
+	frame := &StackFrame{
+		FunctionName: functionName,
+		LocalScope:   localScope,
+		ReturnPC:     vm.pc,
+	}
+	vm.callStack = append(vm.callStack, frame)
+	vm.localScope = localScope
+
+	vm.log.Debug("Stack frame pushed", "function", functionName, "depth", len(vm.callStack))
+	return nil
+}
+
+// PopStackFrame pops the current stack frame after a function returns.
+// Requirement 20.2: When function returns, system pops stack frame.
+func (vm *VM) PopStackFrame() (*StackFrame, error) {
+	if len(vm.callStack) == 0 {
+		return nil, fmt.Errorf("cannot pop from empty call stack")
+	}
+
+	frame := vm.callStack[len(vm.callStack)-1]
+	vm.callStack = vm.callStack[:len(vm.callStack)-1]
+
+	// Restore previous local scope
+	if len(vm.callStack) > 0 {
+		vm.localScope = vm.callStack[len(vm.callStack)-1].LocalScope
+	} else {
+		// When call stack is empty, restore the event handler's parent scope if we're
+		// executing within an event handler. This is critical for FILLY's dynamic scoping:
+		// functions called from event handlers need to access variables from the enclosing
+		// scope (e.g., start() function's local variables like p2[], c2[]).
+		//
+		// Without this, after a function returns and empties the call stack, subsequent
+		// function calls in the same handler would only see globalScope, losing access
+		// to the handler's ParentScope variables.
+		if vm.currentHandler != nil && vm.currentHandler.ParentScope != nil {
+			vm.localScope = vm.currentHandler.ParentScope
+		} else {
+			vm.localScope = nil
+		}
+	}
+
+	vm.log.Debug("Stack frame popped", "function", frame.FunctionName, "depth", len(vm.callStack))
+	return frame, nil
+}
+
+// GetStackDepth returns the current call stack depth.
+func (vm *VM) GetStackDepth() int {
+	return len(vm.callStack)
+}
+
+// breakSignal is a special type to signal a break from a loop.
+type breakSignal struct{}
+
+// continueSignal is a special type to signal a continue in a loop.
+type continueSignal struct{}
+
+// waitMarker is a special type to signal that execution should pause and wait for events.
+// Requirement 6.2: When OpWait is executed, system pauses execution until next event.
+type waitMarker struct {
+	WaitCount int // Number of events to wait for
+}
+
+// executeIf executes an OpIf OpCode.
+// OpIf evaluates a condition and executes the appropriate branch.
+// Args: [condition, thenBlock []OpCode, elseBlock []OpCode]
+//
+// Requirement 8.5: When OpIf is executed, system evaluates condition and executes appropriate branch.
+func (vm *VM) executeIf(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpIf requires at least 2 arguments, got %d", len(op.Args))
+	}
+
+	// Evaluate the condition
+	conditionVal, err := vm.evaluateValue(op.Args[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate condition: %w", err)
+	}
+
+	condition := toBool(conditionVal)
+	vm.log.Debug("If condition evaluated", "condition", condition)
+
+	if condition {
+		// Execute then block
+		thenBlock, ok := op.Args[1].([]opcode.OpCode)
+		if !ok {
+			return nil, fmt.Errorf("OpIf then block must be []OpCode, got %T", op.Args[1])
+		}
+		return vm.executeBlock(thenBlock)
+	} else if len(op.Args) >= 3 {
+		// Execute else block if present
+		elseBlock, ok := op.Args[2].([]opcode.OpCode)
+		if !ok {
+			return nil, fmt.Errorf("OpIf else block must be []OpCode, got %T", op.Args[2])
+		}
+		return vm.executeBlock(elseBlock)
+	}
+
+	return nil, nil
+}
+
+// executeFor executes an OpFor OpCode.
+// OpFor executes a for loop with init, condition, post, and body.
+// Args: [initBlock []OpCode, condition, postBlock []OpCode, bodyBlock []OpCode]
+//
+// Requirement 8.6: When OpFor is executed, system executes loop with init, condition, increment.
+func (vm *VM) executeFor(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 4 {
+		return nil, fmt.Errorf("OpFor requires 4 arguments, got %d", len(op.Args))
+	}
+
+	// Execute init block
+	if initBlock, ok := op.Args[0].([]opcode.OpCode); ok && len(initBlock) > 0 {
+		if _, err := vm.executeBlock(initBlock); err != nil {
+			return nil, fmt.Errorf("failed to execute for init: %w", err)
+		}
+	}
+
+	// Get body and post blocks
+	bodyBlock, ok := op.Args[3].([]opcode.OpCode)
+	if !ok {
+		return nil, fmt.Errorf("OpFor body must be []OpCode, got %T", op.Args[3])
+	}
+
+	postBlock, _ := op.Args[2].([]opcode.OpCode)
+
+	// Loop
+	var lastResult any
+	for {
+		// Check condition (if present)
+		if op.Args[1] != nil {
+			conditionVal, err := vm.evaluateValue(op.Args[1])
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate for condition: %w", err)
+			}
+			if !toBool(conditionVal) {
+				break
+			}
+		}
+
+		// Execute body
+		result, err := vm.executeBlock(bodyBlock)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute for body: %w", err)
+		}
+
+		// Check for break/continue signals
+		if _, isBreak := result.(*breakSignal); isBreak {
+			// Requirement 8.9: When OpBreak is executed, system exits current loop.
+			break
+		}
+		if _, isContinue := result.(*continueSignal); isContinue {
+			// Requirement 8.10: When OpContinue is executed, system skips to next loop iteration.
+			// Continue to post block
+		} else {
+			lastResult = result
+		}
+
+		// Execute post block
+		if len(postBlock) > 0 {
+			if _, err := vm.executeBlock(postBlock); err != nil {
+				return nil, fmt.Errorf("failed to execute for post: %w", err)
+			}
+		}
+	}
+
+	return lastResult, nil
+}
+
+// executeWhile executes an OpWhile OpCode.
+// OpWhile executes a while loop with condition and body.
+// Args: [condition, bodyBlock []OpCode]
+//
+// Requirement 8.7: When OpWhile is executed, system executes loop while condition is true.
+func (vm *VM) executeWhile(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpWhile requires 2 arguments, got %d", len(op.Args))
+	}
+
+	bodyBlock, ok := op.Args[1].([]opcode.OpCode)
+	if !ok {
+		return nil, fmt.Errorf("OpWhile body must be []OpCode, got %T", op.Args[1])
+	}
+
+	var lastResult any
+	for {
+		// Check condition
+		if op.Args[0] != nil {
+			conditionVal, err := vm.evaluateValue(op.Args[0])
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate while condition: %w", err)
+			}
+			if !toBool(conditionVal) {
+				break
+			}
+		}
+
+		// Execute body
+		result, err := vm.executeBlock(bodyBlock)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute while body: %w", err)
+		}
+
+		// Check for break/continue signals
+		if _, isBreak := result.(*breakSignal); isBreak {
+			// Requirement 8.9: When OpBreak is executed, system exits current loop.
+			break
+		}
+		if _, isContinue := result.(*continueSignal); isContinue {
+			// Requirement 8.10: When OpContinue is executed, system skips to next loop iteration.
+			continue
+		}
+
+		lastResult = result
+	}
+
+	return lastResult, nil
+}
+
+// executeSwitch executes an OpSwitch OpCode.
+// OpSwitch evaluates a value and executes the matching case.
+// Args: [value, cases []any, defaultBlock []OpCode]
+// Each case is a map[string]any with "value" and "body" keys.
+//
+// Requirement 8.8: When OpSwitch is executed, system evaluates value and executes matching case.
+func (vm *VM) executeSwitch(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpSwitch requires at least 2 arguments, got %d", len(op.Args))
+	}
+
+	// Evaluate the switch value
+	switchVal, err := vm.evaluateValue(op.Args[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate switch value: %w", err)
+	}
+
+	vm.log.Debug("Switch value evaluated", "value", switchVal)
+
+	// Get cases
+	cases, ok := op.Args[1].([]any)
+	if !ok {
+		return nil, fmt.Errorf("OpSwitch cases must be []any, got %T", op.Args[1])
+	}
+
+	// Find matching case
+	for _, c := range cases {
+		caseClause, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		// Evaluate case value
+		caseVal, err := vm.evaluateValue(caseClause["value"])
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate case value: %w", err)
+		}
+
+		// Compare values
+		if vm.valuesEqual(switchVal, caseVal) {
+			// Execute case body
+			caseBody, ok := caseClause["body"].([]opcode.OpCode)
+			if !ok {
+				return nil, fmt.Errorf("case body must be []OpCode, got %T", caseClause["body"])
+			}
+			return vm.executeBlock(caseBody)
+		}
+	}
+
+	// No matching case, execute default if present
+	if len(op.Args) >= 3 && op.Args[2] != nil {
+		defaultBlock, ok := op.Args[2].([]opcode.OpCode)
+		if !ok {
+			return nil, fmt.Errorf("OpSwitch default block must be []OpCode, got %T", op.Args[2])
+		}
+		return vm.executeBlock(defaultBlock)
+	}
+
+	return nil, nil
+}
+
+// executeBreak executes an OpBreak OpCode.
+// OpBreak signals a break from the current loop.
+// Args: []
+//
+// Requirement 8.9: When OpBreak is executed, system exits current loop.
+func (vm *VM) executeBreak(_ opcode.OpCode) (any, error) {
+	vm.log.Debug("Break executed")
+	return &breakSignal{}, nil
+}
+
+// executeContinue executes an OpContinue OpCode.
+// OpContinue signals a continue to the next loop iteration.
+// Args: []
+//
+// Requirement 8.10: When OpContinue is executed, system skips to next loop iteration.
+func (vm *VM) executeContinue(_ opcode.OpCode) (any, error) {
+	vm.log.Debug("Continue executed")
+	return &continueSignal{}, nil
+}
+
+// executeBlock executes a block of OpCodes and returns the last result.
+// It handles break, continue, and wait signals by propagating them up.
+func (vm *VM) executeBlock(opcodes []opcode.OpCode) (any, error) {
+	var lastResult any
+	for _, op := range opcodes {
+		result, err := vm.Execute(op)
+		if err != nil {
+			// Check if this is a fatal error (use errors.As to unwrap wrapped errors)
+			var runtimeErr *RuntimeError
+			if errors.As(err, &runtimeErr) && runtimeErr.IsFatal() {
+				vm.log.Error("Fatal error in block, stopping execution", "cmd", op.Cmd, "error", err)
+				return nil, err
+			}
+			// Log error but continue execution for non-fatal errors
+			// Requirement 11.8: System continues execution after non-fatal errors.
+			vm.log.Error("OpCode execution error in block", "cmd", op.Cmd, "error", err)
+			continue
+		}
+
+		// Check for break/continue signals - propagate them up
+		if _, isBreak := result.(*breakSignal); isBreak {
+			return result, nil
+		}
+		if _, isContinue := result.(*continueSignal); isContinue {
+			return result, nil
+		}
+
+		// Check for return marker - propagate it up
+		if _, isReturn := result.(*returnMarker); isReturn {
+			return result, nil
+		}
+
+		// Check for wait marker - propagate it up
+		// Requirement 6.2: When OpWait is executed, system pauses execution until next event.
+		if _, isWait := result.(*waitMarker); isWait {
+			return result, nil
+		}
+
+		lastResult = result
+	}
+	return lastResult, nil
+}
+
+// valuesEqual compares two values for equality.
+// It handles type coercion for numeric comparisons.
+func (vm *VM) valuesEqual(a, b any) bool {
+	// Handle nil cases
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+
+	// Try numeric comparison
+	aInt, aIsInt := toInt64(a)
+	bInt, bIsInt := toInt64(b)
+	if aIsInt && bIsInt {
+		return aInt == bInt
+	}
+
+	aFloat, aIsFloat := toFloat64(a)
+	bFloat, bIsFloat := toFloat64(b)
+	if aIsFloat && bIsFloat {
+		return aFloat == bFloat
+	}
+
+	// String comparison
+	aStr, aIsStr := a.(string)
+	bStr, bIsStr := b.(string)
+	if aIsStr && bIsStr {
+		return aStr == bStr
+	}
+
+	// Default: direct comparison
+	return a == b
+}
+
+// containsOpSetStep recursively scans an OpCode sequence to detect if it contains OpSetStep.
+// This function is used to determine if an event handler contains a step() block.
+// It checks both the top-level opcodes and any nested opcodes in block structures
+// (If, For, While, Switch, etc.).
+//
+// Requirement 1.1: When an event handler is registered, THE System SHALL scan the handler's OpCodes for OpSetStep
+func containsOpSetStep(opcodes []opcode.OpCode) bool {
+	for _, op := range opcodes {
+		// Check if this opcode is SetStep
+		if op.Cmd == opcode.SetStep {
+			return true
+		}
+
+		// Recursively check nested OpCode slices in Args
+		// This handles block structures like If, For, While, Switch, etc.
+		for _, arg := range op.Args {
+			if childOpcodes, ok := arg.([]opcode.OpCode); ok {
+				if containsOpSetStep(childOpcodes) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// executeRegisterEventHandler executes an OpRegisterEventHandler OpCode.
+// OpRegisterEventHandler registers an event handler for mes() blocks.
+// Args: [eventType string, bodyBlock []OpCode]
+//
+// Requirement 2.1: When OpRegisterEventHandler is executed, system registers handler for specified event type.
+// Requirement 2.2: When mes(TIME) handler is registered, system calls it on each timer tick.
+// Requirement 2.3: When mes(MIDI_TIME) handler is registered, system calls it on each MIDI tick.
+// Requirement 2.4: When mes(MIDI_END) handler is registered, system calls it when MIDI playback completes.
+// Requirement 2.5: When mes(LBDOWN) handler is registered, system calls it on left mouse button press.
+// Requirement 2.6: When mes(RBDOWN) handler is registered, system calls it on right mouse button press.
+// Requirement 2.7: When mes(RBDBLCLK) handler is registered, system calls it on right mouse button double-click.
+// Requirement 2.8: When handler is registered inside another handler, system supports nested handler registration.
+func (vm *VM) executeRegisterEventHandler(op opcode.OpCode) (any, error) {
+	if len(op.Args) < 2 {
+		return nil, fmt.Errorf("OpRegisterEventHandler requires 2 arguments, got %d", len(op.Args))
+	}
+
+	// Get event type
+	eventTypeStr, ok := op.Args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("OpRegisterEventHandler event type must be string, got %T", op.Args[0])
+	}
+
+	// Convert string to EventType
+	eventType := EventType(eventTypeStr)
+
+	// Validate event type
+	switch eventType {
+	case EventTIME, EventMIDI_TIME, EventMIDI_END, EventLBDOWN, EventRBDOWN, EventRBDBLCLK, EventKEY, EventCLICK, EventCHAR, EventUSER:
+		// Valid event type
+	default:
+		return nil, fmt.Errorf("unknown event type: %s", eventTypeStr)
+	}
+
+	// Get body OpCodes
+	bodyOpcodes, ok := op.Args[1].([]opcode.OpCode)
+	if !ok {
+		return nil, fmt.Errorf("OpRegisterEventHandler body must be []OpCode, got %T", op.Args[1])
+	}
+
+	// Check if the handler contains step() blocks
+	// Requirement 1.1: When an event handler is registered, THE System SHALL scan the handler's OpCodes for OpSetStep
+	// Requirement 1.2: When OpSetStep is found in the handler's OpCodes, THE System SHALL set HasStepBlock to true
+	// Requirement 1.3: When OpSetStep is not found in the handler's OpCodes, THE System SHALL set HasStepBlock to false
+	hasStepBlock := containsOpSetStep(bodyOpcodes)
+
+	// Create and register the handler with the current scope
+	// This allows the handler to access variables from the enclosing scope (like C blocks)
+	parentScope := vm.GetCurrentScope()
+	handler := NewEventHandler("", eventType, bodyOpcodes, vm, parentScope)
+	handler.HasStepBlock = hasStepBlock
+	id := vm.handlerRegistry.Register(handler)
+
+	vm.log.Debug("Event handler registered", "id", id, "eventType", eventType, "opcodeCount", len(bodyOpcodes), "hasStepBlock", hasStepBlock)
+
+	// Automatically start timer when TIME event handler is registered
+	// Requirement 2.2: When mes(TIME) handler is registered, system calls it on each timer tick.
+	if eventType == EventTIME {
+		vm.StartTimer()
+		vm.log.Debug("Timer started automatically for TIME event handler")
+	}
+
+	return id, nil
+}
+
+func (vm *VM) executeWait(op opcode.OpCode) (any, error) {
+	// Requirement 6.2: When OpWait OpCode is executed, system pauses execution until next event.
+	// Requirement 6.3: When event occurs during step execution, system proceeds to next step.
+
+	// Get the comma count from arguments (number of commas in the step block)
+	commaCount := 1 // Default to 1 if not specified
+	if len(op.Args) >= 1 {
+		waitValue, err := vm.evaluateValue(op.Args[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate comma count: %w", err)
+		}
+
+		if wc, ok := toInt64(waitValue); ok {
+			commaCount = int(wc)
+		} else if f, fok := toFloat64(waitValue); fok {
+			commaCount = int(f)
+		}
+	}
+
+	// Requirement 6.10: When step(n) is called with n=0, system executes immediately without waiting.
+	// Requirement 17.4: When Wait(0) is called, system continues execution immediately.
+	// Requirement 17.5: When Wait(n) is called with n<0, system treats it as Wait(0).
+	if commaCount <= 0 {
+		vm.log.Debug("OpWait: comma count <= 0, continuing immediately", "commaCount", commaCount)
+		return nil, nil
+	}
+
+	// If a handler is currently executing, calculate wait count based on step value
+	if vm.currentHandler != nil {
+		// StepCounter holds the step value (n from step(n))
+		// Each comma waits for stepValue TIME events
+		// Since TIME events are generated every 50ms, step(n) with one comma waits n × 50ms
+		// For example: step(65) with ,, means wait for 65 × 2 = 130 TIME events = 6500ms
+		stepValue := vm.currentHandler.StepCounter
+		if stepValue <= 0 {
+			stepValue = 1 // Default to 1 event per comma if not set
+		}
+
+		waitCount := commaCount * stepValue
+		vm.currentHandler.WaitCounter = waitCount
+		// ログは削除（頻繁すぎるため）
+		// Return a wait marker to signal the handler should pause
+		return &waitMarker{WaitCount: waitCount}, nil
+	}
+
+	// If no handler is executing (e.g., in main code), we can't really wait
+	// Log a warning and continue
+	vm.log.Warn("OpWait called outside of event handler, ignoring", "commaCount", commaCount)
+	return nil, nil
+}
+
+func (vm *VM) executeSetStep(op opcode.OpCode) (any, error) {
+	// Requirement 6.1: When OpSetStep OpCode is executed, system initializes step counter with specified count.
+	// The step count represents the number of TIME events to wait per comma in step() blocks.
+	// Since TIME events are generated every 50ms, step(n) means each comma waits n × 50ms.
+	// For example, step(65) means each comma waits 65 × 50ms = 3250ms.
+	if len(op.Args) < 1 {
+		return nil, fmt.Errorf("OpSetStep requires 1 argument, got %d", len(op.Args))
+	}
+
+	// Evaluate the step value (number of TIME events per comma)
+	stepValue, err := vm.evaluateValue(op.Args[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate step value: %w", err)
+	}
+
+	// Convert to int (number of TIME events)
+	stepCount, ok := toInt64(stepValue)
+	if !ok {
+		// Try to convert from float
+		if f, fok := toFloat64(stepValue); fok {
+			stepCount = int64(f)
+		} else {
+			vm.log.Warn("OpSetStep: invalid step value, using 0", "value", stepValue)
+			stepCount = 0
+		}
+	}
+
+	// If a handler is currently executing, set its step count
+	// StepCounter stores the number of TIME events to wait per comma
+	// Otherwise, store in the VM for later use
+	if vm.currentHandler != nil {
+		vm.currentHandler.StepCounter = int(stepCount)
+		vm.log.Debug("OpSetStep: handler step count set", "handler", vm.currentHandler.ID, "eventsPerComma", stepCount)
+	} else {
+		vm.stepCounter = int(stepCount)
+		vm.log.Debug("OpSetStep: VM step count set", "eventsPerComma", stepCount)
+	}
+
+	return nil, nil
+}
+
+// GetEventQueue returns the event queue.
+func (vm *VM) GetEventQueue() *EventQueue {
+	return vm.eventQueue
+}
+
+// GetHandlerRegistry returns the handler registry.
+func (vm *VM) GetHandlerRegistry() *HandlerRegistry {
+	return vm.handlerRegistry
+}
+
+// GetEventDispatcher returns the event dispatcher.
+func (vm *VM) GetEventDispatcher() *EventDispatcher {
+	return vm.eventDispatcher
+}
+
+// GetCurrentHandler returns the currently executing handler.
+func (vm *VM) GetCurrentHandler() *EventHandler {
+	return vm.currentHandler
+}
+
+// SetCurrentHandler sets the currently executing handler.
+func (vm *VM) SetCurrentHandler(handler *EventHandler) {
+	vm.currentHandler = handler
+}
+
+// GetStepCounter returns the VM's step counter.
+// This is used when no handler is executing.
+// Requirement 6.1: When OpSetStep is executed, system initializes step counter.
+func (vm *VM) GetStepCounter() int {
+	return vm.stepCounter
+}
+
+// PushMouseEvent pushes a mouse event to the event queue.
+// This implements the MouseEventPusher interface for the window package.
+// 要件 14.6: マウスイベントをEbitengineから取得し、VMのイベントキューに追加する
+// 要件 7.1: 左マウスボタンが押されたとき、LBDOWNイベントを生成する
+// 要件 7.2: 右マウスボタンが押されたとき、RBDOWNイベントを生成する
+// 要件 7.3: 右マウスボタンがダブルクリックされたとき、RBDBLCLKイベントを生成する
+func (vm *VM) PushMouseEvent(eventType string, windowID, x, y int) {
+	var evType EventType
+	switch eventType {
+	case "LBDOWN":
+		evType = EventLBDOWN
+	case "CLICK":
+		evType = EventCLICK
+	case "RBDOWN":
+		evType = EventRBDOWN
+	case "RBDBLCLK":
+		evType = EventRBDBLCLK
+	default:
+		vm.log.Warn("Unknown mouse event type", "type", eventType)
+		return
+	}
+
+	event := NewEventWithParams(evType, map[string]any{
+		"MesP1": windowID, // ウィンドウID
+		"MesP2": x,        // X座標
+		"MesP3": y,        // Y座標
+	})
+
+	vm.eventQueue.Push(event)
+	vm.log.Debug("Mouse event pushed", "type", eventType, "windowID", windowID, "x", x, "y", y)
+}
+
+// PushKeyEvent pushes a keyboard event to the event queue.
+func (vm *VM) PushKeyEvent(eventType string, keyCode int) {
+	var evType EventType
+	switch eventType {
+	case "CHAR":
+		evType = EventCHAR
+	case "KEY":
+		evType = EventKEY
+	default:
+		vm.log.Warn("Unknown keyboard event type", "type", eventType)
+		return
+	}
+
+	event := NewEventWithParams(evType, map[string]any{
+		"MesP1": 0,       // 未使用
+		"MesP2": keyCode, // キーコード（ASCIIコード）
+		"MesP3": 0,       // 未使用
+		"MesP4": 0,       // 未使用
+	})
+
+	vm.eventQueue.Push(event)
+	vm.log.Debug("Keyboard event pushed", "type", eventType, "keyCode", keyCode)
+}
+
+// SetStepCounter sets the VM's step counter.
+func (vm *VM) SetStepCounter(count int) {
+	vm.stepCounter = count
+}
+
+// QueueEvent adds an event to the event queue.
+func (vm *VM) QueueEvent(event *Event) {
+	vm.eventQueue.Push(event)
+}
+
+// ProcessEvents processes all pending events in the queue.
+func (vm *VM) ProcessEvents() error {
+	return vm.eventDispatcher.ProcessQueue()
+}
+
+// SetAudioSystem sets the audio system.
+// This allows external initialization of the audio system to avoid import cycles.
+//
+// Parameters:
+//   - audioSys: The audio system implementing AudioSystemInterface
+func (vm *VM) SetAudioSystem(audioSys AudioSystemInterface) {
+	vm.audioSystem = audioSys
+
+	// Mute audio in headless mode
+	// Requirement 12.2: When headless mode is enabled, system mutes all audio output.
+	if vm.headless && audioSys != nil {
+		audioSys.SetMuted(true)
+	}
+
+	vm.log.Info("Audio system set", "muted", vm.headless)
+}
+
+// GetAudioSystem returns the audio system.
+// Returns nil if the audio system has not been initialized.
+func (vm *VM) GetAudioSystem() AudioSystemInterface {
+	return vm.audioSystem
+}
+
+// SetGraphicsSystem sets the graphics system.
+// This allows external initialization of the graphics system to avoid import cycles.
+//
+// Parameters:
+//   - graphicsSys: The graphics system implementing GraphicsSystemInterface
+func (vm *VM) SetGraphicsSystem(graphicsSys GraphicsSystemInterface) {
+	vm.graphicsSystem = graphicsSys
+	vm.log.Info("Graphics system set")
+}
+
+// GetGraphicsSystem returns the graphics system.
+// Returns nil if the graphics system has not been initialized.
+func (vm *VM) GetGraphicsSystem() GraphicsSystemInterface {
+	return vm.graphicsSystem
+}
+
+// UpdateAudio updates the audio system.
+// This should be called from the game loop to generate MIDI_TIME events.
+//
+// Requirement 4.3: When MIDI is playing, system generates MIDI_TIME events synchronized to MIDI tempo.
+func (vm *VM) UpdateAudio() {
+	if vm.audioSystem != nil {
+		vm.audioSystem.Update()
+	}
+}
+
+// ShutdownAudio shuts down the audio system and releases resources.
+//
+// Requirement 15.1: When ExitTitle is called, system stops all audio playback.
+// Requirement 15.3: When ExitTitle is called, system cleans up all resources.
+func (vm *VM) ShutdownAudio() {
+	if vm.audioSystem != nil {
+		vm.audioSystem.Shutdown()
+		vm.log.Info("Audio system shut down")
+	}
+}
+
+// PlayMIDI plays a MIDI file through the audio system.
+//
+// Requirement 4.1: When PlayMIDI(filename) is called, system starts playback of specified MIDI file.
+func (vm *VM) PlayMIDI(filename string) error {
+	if vm.audioSystem == nil {
+		return fmt.Errorf("audio system not initialized")
+	}
+
+	// Resolve relative path using titlePath
+	fullPath := vm.resolveFilePath(filename)
+	return vm.audioSystem.PlayMIDI(fullPath)
+}
+
+// PlayWAVE plays a WAV file through the audio system.
+//
+// Requirement 5.1: When PlayWAVE(filename) is called, system starts playback of specified WAV file.
+func (vm *VM) PlayWAVE(filename string) error {
+	if vm.audioSystem == nil {
+		return fmt.Errorf("audio system not initialized")
+	}
+
+	// Resolve relative path using titlePath
+	fullPath := vm.resolveFilePath(filename)
+	return vm.audioSystem.PlayWAVE(fullPath)
+}
+
+// resolveFilePath resolves a relative file path using the title path.
+// If the path is already absolute, it is returned as-is.
+func (vm *VM) resolveFilePath(filename string) string {
+	// If path is absolute, return as-is
+	if filepath.IsAbs(filename) {
+		return filename
+	}
+
+	// If titlePath is set, join with it
+	if vm.titlePath != "" {
+		return filepath.Join(vm.titlePath, filename)
+	}
+
+	// Otherwise, return as-is (relative to current directory)
+	return filename
+}
+
+// StartTimer starts the timer for TIME event generation.
+//
+// Requirement 3.1: System generates TIME events periodically.
+func (vm *VM) StartTimer() {
+	if vm.audioSystem != nil {
+		vm.audioSystem.StartTimer()
+	}
+}
+
+// StopTimer stops the timer.
+func (vm *VM) StopTimer() {
+	if vm.audioSystem != nil {
+		vm.audioSystem.StopTimer()
+	}
+}
+
+// GetSoundFontPath returns the configured SoundFont path.
+func (vm *VM) GetSoundFontPath() string {
+	return vm.soundFontPath
+}
+
+// IsHeadless returns whether the VM is running in headless mode.
+func (vm *VM) IsHeadless() bool {
+	return vm.headless
+}
