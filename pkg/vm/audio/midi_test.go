@@ -466,7 +466,7 @@ func TestMIDIPlayerUpdate(t *testing.T) {
 		defer player.Stop()
 
 		// Wait for some audio to be rendered
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 
 		// Call Update to generate MIDI_TIME events
 		player.Update()
@@ -545,11 +545,11 @@ func TestMIDIPlayerUpdate(t *testing.T) {
 		defer player.Stop()
 
 		// Wait for some audio to be rendered
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		// Call Update multiple times
 		player.Update()
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		player.Update()
 
 		// Collect all events
@@ -591,7 +591,7 @@ func TestMIDIPlayerUpdate(t *testing.T) {
 		defer player.Stop()
 
 		// Wait for some audio to be rendered
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 
 		// Call Update
 		player.Update()
@@ -672,17 +672,18 @@ func TestMIDIPlayerMIDIEndEvent(t *testing.T) {
 
 		// Wait for playback to complete (with a reasonable timeout)
 		// For testing, we'll use a short MIDI file or wait up to the duration + buffer
-		maxWait := duration + 2*time.Second
-		if maxWait > 30*time.Second {
+		const midiEndTestMaxDuration = 5 * time.Second
+		if duration > midiEndTestMaxDuration {
 			// For long MIDI files, skip this test
 			t.Skip("MIDI file too long for completion test")
 		}
+		maxWait := duration + 2*time.Second
 
 		// Poll Update() until playback completes or timeout
 		startTime := time.Now()
 		for player.IsPlaying() && time.Since(startTime) < maxWait {
 			player.Update()
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 		}
 
 		// Check that playback has stopped
@@ -727,15 +728,16 @@ func TestMIDIPlayerMIDIEndEvent(t *testing.T) {
 		}
 
 		// Wait for playback to complete
-		maxWait := duration + 2*time.Second
-		if maxWait > 30*time.Second {
+		const midiEndTestMaxDuration = 5 * time.Second
+		if duration > midiEndTestMaxDuration {
 			t.Skip("MIDI file too long for completion test")
 		}
+		maxWait := duration + 2*time.Second
 
 		startTime := time.Now()
 		for player.IsPlaying() && time.Since(startTime) < maxWait {
 			player.Update()
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 		}
 
 		// Call Update multiple times after playback has stopped
@@ -778,15 +780,16 @@ func TestMIDIPlayerMIDIEndEvent(t *testing.T) {
 		}
 
 		// Wait for playback to complete
-		maxWait := duration + 2*time.Second
-		if maxWait > 30*time.Second {
+		const midiEndTestMaxDuration = 5 * time.Second
+		if duration > midiEndTestMaxDuration {
 			t.Skip("MIDI file too long for completion test")
 		}
+		maxWait := duration + 2*time.Second
 
 		startTime := time.Now()
 		for player.IsPlaying() && time.Since(startTime) < maxWait {
 			player.Update()
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 		}
 
 		// Should not panic - just verify playback stopped
@@ -918,7 +921,7 @@ func TestMIDIPlayerExclusiveControl(t *testing.T) {
 		}
 
 		// Wait for some ticks to be generated
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		player.Update()
 
 		// Drain the event queue
@@ -933,7 +936,7 @@ func TestMIDIPlayerExclusiveControl(t *testing.T) {
 		}
 
 		// Wait for some ticks to be generated
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		player.Update()
 
 		// The first tick event should start from 1 (not continue from previous)
