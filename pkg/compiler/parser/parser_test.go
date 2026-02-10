@@ -3916,3 +3916,335 @@ func TestParseStepStatementEndStepCaseInsensitive(t *testing.T) {
 		})
 	}
 }
+
+// TestSwitchEdgeCases tests parser edge cases for switch statements.
+// Requirements: 3.1, 3.2, 3.3, 3.4
+func TestSwitchEdgeCases(t *testing.T) {
+	t.Run("empty case body", func(t *testing.T) {
+		// Requirement 3.1: 空のcase本体がエラーなくパースされること
+		tests := []struct {
+			name          string
+			input         string
+			expectedCases int
+			hasDefault    bool
+		}{
+			{
+				name:          "single empty case",
+				input:         "switch (x) { case 1: case 2: y = 2; }",
+				expectedCases: 2,
+				hasDefault:    false,
+			},
+			{
+				name:          "multiple empty cases",
+				input:         "switch (x) { case 1: case 2: case 3: y = 3; }",
+				expectedCases: 3,
+				hasDefault:    false,
+			},
+			{
+				name:          "empty case before default",
+				input:         "switch (x) { case 1: default: y = 0; }",
+				expectedCases: 1,
+				hasDefault:    true,
+			},
+			{
+				name:          "all cases empty",
+				input:         "switch (x) { case 1: case 2: }",
+				expectedCases: 2,
+				hasDefault:    false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				l := lexer.New(tt.input)
+				p := New(l)
+				program, errs := p.ParseProgram()
+
+				if len(errs) > 0 {
+					t.Fatalf("unexpected errors: %v", errs)
+				}
+
+				if len(program.Statements) != 1 {
+					t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+				}
+
+				stmt, ok := program.Statements[0].(*SwitchStatement)
+				if !ok {
+					t.Fatalf("expected SwitchStatement, got %T", program.Statements[0])
+				}
+
+				if len(stmt.Cases) != tt.expectedCases {
+					t.Errorf("expected %d cases, got %d", tt.expectedCases, len(stmt.Cases))
+				}
+
+				if tt.hasDefault && stmt.Default == nil {
+					t.Error("expected Default, got nil")
+				}
+
+				// 最初の空caseの本体が空であることを検証
+				if len(stmt.Cases) > 0 && tt.name != "all cases empty" {
+					firstCase := stmt.Cases[0]
+					if len(firstCase.Body) != 0 {
+						t.Errorf("expected empty body for first case, got %d statements", len(firstCase.Body))
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("nested switch statements", func(t *testing.T) {
+		// Requirement 3.2: ネストされたswitch文が正しくパースされること
+		input := `switch (x) {
+			case 1:
+				switch (y) {
+					case 10: a = 10;
+					case 20: a = 20;
+					default: a = 0;
+				}
+			case 2:
+				b = 2;
+			default:
+				c = 0;
+		}`
+
+		l := lexer.New(input)
+		p := New(l)
+		program, errs := p.ParseProgram()
+
+		if len(errs) > 0 {
+			t.Fatalf("unexpected errors: %v", errs)
+		}
+
+		if len(program.Statements) != 1 {
+			t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+		}
+
+		outerSwitch, ok := program.Statements[0].(*SwitchStatement)
+		if !ok {
+			t.Fatalf("expected SwitchStatement, got %T", program.Statements[0])
+		}
+
+		// 外側のswitch: 2つのcase + default
+		if len(outerSwitch.Cases) != 2 {
+			t.Fatalf("outer switch: expected 2 cases, got %d", len(outerSwitch.Cases))
+		}
+		if outerSwitch.Default == nil {
+			t.Fatal("outer switch: expected Default, got nil")
+		}
+
+		// case 1の本体に内側のswitch文があること
+		case1Body := outerSwitch.Cases[0].Body
+		if len(case1Body) != 1 {
+			t.Fatalf("case 1: expected 1 statement, got %d", len(case1Body))
+		}
+
+		innerSwitch, ok := case1Body[0].(*SwitchStatement)
+		if !ok {
+			t.Fatalf("case 1 body: expected SwitchStatement, got %T", case1Body[0])
+		}
+
+		// 内側のswitch: 2つのcase + default
+		if len(innerSwitch.Cases) != 2 {
+			t.Errorf("inner switch: expected 2 cases, got %d", len(innerSwitch.Cases))
+		}
+		if innerSwitch.Default == nil {
+			t.Error("inner switch: expected Default, got nil")
+		}
+
+		// 内側のswitch値がIdentifier "y"であること
+		innerVal, ok := innerSwitch.Value.(*Identifier)
+		if !ok {
+			t.Fatalf("inner switch value: expected Identifier, got %T", innerSwitch.Value)
+		}
+		if innerVal.Value != "y" {
+			t.Errorf("inner switch value: expected 'y', got '%s'", innerVal.Value)
+		}
+
+		// case 2の本体が通常の文であること
+		case2Body := outerSwitch.Cases[1].Body
+		if len(case2Body) != 1 {
+			t.Fatalf("case 2: expected 1 statement, got %d", len(case2Body))
+		}
+		if _, ok := case2Body[0].(*AssignStatement); !ok {
+			t.Errorf("case 2 body: expected AssignStatement, got %T", case2Body[0])
+		}
+	})
+
+	t.Run("default followed by case", func(t *testing.T) {
+		// Requirement 3.4: defaultの後にcaseがある場合のパース
+		input := `switch (x) {
+			default: y = 0;
+			case 1: y = 1;
+			case 2: y = 2;
+		}`
+
+		l := lexer.New(input)
+		p := New(l)
+		program, errs := p.ParseProgram()
+
+		if len(errs) > 0 {
+			t.Fatalf("unexpected errors: %v", errs)
+		}
+
+		if len(program.Statements) != 1 {
+			t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+		}
+
+		stmt, ok := program.Statements[0].(*SwitchStatement)
+		if !ok {
+			t.Fatalf("expected SwitchStatement, got %T", program.Statements[0])
+		}
+
+		// defaultが存在すること
+		if stmt.Default == nil {
+			t.Fatal("expected Default, got nil")
+		}
+
+		// defaultの本体に1つの文があること
+		if len(stmt.Default.Statements) != 1 {
+			t.Errorf("default: expected 1 statement, got %d", len(stmt.Default.Statements))
+		}
+
+		// defaultの後のcaseが正しくパースされること
+		if len(stmt.Cases) != 2 {
+			t.Fatalf("expected 2 cases after default, got %d", len(stmt.Cases))
+		}
+
+		// case値の検証
+		for i, expectedVal := range []int64{1, 2} {
+			intLit, ok := stmt.Cases[i].Value.(*IntegerLiteral)
+			if !ok {
+				t.Errorf("case[%d]: expected IntegerLiteral, got %T", i, stmt.Cases[i].Value)
+				continue
+			}
+			if intLit.Value != expectedVal {
+				t.Errorf("case[%d]: expected value %d, got %d", i, expectedVal, intLit.Value)
+			}
+		}
+	})
+
+	t.Run("case value as expression", func(t *testing.T) {
+		// Requirement 3.3: case値が式の場合のパース
+		tests := []struct {
+			name          string
+			input         string
+			expectedCases int
+			caseValueStr  string // expressionToString で検証
+		}{
+			{
+				name:          "case with binary expression",
+				input:         "switch (x) { case 1 + 2: y = 3; }",
+				expectedCases: 1,
+				caseValueStr:  "(1 + 2)",
+			},
+			{
+				name:          "case with variable reference",
+				input:         "switch (x) { case val: y = 1; }",
+				expectedCases: 1,
+				caseValueStr:  "val",
+			},
+			{
+				name:          "case with string literal",
+				input:         `switch (x) { case "hello": y = 1; }`,
+				expectedCases: 1,
+				caseValueStr:  `"hello"`,
+			},
+			{
+				name:          "multiple cases with mixed expressions",
+				input:         `switch (x) { case 1: a = 1; case n: b = 2; case 2 + 3: c = 5; }`,
+				expectedCases: 3,
+				caseValueStr:  "", // 個別に検証
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				l := lexer.New(tt.input)
+				p := New(l)
+				program, errs := p.ParseProgram()
+
+				if len(errs) > 0 {
+					t.Fatalf("unexpected errors: %v", errs)
+				}
+
+				stmt, ok := program.Statements[0].(*SwitchStatement)
+				if !ok {
+					t.Fatalf("expected SwitchStatement, got %T", program.Statements[0])
+				}
+
+				if len(stmt.Cases) != tt.expectedCases {
+					t.Fatalf("expected %d cases, got %d", tt.expectedCases, len(stmt.Cases))
+				}
+
+				if tt.caseValueStr != "" {
+					got := expressionToString(stmt.Cases[0].Value)
+					if got != tt.caseValueStr {
+						t.Errorf("case value: expected %q, got %q", tt.caseValueStr, got)
+					}
+				}
+			})
+		}
+
+		// 複数の式を持つcaseの個別検証
+		t.Run("verify mixed expression case values", func(t *testing.T) {
+			input := `switch (x) { case 1: a = 1; case n: b = 2; case 2 + 3: c = 5; }`
+			l := lexer.New(input)
+			p := New(l)
+			program, errs := p.ParseProgram()
+
+			if len(errs) > 0 {
+				t.Fatalf("unexpected errors: %v", errs)
+			}
+
+			stmt := program.Statements[0].(*SwitchStatement)
+
+			expectedValues := []string{"1", "n", "(2 + 3)"}
+			for i, expected := range expectedValues {
+				got := expressionToString(stmt.Cases[i].Value)
+				if got != expected {
+					t.Errorf("case[%d] value: expected %q, got %q", i, expected, got)
+				}
+			}
+		})
+	})
+
+	t.Run("case with multiple statements in body", func(t *testing.T) {
+		// Requirement 3.3: case本体に複数の文がある場合のパース
+		input := `switch (x) {
+			case 1:
+				a = 1;
+				b = 2;
+				c = 3;
+			case 2:
+				d = 4;
+				break;
+		}`
+
+		l := lexer.New(input)
+		p := New(l)
+		program, errs := p.ParseProgram()
+
+		if len(errs) > 0 {
+			t.Fatalf("unexpected errors: %v", errs)
+		}
+
+		stmt, ok := program.Statements[0].(*SwitchStatement)
+		if !ok {
+			t.Fatalf("expected SwitchStatement, got %T", program.Statements[0])
+		}
+
+		if len(stmt.Cases) != 2 {
+			t.Fatalf("expected 2 cases, got %d", len(stmt.Cases))
+		}
+
+		// case 1: 3つの文
+		if len(stmt.Cases[0].Body) != 3 {
+			t.Errorf("case 1: expected 3 statements, got %d", len(stmt.Cases[0].Body))
+		}
+
+		// case 2: 2つの文（代入 + break）
+		if len(stmt.Cases[1].Body) != 2 {
+			t.Errorf("case 2: expected 2 statements, got %d", len(stmt.Cases[1].Body))
+		}
+	})
+}

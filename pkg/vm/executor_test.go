@@ -1327,6 +1327,233 @@ func TestExecuteSwitch(t *testing.T) {
 	})
 }
 
+// TestExecuteSwitchBreakInLoop verifies that break inside a switch statement
+// within a for loop only exits the switch, not the outer loop.
+// Validates: Requirements 1.2
+func TestExecuteSwitchBreakInLoop(t *testing.T) {
+	t.Run("break in switch case does not break outer for loop", func(t *testing.T) {
+		vm := New([]opcode.OpCode{})
+		vm.GetCurrentScope().Set("count", int64(0))
+
+		// Equivalent FILLY code:
+		//   count = 0
+		//   for (i = 0; i < 5; i = i + 1) {
+		//     switch (i) {
+		//       case 2:
+		//         break   // should only exit switch, not the for loop
+		//       default:
+		//         // do nothing
+		//     }
+		//     count = count + 1
+		//   }
+		// Expected: count = 5 (all 5 iterations complete)
+		// If break leaked out of switch, count would be 2 (loop exits at i==2)
+
+		forOp := opcode.OpCode{
+			Cmd: opcode.For,
+			Args: []any{
+				// init: i = 0
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
+				},
+				// condition: i < 5
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(5)}},
+				// post: i = i + 1
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
+					}},
+				},
+				// body: switch(i) { case 2: break; default: } count = count + 1
+				[]opcode.OpCode{
+					{
+						Cmd: opcode.Switch,
+						Args: []any{
+							opcode.Variable("i"),
+							[]any{
+								map[string]any{
+									"value": int64(2),
+									"body":  []opcode.OpCode{{Cmd: opcode.Break, Args: []any{}}},
+								},
+							},
+							[]opcode.OpCode{}, // empty default
+						},
+					},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("count"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("count"), int64(1)}},
+					}},
+				},
+			},
+		}
+
+		_, err := vm.Execute(forOp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		val, _ := vm.GetCurrentScope().Get("count")
+		if val != int64(5) {
+			t.Errorf("expected count = 5 (all loop iterations), got %v (break leaked from switch to loop)", val)
+		}
+	})
+
+	t.Run("break in switch default does not break outer for loop", func(t *testing.T) {
+		vm := New([]opcode.OpCode{})
+		vm.GetCurrentScope().Set("count", int64(0))
+
+		// Equivalent FILLY code:
+		//   count = 0
+		//   for (i = 0; i < 3; i = i + 1) {
+		//     switch (i) {
+		//       case 99:
+		//         // never matches
+		//       default:
+		//         break   // should only exit switch, not the for loop
+		//     }
+		//     count = count + 1
+		//   }
+		// Expected: count = 3 (all 3 iterations complete)
+
+		forOp := opcode.OpCode{
+			Cmd: opcode.For,
+			Args: []any{
+				// init: i = 0
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
+				},
+				// condition: i < 3
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(3)}},
+				// post: i = i + 1
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
+					}},
+				},
+				// body: switch(i) { case 99: ; default: break } count = count + 1
+				[]opcode.OpCode{
+					{
+						Cmd: opcode.Switch,
+						Args: []any{
+							opcode.Variable("i"),
+							[]any{
+								map[string]any{
+									"value": int64(99),
+									"body":  []opcode.OpCode{},
+								},
+							},
+							// default block with break
+							[]opcode.OpCode{{Cmd: opcode.Break, Args: []any{}}},
+						},
+					},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("count"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("count"), int64(1)}},
+					}},
+				},
+			},
+		}
+
+		_, err := vm.Execute(forOp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		val, _ := vm.GetCurrentScope().Get("count")
+		if val != int64(3) {
+			t.Errorf("expected count = 3 (all loop iterations), got %v (break leaked from switch default to loop)", val)
+		}
+	})
+
+	t.Run("code after break in switch case is skipped but loop continues", func(t *testing.T) {
+		vm := New([]opcode.OpCode{})
+		vm.GetCurrentScope().Set("sum", int64(0))
+		vm.GetCurrentScope().Set("skipped", int64(0))
+
+		// Equivalent FILLY code:
+		//   sum = 0; skipped = 0
+		//   for (i = 0; i < 4; i = i + 1) {
+		//     switch (i) {
+		//       case 1:
+		//         skipped = skipped + 1
+		//         break
+		//         skipped = skipped + 100  // should be skipped
+		//       default:
+		//         // do nothing
+		//     }
+		//     sum = sum + 1
+		//   }
+		// Expected: sum = 4 (all iterations), skipped = 1 (only incremented once before break)
+
+		forOp := opcode.OpCode{
+			Cmd: opcode.For,
+			Args: []any{
+				// init: i = 0
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
+				},
+				// condition: i < 4
+				opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), int64(4)}},
+				// post: i = i + 1
+				[]opcode.OpCode{
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("i"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
+					}},
+				},
+				// body
+				[]opcode.OpCode{
+					{
+						Cmd: opcode.Switch,
+						Args: []any{
+							opcode.Variable("i"),
+							[]any{
+								map[string]any{
+									"value": int64(1),
+									"body": []opcode.OpCode{
+										{Cmd: opcode.Assign, Args: []any{
+											opcode.Variable("skipped"),
+											opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("skipped"), int64(1)}},
+										}},
+										{Cmd: opcode.Break, Args: []any{}},
+										{Cmd: opcode.Assign, Args: []any{
+											opcode.Variable("skipped"),
+											opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("skipped"), int64(100)}},
+										}},
+									},
+								},
+							},
+							[]opcode.OpCode{}, // empty default
+						},
+					},
+					{Cmd: opcode.Assign, Args: []any{
+						opcode.Variable("sum"),
+						opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("sum"), int64(1)}},
+					}},
+				},
+			},
+		}
+
+		_, err := vm.Execute(forOp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		sumVal, _ := vm.GetCurrentScope().Get("sum")
+		if sumVal != int64(4) {
+			t.Errorf("expected sum = 4 (all loop iterations), got %v", sumVal)
+		}
+
+		skippedVal, _ := vm.GetCurrentScope().Get("skipped")
+		if skippedVal != int64(1) {
+			t.Errorf("expected skipped = 1 (code after break should be skipped), got %v", skippedVal)
+		}
+	})
+}
+
+
 // TestExecuteBreak tests the OpBreak execution.
 func TestExecuteBreak(t *testing.T) {
 	t.Run("returns break signal", func(t *testing.T) {

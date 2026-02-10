@@ -983,7 +983,15 @@ func (vm *VM) executeSwitch(op opcode.OpCode) (any, error) {
 			if !ok {
 				return nil, fmt.Errorf("case body must be []OpCode, got %T", caseClause["body"])
 			}
-			return vm.executeBlock(caseBody)
+			result, err := vm.executeBlock(caseBody)
+			if err != nil {
+				return nil, err
+			}
+			// Catch breakSignal within switch scope so it doesn't propagate to outer loops
+			if _, isBreak := result.(*breakSignal); isBreak {
+				return nil, nil
+			}
+			return result, nil
 		}
 	}
 
@@ -993,7 +1001,15 @@ func (vm *VM) executeSwitch(op opcode.OpCode) (any, error) {
 		if !ok {
 			return nil, fmt.Errorf("OpSwitch default block must be []OpCode, got %T", op.Args[2])
 		}
-		return vm.executeBlock(defaultBlock)
+		result, err := vm.executeBlock(defaultBlock)
+		if err != nil {
+			return nil, err
+		}
+		// Catch breakSignal within switch scope so it doesn't propagate to outer loops
+		if _, isBreak := result.(*breakSignal); isBreak {
+			return nil, nil
+		}
+		return result, nil
 	}
 
 	return nil, nil

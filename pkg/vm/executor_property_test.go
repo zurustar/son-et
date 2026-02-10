@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/leanovate/gopter"
@@ -2152,6 +2153,1233 @@ func TestProperty12_WaitNWaiting(t *testing.T) {
 		},
 		gen.IntRange(1, 10),
 		gen.IntRange(1, 10),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// TestPropertySwitch1_NoFallthrough tests that only the matched case body is executed
+// and no fallthrough occurs, regardless of break presence.
+// **Validates: Requirements 1.1, 1.3**
+// Feature: switch-edge-cases, Property 1: フォールスルーなし
+func TestPropertySwitch1_NoFallthrough(t *testing.T) {
+	const minSuccessfulTests = 100
+
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = minSuccessfulTests
+
+	properties := gopter.NewProperties(parameters)
+
+	// Property: For any switch value and list of case values, only the matched case's
+	// marker variable is set. All other case marker variables remain unset.
+	properties.Property("only matched case body executes, no fallthrough", prop.ForAll(
+		func(switchVal int64, caseVals []int64) bool {
+			// Need at least 2 cases to test fallthrough behavior
+			if len(caseVals) < 2 {
+				return true
+			}
+			// Limit number of cases to a reasonable size
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Deduplicate case values to avoid ambiguous matching
+			seen := make(map[int64]bool)
+			uniqueCaseVals := make([]int64, 0, len(caseVals))
+			for _, v := range caseVals {
+				if !seen[v] {
+					seen[v] = true
+					uniqueCaseVals = append(uniqueCaseVals, v)
+				}
+			}
+			if len(uniqueCaseVals) < 2 {
+				return true
+			}
+			caseVals = uniqueCaseVals
+
+			// Build case clauses: each case body assigns marker_i = 1
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				markerVar := opcode.Variable(fmt.Sprintf("marker_%d", i))
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{markerVar, int64(1)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			// Build switch OpCode
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			// Execute
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Determine which case should have matched
+			matchedIndex := -1
+			for i, cv := range caseVals {
+				if cv == switchVal {
+					matchedIndex = i
+					break
+				}
+			}
+
+			// Verify: only the matched case's marker is set
+			for i := range caseVals {
+				markerName := fmt.Sprintf("marker_%d", i)
+				val, exists := vm.GetGlobalScope().Get(markerName)
+				if i == matchedIndex {
+					// Matched case: marker must be set to 1
+					if !exists || val != int64(1) {
+						return false
+					}
+				} else {
+					// Non-matched case: marker must NOT be set
+					if exists {
+						return false
+					}
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(8, gen.Int64Range(-50, 50)),
+	))
+
+	// Property: break inside a matched case body does not cause fallthrough.
+	// The case body with break should still only execute that one case.
+	properties.Property("break in case body does not cause fallthrough", prop.ForAll(
+		func(switchVal int64, otherVals []int64) bool {
+			// Need at least 1 other value
+			if len(otherVals) < 1 {
+				return true
+			}
+			const maxOther = 5
+			if len(otherVals) > maxOther {
+				otherVals = otherVals[:maxOther]
+			}
+
+			// Ensure switchVal is not in otherVals, then prepend it
+			// so we guarantee a match at index 0
+			filteredOther := make([]int64, 0, len(otherVals))
+			for _, v := range otherVals {
+				if v != switchVal {
+					filteredOther = append(filteredOther, v)
+				}
+			}
+			if len(filteredOther) == 0 {
+				return true
+			}
+
+			// Build all case values: switchVal first, then others
+			allCaseVals := append([]int64{switchVal}, filteredOther...)
+
+			// Build case clauses: matched case has break after assignment
+			cases := make([]any, len(allCaseVals))
+			for i, cv := range allCaseVals {
+				markerVar := opcode.Variable(fmt.Sprintf("marker_%d", i))
+				var caseBody []opcode.OpCode
+				if i == 0 {
+					// Matched case: assign marker, then break, then another assign (should be skipped)
+					caseBody = []opcode.OpCode{
+						{
+							Cmd:  opcode.Assign,
+							Args: []any{markerVar, int64(1)},
+						},
+						{
+							Cmd:  opcode.Break,
+							Args: []any{},
+						},
+						{
+							Cmd: opcode.Assign,
+							Args: []any{
+								opcode.Variable(fmt.Sprintf("after_break_%d", i)),
+								int64(1),
+							},
+						},
+					}
+				} else {
+					caseBody = []opcode.OpCode{
+						{
+							Cmd:  opcode.Assign,
+							Args: []any{markerVar, int64(1)},
+						},
+					}
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Matched case (index 0) marker should be set
+			val, exists := vm.GetGlobalScope().Get("marker_0")
+			if !exists || val != int64(1) {
+				return false
+			}
+
+			// Code after break in matched case should NOT have executed
+			_, afterBreakExists := vm.GetGlobalScope().Get("after_break_0")
+			if afterBreakExists {
+				return false
+			}
+
+			// No other case markers should be set (no fallthrough)
+			for i := 1; i < len(allCaseVals); i++ {
+				markerName := fmt.Sprintf("marker_%d", i)
+				_, exists := vm.GetGlobalScope().Get(markerName)
+				if exists {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(5, gen.Int64Range(-50, 50)),
+	))
+
+	// Property: when no case matches, no case body executes
+	properties.Property("no case body executes when switch value matches nothing", prop.ForAll(
+		func(switchVal int64, caseVals []int64) bool {
+			if len(caseVals) == 0 {
+				return true
+			}
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Ensure switchVal does NOT match any case value
+			for i := range caseVals {
+				if caseVals[i] == switchVal {
+					caseVals[i] = switchVal + 100
+				}
+			}
+
+			// Build case clauses
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				markerVar := opcode.Variable(fmt.Sprintf("marker_%d", i))
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{markerVar, int64(1)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// No markers should be set
+			for i := range caseVals {
+				markerName := fmt.Sprintf("marker_%d", i)
+				_, exists := vm.GetGlobalScope().Get(markerName)
+				if exists {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(8, gen.Int64Range(-50, 50)),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: switch-edge-cases, Property 2: ループ内breakの正確性
+// **Validates: Requirements 1.2**
+func TestPropertySwitch2_BreakInLoopAccuracy(t *testing.T) {
+	const minSuccessfulTests = 100
+
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = minSuccessfulTests
+
+	properties := gopter.NewProperties(parameters)
+
+	// Property: For any loop count and switch value, a break inside a switch case
+	// within a for loop only exits the switch, not the outer loop.
+	// The loop counter should always reach the expected iteration count.
+	properties.Property("break in switch case does not terminate outer for loop", prop.ForAll(
+		func(loopCount int64, switchVal int64, caseVals []int64) bool {
+			// Constrain loop count to a reasonable positive range
+			if loopCount < 1 {
+				return true
+			}
+			const maxLoopCount = 20
+			if loopCount > maxLoopCount {
+				loopCount = maxLoopCount
+			}
+			// Need at least 1 case value
+			if len(caseVals) < 1 {
+				return true
+			}
+			const maxCases = 5
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Deduplicate case values
+			seen := make(map[int64]bool)
+			uniqueCaseVals := make([]int64, 0, len(caseVals))
+			for _, v := range caseVals {
+				if !seen[v] {
+					seen[v] = true
+					uniqueCaseVals = append(uniqueCaseVals, v)
+				}
+			}
+			caseVals = uniqueCaseVals
+
+			// Build case clauses: each case body has a break statement
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				cases[i] = map[string]any{
+					"value": cv,
+					"body": []opcode.OpCode{
+						{Cmd: opcode.Break, Args: []any{}},
+					},
+				}
+			}
+
+			// Build: for (i = 0; i < loopCount; i = i + 1) {
+			//          switch (switchVal) { case cv1: break; case cv2: break; ... }
+			//          count = count + 1
+			//        }
+			forOp := opcode.OpCode{
+				Cmd: opcode.For,
+				Args: []any{
+					// init: i = 0
+					[]opcode.OpCode{
+						{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
+					},
+					// condition: i < loopCount
+					opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), loopCount}},
+					// post: i = i + 1
+					[]opcode.OpCode{
+						{Cmd: opcode.Assign, Args: []any{
+							opcode.Variable("i"),
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
+						}},
+					},
+					// body: switch + count increment
+					[]opcode.OpCode{
+						{
+							Cmd:  opcode.Switch,
+							Args: []any{switchVal, cases},
+						},
+						{Cmd: opcode.Assign, Args: []any{
+							opcode.Variable("count"),
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("count"), int64(1)}},
+						}},
+					},
+				},
+			}
+
+			// Execute with count initialized to 0
+			vm := New([]opcode.OpCode{
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("count"), int64(0)}},
+				forOp,
+			})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// The loop should have completed all iterations regardless of break in switch
+			val, exists := vm.GetGlobalScope().Get("count")
+			if !exists {
+				return false
+			}
+			return val == loopCount
+		},
+		gen.Int64Range(1, 20),
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(5, gen.Int64Range(-50, 50)),
+	))
+
+	// Property: break in switch default block within a for loop does not terminate the loop.
+	properties.Property("break in switch default does not terminate outer for loop", prop.ForAll(
+		func(loopCount int64) bool {
+			if loopCount < 1 {
+				return true
+			}
+			const maxLoopCount = 20
+			if loopCount > maxLoopCount {
+				loopCount = maxLoopCount
+			}
+
+			// Build: for (i = 0; i < loopCount; i = i + 1) {
+			//          switch (i) { case -999: ; default: break }
+			//          count = count + 1
+			//        }
+			// case -999 will never match any valid loop index, so default always executes
+			forOp := opcode.OpCode{
+				Cmd: opcode.For,
+				Args: []any{
+					// init: i = 0
+					[]opcode.OpCode{
+						{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
+					},
+					// condition: i < loopCount
+					opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), loopCount}},
+					// post: i = i + 1
+					[]opcode.OpCode{
+						{Cmd: opcode.Assign, Args: []any{
+							opcode.Variable("i"),
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
+						}},
+					},
+					// body: switch(i) { case -999: ; default: break } count = count + 1
+					[]opcode.OpCode{
+						{
+							Cmd: opcode.Switch,
+							Args: []any{
+								opcode.Variable("i"),
+								[]any{
+									map[string]any{
+										"value": int64(-999),
+										"body":  []opcode.OpCode{},
+									},
+								},
+								// default block with break
+								[]opcode.OpCode{
+									{Cmd: opcode.Break, Args: []any{}},
+								},
+							},
+						},
+						{Cmd: opcode.Assign, Args: []any{
+							opcode.Variable("count"),
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("count"), int64(1)}},
+						}},
+					},
+				},
+			}
+
+			vm := New([]opcode.OpCode{
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("count"), int64(0)}},
+				forOp,
+			})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			val, exists := vm.GetGlobalScope().Get("count")
+			if !exists {
+				return false
+			}
+			return val == loopCount
+		},
+		gen.Int64Range(1, 20),
+	))
+
+	// Property: code after break in switch case body is skipped, but loop continues.
+	// This verifies both that break exits the switch AND that the loop is unaffected.
+	properties.Property("code after break in switch is skipped but loop iteration count is correct", prop.ForAll(
+		func(loopCount int64, matchIndex int64) bool {
+			if loopCount < 2 {
+				return true
+			}
+			const maxLoopCount = 15
+			if loopCount > maxLoopCount {
+				loopCount = maxLoopCount
+			}
+			// matchIndex is the loop iteration where the switch case matches
+			if matchIndex < 0 || matchIndex >= loopCount {
+				matchIndex = matchIndex % loopCount
+				if matchIndex < 0 {
+					matchIndex += loopCount
+				}
+			}
+
+			// Build: for (i = 0; i < loopCount; i = i + 1) {
+			//          switch (i) {
+			//            case matchIndex:
+			//              before_break = before_break + 1
+			//              break
+			//              after_break = after_break + 1  // should be skipped
+			//            default:
+			//              // empty
+			//          }
+			//          count = count + 1
+			//        }
+			forOp := opcode.OpCode{
+				Cmd: opcode.For,
+				Args: []any{
+					// init: i = 0
+					[]opcode.OpCode{
+						{Cmd: opcode.Assign, Args: []any{opcode.Variable("i"), int64(0)}},
+					},
+					// condition: i < loopCount
+					opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"<", opcode.Variable("i"), loopCount}},
+					// post: i = i + 1
+					[]opcode.OpCode{
+						{Cmd: opcode.Assign, Args: []any{
+							opcode.Variable("i"),
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("i"), int64(1)}},
+						}},
+					},
+					// body
+					[]opcode.OpCode{
+						{
+							Cmd: opcode.Switch,
+							Args: []any{
+								opcode.Variable("i"),
+								[]any{
+									map[string]any{
+										"value": matchIndex,
+										"body": []opcode.OpCode{
+											{Cmd: opcode.Assign, Args: []any{
+												opcode.Variable("before_break"),
+												opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("before_break"), int64(1)}},
+											}},
+											{Cmd: opcode.Break, Args: []any{}},
+											{Cmd: opcode.Assign, Args: []any{
+												opcode.Variable("after_break"),
+												opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("after_break"), int64(1)}},
+											}},
+										},
+									},
+								},
+								// empty default
+								[]opcode.OpCode{},
+							},
+						},
+						{Cmd: opcode.Assign, Args: []any{
+							opcode.Variable("count"),
+							opcode.OpCode{Cmd: opcode.BinaryOp, Args: []any{"+", opcode.Variable("count"), int64(1)}},
+						}},
+					},
+				},
+			}
+
+			vm := New([]opcode.OpCode{
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("count"), int64(0)}},
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("before_break"), int64(0)}},
+				{Cmd: opcode.Assign, Args: []any{opcode.Variable("after_break"), int64(0)}},
+				forOp,
+			})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Loop should complete all iterations
+			countVal, _ := vm.GetGlobalScope().Get("count")
+			if countVal != loopCount {
+				return false
+			}
+
+			// before_break should be 1 (executed once when i == matchIndex)
+			beforeVal, _ := vm.GetGlobalScope().Get("before_break")
+			if beforeVal != int64(1) {
+				return false
+			}
+
+			// after_break should remain 0 (skipped due to break)
+			afterVal, _ := vm.GetGlobalScope().Get("after_break")
+			if afterVal != int64(0) {
+				return false
+			}
+
+			return true
+		},
+		gen.Int64Range(2, 15),
+		gen.Int64Range(0, 14),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// TestPropertySwitch3_CaseValueMatchingAccuracy tests that the correct case is selected
+// for integer and string switch values.
+// **Validates: Requirements 2.1, 2.2**
+// Feature: switch-edge-cases, Property 3: case値マッチングの正確性
+func TestPropertySwitch3_CaseValueMatchingAccuracy(t *testing.T) {
+	const minSuccessfulTests = 100
+
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = minSuccessfulTests
+
+	properties := gopter.NewProperties(parameters)
+
+	// Property: For any integer switch value, when a case value equals the switch value,
+	// that case's body executes and sets the result variable correctly.
+	properties.Property("integer switch value selects the correct case", prop.ForAll(
+		func(switchVal int64, caseVals []int64) bool {
+			// Need at least 2 cases to meaningfully test selection
+			if len(caseVals) < 2 {
+				return true
+			}
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Deduplicate case values to avoid ambiguous matching
+			seen := make(map[int64]bool)
+			uniqueCaseVals := make([]int64, 0, len(caseVals))
+			for _, v := range caseVals {
+				if !seen[v] {
+					seen[v] = true
+					uniqueCaseVals = append(uniqueCaseVals, v)
+				}
+			}
+			if len(uniqueCaseVals) < 2 {
+				return true
+			}
+			caseVals = uniqueCaseVals
+
+			// Build case clauses: each case body assigns result = caseIndex
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{opcode.Variable("result"), int64(i)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Determine which case should have matched (first match wins)
+			expectedIndex := int64(-1)
+			for i, cv := range caseVals {
+				if cv == switchVal {
+					expectedIndex = int64(i)
+					break
+				}
+			}
+
+			val, exists := vm.GetGlobalScope().Get("result")
+			if expectedIndex == -1 {
+				// No case should match; result should not be set
+				return !exists
+			}
+			// Matched case should have set result to its index
+			if !exists {
+				return false
+			}
+			return val == expectedIndex
+		},
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(8, gen.Int64Range(-50, 50)),
+	))
+
+	// Property: For any string switch value, when a case value equals the switch value,
+	// that case's body executes and sets the result variable correctly.
+	properties.Property("string switch value selects the correct case", prop.ForAll(
+		func(switchVal string, caseVals []string) bool {
+			// Need at least 2 cases
+			if len(caseVals) < 2 {
+				return true
+			}
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Deduplicate case values
+			seen := make(map[string]bool)
+			uniqueCaseVals := make([]string, 0, len(caseVals))
+			for _, v := range caseVals {
+				if !seen[v] {
+					seen[v] = true
+					uniqueCaseVals = append(uniqueCaseVals, v)
+				}
+			}
+			if len(uniqueCaseVals) < 2 {
+				return true
+			}
+			caseVals = uniqueCaseVals
+
+			// Build case clauses: each case body assigns result = caseIndex
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{opcode.Variable("result"), int64(i)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Determine which case should have matched (first match wins)
+			expectedIndex := int64(-1)
+			for i, cv := range caseVals {
+				if cv == switchVal {
+					expectedIndex = int64(i)
+					break
+				}
+			}
+
+			val, exists := vm.GetGlobalScope().Get("result")
+			if expectedIndex == -1 {
+				return !exists
+			}
+			if !exists {
+				return false
+			}
+			return val == expectedIndex
+		},
+		gen.AlphaString(),
+		gen.SliceOfN(8, gen.AlphaString()),
+	))
+
+	// Property: Among multiple cases, the first matching case wins.
+	// When the switch value appears at multiple positions (after dedup it won't,
+	// but we test by ensuring the first case with the matching value is selected).
+	properties.Property("first matching case wins among multiple integer cases", prop.ForAll(
+		func(switchVal int64, numCasesBefore int64, numCasesAfter int64) bool {
+			// Constrain to reasonable sizes
+			if numCasesBefore < 0 {
+				numCasesBefore = 0
+			}
+			if numCasesBefore > 5 {
+				numCasesBefore = 5
+			}
+			if numCasesAfter < 1 {
+				numCasesAfter = 1
+			}
+			if numCasesAfter > 5 {
+				numCasesAfter = 5
+			}
+
+			// Build cases: non-matching cases before, then the matching case, then non-matching after
+			totalCases := int(numCasesBefore) + 1 + int(numCasesAfter)
+			cases := make([]any, totalCases)
+			matchIdx := int(numCasesBefore)
+
+			for i := 0; i < totalCases; i++ {
+				var caseVal int64
+				if i == matchIdx {
+					caseVal = switchVal
+				} else {
+					// Use a value guaranteed to not equal switchVal
+					caseVal = switchVal + int64(i) + 1
+				}
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{opcode.Variable("result"), int64(i)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": caseVal,
+					"body":  caseBody,
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// The matching case at matchIdx should have been selected
+			val, exists := vm.GetGlobalScope().Get("result")
+			if !exists {
+				return false
+			}
+			return val == int64(matchIdx)
+		},
+		gen.Int64Range(-100, 100),
+		gen.Int64Range(0, 5),
+		gen.Int64Range(1, 5),
+	))
+
+	// Property: First matching case wins for string values.
+	properties.Property("first matching case wins among multiple string cases", prop.ForAll(
+		func(switchVal string, numCasesBefore int64, numCasesAfter int64) bool {
+			if numCasesBefore < 0 {
+				numCasesBefore = 0
+			}
+			if numCasesBefore > 5 {
+				numCasesBefore = 5
+			}
+			if numCasesAfter < 1 {
+				numCasesAfter = 1
+			}
+			if numCasesAfter > 5 {
+				numCasesAfter = 5
+			}
+
+			totalCases := int(numCasesBefore) + 1 + int(numCasesAfter)
+			cases := make([]any, totalCases)
+			matchIdx := int(numCasesBefore)
+
+			for i := 0; i < totalCases; i++ {
+				var caseVal string
+				if i == matchIdx {
+					caseVal = switchVal
+				} else {
+					// Use a value guaranteed to not equal switchVal
+					caseVal = fmt.Sprintf("%s_nonmatch_%d", switchVal, i)
+				}
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{opcode.Variable("result"), int64(i)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": caseVal,
+					"body":  caseBody,
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			val, exists := vm.GetGlobalScope().Get("result")
+			if !exists {
+				return false
+			}
+			return val == int64(matchIdx)
+		},
+		gen.AlphaString(),
+		gen.Int64Range(0, 5),
+		gen.Int64Range(1, 5),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+
+// TestPropertySwitch4_DefaultFallbackAccuracy tests that when no case matches,
+// the default block executes if present, and nothing executes if absent.
+// **Validates: Requirements 2.3, 2.4**
+// Feature: switch-edge-cases, Property 4: defaultフォールバックの正確性
+func TestPropertySwitch4_DefaultFallbackAccuracy(t *testing.T) {
+	const minSuccessfulTests = 100
+
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = minSuccessfulTests
+
+	properties := gopter.NewProperties(parameters)
+
+	// Property: When switch value does not match any case and a default block exists,
+	// the default block executes.
+	properties.Property("default block executes when no case matches", prop.ForAll(
+		func(switchVal int64, caseVals []int64, defaultResult int64) bool {
+			// Need at least 1 case to meaningfully test
+			if len(caseVals) < 1 {
+				return true
+			}
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Ensure switchVal does NOT match any case value
+			for i := range caseVals {
+				if caseVals[i] == switchVal {
+					caseVals[i] = switchVal + int64(i) + 100
+				}
+			}
+
+			// Build case clauses: each case body assigns result = caseIndex
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{opcode.Variable("result"), int64(i)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			// Build default block: assigns default_executed = 1 and result = defaultResult
+			defaultBlock := []opcode.OpCode{
+				{
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("default_executed"), int64(1)},
+				},
+				{
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("result"), defaultResult},
+				},
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases, defaultBlock},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Default block should have executed
+			defVal, defExists := vm.GetGlobalScope().Get("default_executed")
+			if !defExists || defVal != int64(1) {
+				return false
+			}
+
+			// Result should be the default result value
+			resVal, resExists := vm.GetGlobalScope().Get("result")
+			if !resExists {
+				return false
+			}
+			return resVal == defaultResult
+		},
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(5, gen.Int64Range(100, 200)),
+		gen.Int64Range(-1000, 1000),
+	))
+
+	// Property: When switch value does not match any case and no default block exists,
+	// nothing executes and switch exits cleanly.
+	properties.Property("no execution when no case matches and no default", prop.ForAll(
+		func(switchVal int64, caseVals []int64) bool {
+			// Need at least 1 case
+			if len(caseVals) < 1 {
+				return true
+			}
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Ensure switchVal does NOT match any case value
+			for i := range caseVals {
+				if caseVals[i] == switchVal {
+					caseVals[i] = switchVal + int64(i) + 100
+				}
+			}
+
+			// Build case clauses: each case body assigns marker_i = 1
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				markerVar := opcode.Variable(fmt.Sprintf("marker_%d", i))
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{markerVar, int64(1)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			// No default block — only 2 args
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// No case markers should be set
+			for i := range caseVals {
+				markerName := fmt.Sprintf("marker_%d", i)
+				_, exists := vm.GetGlobalScope().Get(markerName)
+				if exists {
+					return false
+				}
+			}
+
+			// No default_executed marker should exist
+			_, defExists := vm.GetGlobalScope().Get("default_executed")
+			if defExists {
+				return false
+			}
+
+			return true
+		},
+		gen.Int64Range(-50, 50),
+		gen.SliceOfN(5, gen.Int64Range(100, 200)),
+	))
+
+	// Property: When switch value does not match any string case and a default block exists,
+	// the default block executes.
+	properties.Property("default block executes for unmatched string switch value", prop.ForAll(
+		func(caseVals []string, defaultMarker int64) bool {
+			if len(caseVals) < 1 {
+				return true
+			}
+			const maxCases = 10
+			if len(caseVals) > maxCases {
+				caseVals = caseVals[:maxCases]
+			}
+
+			// Use a switch value guaranteed to not match any case
+			switchVal := "__NOMATCH__"
+			for _, cv := range caseVals {
+				if cv == switchVal {
+					switchVal = switchVal + "_x"
+				}
+			}
+
+			// Build case clauses
+			cases := make([]any, len(caseVals))
+			for i, cv := range caseVals {
+				caseBody := []opcode.OpCode{
+					{
+						Cmd:  opcode.Assign,
+						Args: []any{opcode.Variable(fmt.Sprintf("case_%d", i)), int64(1)},
+					},
+				}
+				cases[i] = map[string]any{
+					"value": cv,
+					"body":  caseBody,
+				}
+			}
+
+			// Default block assigns default_executed = defaultMarker
+			defaultBlock := []opcode.OpCode{
+				{
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("default_executed"), defaultMarker},
+				},
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases, defaultBlock},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Default should have executed
+			defVal, defExists := vm.GetGlobalScope().Get("default_executed")
+			if !defExists || defVal != defaultMarker {
+				return false
+			}
+
+			// No case body should have executed
+			for i := range caseVals {
+				caseName := fmt.Sprintf("case_%d", i)
+				_, exists := vm.GetGlobalScope().Get(caseName)
+				if exists {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.SliceOfN(5, gen.AlphaString()),
+		gen.Int64Range(1, 1000),
+	))
+
+	// Property: Default block with multiple statements executes all statements.
+	properties.Property("default block executes all statements", prop.ForAll(
+		func(switchVal int64, numStatements int) bool {
+			if numStatements < 1 {
+				numStatements = 1
+			}
+			const maxStatements = 10
+			if numStatements > maxStatements {
+				numStatements = maxStatements
+			}
+
+			// Build a single case that won't match
+			cases := []any{
+				map[string]any{
+					"value": switchVal + 1, // guaranteed non-match
+					"body": []opcode.OpCode{
+						{
+							Cmd:  opcode.Assign,
+							Args: []any{opcode.Variable("case_executed"), int64(1)},
+						},
+					},
+				},
+			}
+
+			// Build default block with numStatements assignments
+			defaultBlock := make([]opcode.OpCode, numStatements)
+			for i := 0; i < numStatements; i++ {
+				defaultBlock[i] = opcode.OpCode{
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable(fmt.Sprintf("default_stmt_%d", i)), int64(i)},
+				}
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases, defaultBlock},
+			}
+
+			vm := New([]opcode.OpCode{switchOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Case should NOT have executed
+			_, caseExists := vm.GetGlobalScope().Get("case_executed")
+			if caseExists {
+				return false
+			}
+
+			// All default statements should have executed
+			for i := 0; i < numStatements; i++ {
+				stmtName := fmt.Sprintf("default_stmt_%d", i)
+				val, exists := vm.GetGlobalScope().Get(stmtName)
+				if !exists || val != int64(i) {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(-50, 50),
+		gen.IntRange(1, 10),
+	))
+
+	// Property: Code after switch continues executing regardless of default execution.
+	properties.Property("code after switch executes after default fallback", prop.ForAll(
+		func(switchVal int64, afterVal int64) bool {
+			// Build a single case that won't match
+			cases := []any{
+				map[string]any{
+					"value": switchVal + 1,
+					"body": []opcode.OpCode{
+						{
+							Cmd:  opcode.Assign,
+							Args: []any{opcode.Variable("case_executed"), int64(1)},
+						},
+					},
+				},
+			}
+
+			// Default block
+			defaultBlock := []opcode.OpCode{
+				{
+					Cmd:  opcode.Assign,
+					Args: []any{opcode.Variable("default_executed"), int64(1)},
+				},
+			}
+
+			switchOp := opcode.OpCode{
+				Cmd:  opcode.Switch,
+				Args: []any{switchVal, cases, defaultBlock},
+			}
+
+			// Code after switch
+			afterOp := opcode.OpCode{
+				Cmd:  opcode.Assign,
+				Args: []any{opcode.Variable("after_switch"), afterVal},
+			}
+
+			vm := New([]opcode.OpCode{switchOp, afterOp})
+			err := vm.Run()
+			if err != nil {
+				return false
+			}
+
+			// Default should have executed
+			defVal, defExists := vm.GetGlobalScope().Get("default_executed")
+			if !defExists || defVal != int64(1) {
+				return false
+			}
+
+			// Code after switch should have executed
+			afterSwitchVal, afterExists := vm.GetGlobalScope().Get("after_switch")
+			if !afterExists {
+				return false
+			}
+			return afterSwitchVal == afterVal
+		},
+		gen.Int64Range(-50, 50),
+		gen.Int64Range(-1000, 1000),
 	))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
