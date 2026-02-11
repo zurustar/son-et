@@ -115,6 +115,10 @@ func (vm *VM) registerSystemBuiltins() {
 			v.audioSystem.Shutdown()
 		}
 
+		// Close all open file handles
+		// Requirement 3.4: VMが停止する場合、開いている全てのファイルを閉じてリソースを解放する。
+		v.fileHandleTable.CloseAll()
+
 		// Remove all event handlers
 		v.handlerRegistry.UnregisterAll()
 
@@ -172,6 +176,67 @@ func (vm *VM) registerSystemBuiltins() {
 			v.log.Debug("DelMes called", "seqID", seqID, "deleted", true)
 		} else {
 			v.log.Debug("DelMes called", "seqID", seqID, "deleted", false, "reason", "not found")
+		}
+
+		return nil, nil
+	})
+
+	// FreezeMes(mes_no) - temporarily deactivates a mes() block by its sequence ID.
+	// Sets handler.Active = false without calling Remove() (does not set MarkedForDeletion).
+	// The handler remains in the registry and can be reactivated with ActivateMes.
+	// CurrentPC and WaitCounter are preserved.
+	// Requirement 1.1: FreezeMes sets Active flag to false.
+	// Requirement 1.2: EventDispatcher skips handlers with Active=false.
+	// Requirement 1.3: FreezeMes preserves CurrentPC and WaitCounter.
+	// Requirement 1.4: Non-existent handler number logs warning only.
+	// Requirement 1.5: Missing arguments logs warning only.
+	vm.RegisterBuiltinFunction("FreezeMes", func(v *VM, args []any) (any, error) {
+		if len(args) < 1 {
+			v.log.Warn("FreezeMes requires 1 argument (seqID)")
+			return nil, nil
+		}
+
+		seqID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("FreezeMes seqID must be integer", "got", fmt.Sprintf("%T", args[0]))
+			return nil, nil
+		}
+
+		handler, exists := v.handlerRegistry.GetHandlerByNumber(int(seqID))
+		if exists {
+			handler.Active = false
+			v.log.Debug("FreezeMes called", "seqID", seqID, "frozen", true)
+		} else {
+			v.log.Warn("FreezeMes: handler not found", "seqID", seqID)
+		}
+
+		return nil, nil
+	})
+
+	// ActivateMes(mes_no) - reactivates a previously frozen mes() block by its sequence ID.
+	// Sets handler.Active = true. The handler resumes from its previous CurrentPC and WaitCounter.
+	// Requirement 2.1: ActivateMes sets Active flag to true.
+	// Requirement 2.2: Reactivated handler resumes from previous CurrentPC and WaitCounter.
+	// Requirement 2.3: Non-existent handler number logs warning only.
+	// Requirement 2.4: Missing arguments logs warning only.
+	vm.RegisterBuiltinFunction("ActivateMes", func(v *VM, args []any) (any, error) {
+		if len(args) < 1 {
+			v.log.Warn("ActivateMes requires 1 argument (seqID)")
+			return nil, nil
+		}
+
+		seqID, ok := toInt64(args[0])
+		if !ok {
+			v.log.Error("ActivateMes seqID must be integer", "got", fmt.Sprintf("%T", args[0]))
+			return nil, nil
+		}
+
+		handler, exists := v.handlerRegistry.GetHandlerByNumber(int(seqID))
+		if exists {
+			handler.Active = true
+			v.log.Debug("ActivateMes called", "seqID", seqID, "activated", true)
+		} else {
+			v.log.Warn("ActivateMes: handler not found", "seqID", seqID)
 		}
 
 		return nil, nil

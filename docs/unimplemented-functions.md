@@ -29,18 +29,6 @@ Windows固有の関数（PlayCD, MCI, StrMCI, SetRegStr, GetRegStr, PlayAVI）�
 
 ## ファイル操作関連関数
 
-### バイナリファイルI/O
-
-| 関数名 | 説明 | 優先度 | 使用サンプル |
-|--------|------|--------|--------------|
-| `OpenF(filename, mode)` | ファイルを開く（"r", "w", "a"） | **必須** | - |
-| `CloseF(handle)` | ファイルを閉じる | **必須** | - |
-| `ReadF(handle, size)` | ファイルから読み込み | **必須** | - |
-| `WriteF(handle, value)` | ファイルに書き込み | **必須** | - |
-| `SeekF(handle, offset, origin)` | ファイルポインタの移動 | **必須** | - |
-| `StrReadF(handle)` | ファイルから文字列を読み込み | **必須** | - |
-| `StrWriteF(handle, str)` | ファイルに文字列を書き込み | **必須** | - |
-
 ### ファイル管理
 
 | 関数名 | 説明 | 優先度 | 使用サンプル |
@@ -67,10 +55,7 @@ Windows固有の関数（PlayCD, MCI, StrMCI, SetRegStr, GetRegStr, PlayAVI）�
 
 ## メッセージ関連関数
 
-| 関数名 | 説明 | 優先度 | 使用サンプル |
-|--------|------|--------|--------------|
-| `FreezeMes(mes_no)` | メッセージブロックを一時停止 | **必須** | - |
-| `ActivateMes(mes_no)` | メッセージブロックを再開 | **必須** | - |
+現在、未実装のメッセージ関連関数はありません。
 
 ---
 
@@ -94,8 +79,8 @@ Windows固有の関数（PlayCD, MCI, StrMCI, SetRegStr, GetRegStr, PlayAVI）�
 
 ## 統計
 
-- **未実装関数合計: 24個**
-- **必須（サンプルで使用）: 9個**
+- **未実装関数合計: 15個**
+- **必須（サンプルで使用）: 0個**
 - 高優先度: 0個
 - 中優先度: 1個
 - 低優先度: 14個
@@ -108,25 +93,6 @@ Windows固有の関数（PlayCD, MCI, StrMCI, SetRegStr, GetRegStr, PlayAVI）�
 - **高**: 基本的な機能で使用頻度が高いと予想される
 - **中**: 一部のスクリプトで使用される可能性がある
 - **低**: 特殊な用途、またはレガシー機能
-
----
-
-## 必須関数の実装優先順位
-
-サンプルを動作させるために必要な関数の推奨実装順序:
-
-1. **メッセージ制御**
-   - `FreezeMes` - ハンドラ一時停止
-   - `ActivateMes` - ハンドラ再開
-
-2. **ファイルI/O**
-   - `OpenF` - ファイルオープン
-   - `CloseF` - ファイルクローズ
-   - `SeekF` - シーク
-   - `ReadF` - バイナリ読み込み
-   - `WriteF` - バイナリ書き込み
-   - `StrReadF` - 文字列読み込み
-   - `StrWriteF` - 文字列書き込み
 
 ---
 
@@ -156,6 +122,9 @@ Windows固有の関数（PlayCD, MCI, StrMCI, SetRegStr, GetRegStr, PlayAVI）�
 ### 整数関連
 `MakeLong`, `GetHiWord`, `GetLowWord`
 
+### ファイル操作（バイナリ/文字列I/O）
+`OpenF`, `CloseF`, `SeekF`, `ReadF`, `WriteF`, `StrReadF`, `StrWriteF`
+
 ### ファイル操作（INI）
 `WriteIniInt`, `GetIniInt`, `WriteIniStr`, `GetIniStr`
 
@@ -163,7 +132,7 @@ Windows固有の関数（PlayCD, MCI, StrMCI, SetRegStr, GetRegStr, PlayAVI）�
 `PlayMIDI`, `PlayWAVE`
 
 ### メッセージ関連
-`GetMesNo`, `DelMes`, `PostMes`
+`GetMesNo`, `DelMes`, `PostMes`, `FreezeMes`, `ActivateMes`
 
 ### システム関連
 `WinInfo`, `GetSysTime`, `Random`, `MsgBox`, `Debug`

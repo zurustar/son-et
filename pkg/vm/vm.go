@@ -86,6 +86,9 @@ type VM struct {
 	eventDispatcher *EventDispatcher
 	currentHandler  *EventHandler // Currently executing handler (for del_me)
 
+	// File I/O
+	fileHandleTable *FileHandleTable
+
 	// Audio system interface (to avoid import cycle)
 	audioSystem AudioSystemInterface
 
@@ -297,6 +300,10 @@ func New(opcodes []opcode.OpCode, opts ...Option) *VM {
 	// Initialize event dispatcher
 	vm.eventDispatcher = NewEventDispatcher(vm.eventQueue, vm.handlerRegistry, vm)
 
+	// Initialize file handle table
+	// Requirement 3.4: VMが停止する場合、開いている全てのファイルを閉じてリソースを解放する。
+	vm.fileHandleTable = NewFileHandleTable()
+
 	// Apply options
 	for _, opt := range opts {
 		opt(vm)
@@ -321,6 +328,7 @@ func (vm *VM) registerDefaultBuiltins() {
 	vm.registerGraphicsBuiltins()
 	vm.registerAudioBuiltins()
 	vm.registerSystemBuiltins()
+	vm.registerFileIOBuiltins()
 }
 
 // RegisterBuiltinFunction registers a built-in function with the given name.
@@ -377,6 +385,9 @@ func (vm *VM) Run() error {
 	vm.mu.Unlock()
 
 	defer func() {
+		// Requirement 3.4: VMが停止する場合、開いている全てのファイルを閉じてリソースを解放する。
+		vm.fileHandleTable.CloseAll()
+
 		vm.mu.Lock()
 		vm.running = false
 		vm.mu.Unlock()
