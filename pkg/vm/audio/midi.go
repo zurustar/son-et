@@ -636,6 +636,13 @@ func ParseMIDITempoMap(data []byte) ([]TempoEvent, int) {
 
 		trackLen := int(data[offset+4])<<24 | int(data[offset+5])<<16 | int(data[offset+6])<<8 | int(data[offset+7])
 		trackEnd := offset + 8 + trackLen
+		// Clamp to the actual buffer length: the declared track length comes from
+		// the file and may overrun the data (truncated/corrupt file). Every inner
+		// access is guarded by `pos < trackEnd`, so clamping trackEnd also bounds
+		// all reads to len(data) and prevents slice-out-of-range panics.
+		if trackEnd > len(data) {
+			trackEnd = len(data)
+		}
 		pos := offset + 8
 		currentTick := 0
 		lastStatus := byte(0)

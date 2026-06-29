@@ -1568,9 +1568,12 @@ func (p *Parser) parseDefineDirective() Statement {
 
 // parseGenericDirective parses an unknown preprocessor directive.
 // It simply skips the directive and returns nil.
+//
+// Per the parser convention, a parse function leaves the current token on the
+// last token it consumed; the caller (ParseProgram / parseBlockStatement)
+// advances past it. A directive is a single token, so we must NOT advance here:
+// doing so would skip the first token of the following statement.
 func (p *Parser) parseGenericDirective() Statement {
-	// Skip the directive token
-	p.nextToken()
 	return nil
 }
 

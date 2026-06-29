@@ -100,6 +100,17 @@ func DecodeBMP(r io.Reader) (image.Image, error) {
 		topDown = true
 	}
 
+	// 寸法を検証する。幅・高さはファイル内の値をそのまま信頼してはならない。
+	// 負値は行サイズ計算で make([]byte, 負) を引き起こしクラッシュし、
+	// 過大値は image.NewRGBA の巨大確保でOOM/panicになるため、ここで弾く。
+	const maxBMPDimension = 1 << 16 // 65536px（実用上十分な上限）
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("invalid BMP dimensions: %dx%d", width, height)
+	}
+	if width > maxBMPDimension || height > maxBMPDimension {
+		return nil, fmt.Errorf("BMP dimensions too large: %dx%d (max %d)", width, height, maxBMPDimension)
+	}
+
 	// カラーパレットを読み込む（8ビット、4ビットの場合）
 	var palette color.Palette
 	if infoHeader.BitCount <= 8 {
