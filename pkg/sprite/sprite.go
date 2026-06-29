@@ -131,6 +131,14 @@ func (s *Sprite) AddChild(child *Sprite) {
 	if child == nil {
 		return
 	}
+	// サイクル防止: child が s 自身、または s の祖先である場合は追加しない。
+	// （許すと AbsolutePosition / drawSprite などの再帰走査が無限ループし、
+	//   Go の stack overflow は recover 不可でプロセスが即死する）
+	for a := s; a != nil; a = a.parent {
+		if a == child {
+			return
+		}
+	}
 	// 既に別の親がある場合は削除
 	if child.parent != nil && child.parent != s {
 		child.parent.RemoveChild(child.id)

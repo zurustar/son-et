@@ -142,9 +142,18 @@ func (p *Preprocessor) processFile(filename string) (string, error) {
 }
 
 // expandIncludes expands #include directives in the source code.
+//
+// The directive *detection* and its *position* both come from the lexer:
+// the lexer correctly skips comments and string literals, so an "#include"
+// appearing inside a comment or string is never tokenized as a directive.
+// We locate each directive by converting the token's (Line, Column) to a byte
+// offset, rather than doing a naive textual search for "#include" (which would
+// wrongly match occurrences inside comments/strings).
 func (p *Preprocessor) expandIncludes(source string) (string, error) {
 	// Use lexer to find #include directives
 	l := lexer.New(source)
+
+	lineOffsets := computeLineOffsets(source)
 
 	var result strings.Builder
 	lastPos := 0
@@ -164,27 +173,30 @@ func (p *Preprocessor) expandIncludes(source string) (string, error) {
 				continue // Invalid include directive, skip
 			}
 
-			// Calculate the position of this directive in the source
-			// We need to find and replace the entire #include line
-			directiveStart := findDirectiveStart(source, lastPos)
-			if directiveStart >= 0 {
-				// Add content before the directive
-				result.Write(sourceBytes[lastPos:directiveStart])
-
-				// Process the included file
-				// Requirement 16.3: Preprocessor processes included files recursively.
-				includedContent, err := p.processFile(includeFile)
-				if err != nil {
-					return "", err
-				}
-
-				// Add the included content
-				result.WriteString(includedContent)
-
-				// Find the end of the directive line
-				directiveEnd := findLineEnd(source, directiveStart)
-				lastPos = directiveEnd
+			// Calculate the position of this directive using the token's
+			// location (the lexer points Line/Column at the leading '#').
+			directiveStart := byteOffsetFor(lineOffsets, tok.Line, tok.Column, len(sourceBytes))
+			if directiveStart < lastPos {
+				// Positions should be monotonic; if not, skip defensively.
+				continue
 			}
+
+			// Add content before the directive (preserves comments, indentation, etc.)
+			result.Write(sourceBytes[lastPos:directiveStart])
+
+			// Process the included file
+			// Requirement 16.3: Preprocessor processes included files recursively.
+			includedContent, err := p.processFile(includeFile)
+			if err != nil {
+				return "", err
+			}
+
+			// Add the included content
+			result.WriteString(includedContent)
+
+			// Find the end of the directive line
+			directiveEnd := findLineEnd(source, directiveStart)
+			lastPos = directiveEnd
 		}
 	}
 
@@ -194,6 +206,39 @@ func (p *Preprocessor) expandIncludes(source string) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+// computeLineOffsets returns the byte offset at which each line starts.
+// offsets[0] is always 0 (line 1). A new line begins immediately after each
+// '\n', matching the lexer's line counting.
+func computeLineOffsets(source string) []int {
+	offsets := []int{0}
+	for i := 0; i < len(source); i++ {
+		if source[i] == '\n' {
+			offsets = append(offsets, i+1)
+		}
+	}
+	return offsets
+}
+
+// byteOffsetFor converts a 1-based (line, column) position into a byte offset.
+// The lexer counts columns per byte, so column maps directly to a byte offset
+// within the line. Out-of-range inputs are clamped to [0, max].
+func byteOffsetFor(lineOffsets []int, line, column, max int) int {
+	if line < 1 || line > len(lineOffsets) {
+		return max
+	}
+	off := lineOffsets[line-1]
+	if column > 1 {
+		off += column - 1
+	}
+	if off < 0 {
+		return 0
+	}
+	if off > max {
+		return max
+	}
+	return off
 }
 
 // extractIncludeFilename extracts the filename from an #include directive.
@@ -225,16 +270,6 @@ func extractIncludeFilename(literal string) string {
 
 	// Try without quotes (some FILLY files might use this)
 	return strings.TrimSpace(rest)
-}
-
-// findDirectiveStart finds the start position of a directive in the source.
-func findDirectiveStart(source string, startPos int) int {
-	// Look for #include starting from startPos
-	idx := strings.Index(source[startPos:], "#include")
-	if idx >= 0 {
-		return startPos + idx
-	}
-	return -1
 }
 
 // findLineEnd finds the end of the line (including newline character).

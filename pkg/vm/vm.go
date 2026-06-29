@@ -876,6 +876,17 @@ func (vm *VM) executeFor(op opcode.OpCode) (any, error) {
 			return nil, fmt.Errorf("failed to execute for body: %w", err)
 		}
 
+		// Propagate return/wait markers up immediately, exiting the loop without
+		// running the post block. executeBlock surfaces these from nested blocks;
+		// the loop must not swallow them (otherwise a `return`/`wait` inside the
+		// body would be lost and the loop would keep iterating).
+		if _, isReturn := result.(*returnMarker); isReturn {
+			return result, nil
+		}
+		if _, isWait := result.(*waitMarker); isWait {
+			return result, nil
+		}
+
 		// Check for break/continue signals
 		if _, isBreak := result.(*breakSignal); isBreak {
 			// Requirement 8.9: When OpBreak is executed, system exits current loop.
@@ -931,6 +942,15 @@ func (vm *VM) executeWhile(op opcode.OpCode) (any, error) {
 		result, err := vm.executeBlock(bodyBlock)
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute while body: %w", err)
+		}
+
+		// Propagate return/wait markers up immediately, exiting the loop.
+		// (See executeFor for rationale: the loop must not swallow these.)
+		if _, isReturn := result.(*returnMarker); isReturn {
+			return result, nil
+		}
+		if _, isWait := result.(*waitMarker); isWait {
+			return result, nil
 		}
 
 		// Check for break/continue signals
