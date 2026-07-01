@@ -1,7 +1,6 @@
 package vm
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"sync"
@@ -12,9 +11,14 @@ import (
 const minHandleID = 1
 
 // fileEntry はファイルハンドルテーブルの1エントリ。
+//
+// 読み取りは ReadF（バイナリ）も StrReadF（行）も *os.File を直接読む。
+// 以前は StrReadF が bufio.Reader で先読みしていたが、ReadF（直接読み）と
+// 混在させるとバッファ分の読み飛ばしが起き、さらに先読みでファイル位置が
+// 進むため SeekF(SEEK_CUR) がずれた。バッファを廃し、論理位置＝ファイル位置に
+// 統一している。
 type fileEntry struct {
-	file   *os.File
-	reader *bufio.Reader // StrReadF用。初回StrReadF呼び出し時に遅延初期化。
+	file *os.File
 }
 
 // FileHandleTable は整数ハンドル→*os.Fileのマッピングを管理する。
@@ -94,22 +98,5 @@ func (fht *FileHandleTable) CloseAll() {
 	for handle, entry := range fht.files {
 		_ = entry.file.Close()
 		delete(fht.files, handle)
-	}
-}
-
-// ResetReader はハンドルに対応するfileEntryのbufio.Readerをリセットする。
-// SeekF呼び出し時に使用し、バッファリングとファイルポインタの整合性を保つ。
-func (fht *FileHandleTable) ResetReader(handle int) {
-	fht.mu.Lock()
-	defer fht.mu.Unlock()
-
-	entry, exists := fht.files[handle]
-	if !exists {
-		return
-	}
-
-	// readerがnilでない場合のみリセット（遅延初期化されていない場合は何もしない）
-	if entry.reader != nil {
-		entry.reader.Reset(entry.file)
 	}
 }

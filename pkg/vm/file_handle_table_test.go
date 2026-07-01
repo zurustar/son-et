@@ -232,42 +232,6 @@ func TestFileHandleTable_HandleReuse(t *testing.T) {
 	})
 }
 
-// TestFileHandleTable_ResetReader tests the ResetReader method.
-func TestFileHandleTable_ResetReader(t *testing.T) {
-	t.Run("resets bufio.Reader for existing handle", func(t *testing.T) {
-		fht := NewFileHandleTable()
-		f := helperCreateTempFile(t)
-
-		// Write some data
-		_, err := f.WriteString("hello\nworld\n")
-		if err != nil {
-			t.Fatalf("failed to write: %v", err)
-		}
-		_, err = f.Seek(0, 0)
-		if err != nil {
-			t.Fatalf("failed to seek: %v", err)
-		}
-
-		handle := fht.Open(f)
-
-		// Get entry and initialize reader
-		entry, err := fht.Get(handle)
-		if err != nil {
-			t.Fatalf("Get returned error: %v", err)
-		}
-
-		// Reader should be nil initially (lazy initialization)
-		if entry.reader != nil {
-			t.Error("reader should be nil initially (lazy initialization)")
-		}
-
-		// ResetReader on nil reader should not panic
-		fht.ResetReader(handle)
-	})
-
-	t.Run("no-op for invalid handle", func(t *testing.T) {
-		fht := NewFileHandleTable()
-		// Should not panic
-		fht.ResetReader(999)
-	})
-}
+// Note: ResetReader / the per-entry bufio.Reader were removed as part of the
+// P2-b fix (reads are now unbuffered so StrReadF and ReadF share the file
+// position). The former TestFileHandleTable_ResetReader was deleted accordingly.
