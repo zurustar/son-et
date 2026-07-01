@@ -1,7 +1,6 @@
 package vm
 
 import (
-	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -184,9 +183,6 @@ func (vm *VM) registerSeekF() {
 			return nil, fmt.Errorf("SeekF: %w", err)
 		}
 
-		// Reset bufio.Reader to maintain consistency with file pointer
-		v.fileHandleTable.ResetReader(int(handle))
-
 		v.log.Debug("SeekF called", "handle", handle, "offset", offset, "origin", origin, "newPos", newPos)
 		return int64(newPos), nil
 	})
@@ -342,12 +338,9 @@ func (vm *VM) registerStrReadF() {
 			return nil, fmt.Errorf("StrReadF: %w", err)
 		}
 
-		// Lazy-initialize bufio.Reader on first StrReadF call
-		if entry.reader == nil {
-			entry.reader = bufio.NewReader(entry.file)
-		}
-
-		line, err := readLineFromReader(entry.reader)
+		// Read directly from the file (no buffering) so that StrReadF and the
+		// binary ReadF share the exact same file position and can be mixed.
+		line, err := readLineFromFile(entry.file)
 		if err != nil && err != io.EOF {
 			return nil, fmt.Errorf("StrReadF: %w", err)
 		}
@@ -370,34 +363,38 @@ func (vm *VM) registerStrReadF() {
 	})
 }
 
-// readLineFromReader reads a single line from a bufio.Reader, handling CR, LF, and CRLF delimiters.
-// Returns the line content without the trailing line delimiter.
-func readLineFromReader(r *bufio.Reader) ([]byte, error) {
+// readLineFromFile reads a single line directly from an *os.File, handling CR,
+// LF, and CRLF delimiters. Returns the line content without the trailing
+// delimiter. Reading directly (unbuffered) keeps the file position in sync so
+// that StrReadF can be freely interleaved with the binary ReadF and SeekF.
+//
+// For a lone CR followed by a non-LF byte, the extra byte is pushed back with a
+// 1-byte relative seek so it is not consumed.
+func readLineFromFile(f *os.File) ([]byte, error) {
 	var line []byte
+	buf := make([]byte, 1)
 	for {
-		b, err := r.ReadByte()
-		if err != nil {
-			// EOF: return whatever we have so far
+		n, err := f.Read(buf)
+		if n == 0 {
+			// EOF or error: return whatever we have so far
 			return line, err
 		}
 
-		if b == '\n' {
-			// LF or CRLF — line is complete
+		switch buf[0] {
+		case '\n':
+			// LF — line is complete
 			return line, nil
-		}
-
-		if b == '\r' {
-			// Could be CR alone or CRLF
-			next, err := r.Peek(1)
-			if err == nil && len(next) > 0 && next[0] == '\n' {
-				// CRLF — consume the LF
-				_, _ = r.ReadByte()
+		case '\r':
+			// Could be CR alone or CRLF: peek the next byte.
+			n2, _ := f.Read(buf)
+			if n2 > 0 && buf[0] != '\n' {
+				// Not LF — push the byte back so it starts the next line.
+				_, _ = f.Seek(-1, io.SeekCurrent)
 			}
-			// CR or CRLF — line is complete
 			return line, nil
+		default:
+			line = append(line, buf[0])
 		}
-
-		line = append(line, b)
 	}
 }
 
