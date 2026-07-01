@@ -263,8 +263,11 @@ func (vm *VM) registerSystemBuiltins() {
 		defaultVal, _ := args[2].(string)
 		filename, _ := args[3].(string)
 
-		// Resolve file path
-		fullPath := v.resolveFilePath(filename)
+		// Resolve file path (confined to the title directory)
+		fullPath, resolveErr := v.resolveFilePath(filename)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 
 		// Read INI file
 		content, err := os.ReadFile(fullPath)
@@ -326,8 +329,11 @@ func (vm *VM) registerSystemBuiltins() {
 		defaultVal, _ := toInt64(args[2])
 		filename := toString(args[3])
 
-		// Resolve file path
-		fullPath := v.resolveFilePath(filename)
+		// Resolve file path (confined to the title directory)
+		fullPath, resolveErr := v.resolveFilePath(filename)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 
 		// Read INI file
 		content, err := os.ReadFile(fullPath)
@@ -386,8 +392,11 @@ func (vm *VM) registerSystemBuiltins() {
 		value, _ := toInt64(args[2])
 		filename := toString(args[3])
 
-		// Resolve file path
-		fullPath := v.resolveFilePath(filename)
+		// Resolve file path (confined to the title directory)
+		fullPath, resolveErr := v.resolveFilePath(filename)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 
 		// Read existing INI file or create empty content
 		var lines []string
@@ -470,8 +479,11 @@ func (vm *VM) registerSystemBuiltins() {
 		value := toString(args[2])
 		filename := toString(args[3])
 
-		// Resolve file path
-		fullPath := v.resolveFilePath(filename)
+		// Resolve file path (confined to the title directory)
+		fullPath, resolveErr := v.resolveFilePath(filename)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 
 		// Read existing INI file or create empty content
 		var lines []string

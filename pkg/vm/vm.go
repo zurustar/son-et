@@ -1498,8 +1498,11 @@ func (vm *VM) PlayMIDI(filename string) error {
 		return fmt.Errorf("audio system not initialized")
 	}
 
-	// Resolve relative path using titlePath
-	fullPath := vm.resolveFilePath(filename)
+	// Resolve relative path using titlePath (confined to the title directory)
+	fullPath, err := vm.resolveFilePath(filename)
+	if err != nil {
+		return err
+	}
 	return vm.audioSystem.PlayMIDI(fullPath)
 }
 
@@ -1511,26 +1514,51 @@ func (vm *VM) PlayWAVE(filename string) error {
 		return fmt.Errorf("audio system not initialized")
 	}
 
-	// Resolve relative path using titlePath
-	fullPath := vm.resolveFilePath(filename)
+	// Resolve relative path using titlePath (confined to the title directory)
+	fullPath, err := vm.resolveFilePath(filename)
+	if err != nil {
+		return err
+	}
 	return vm.audioSystem.PlayWAVE(fullPath)
 }
 
-// resolveFilePath resolves a relative file path using the title path.
-// If the path is already absolute, it is returned as-is.
-func (vm *VM) resolveFilePath(filename string) string {
-	// If path is absolute, return as-is
+// resolveFilePath resolves a relative file path against the title directory and
+// confines the result to that directory (path-traversal protection).
+//
+// A FILLY title is untrusted content: it must not be able to read or write
+// arbitrary files on the host. Therefore absolute paths and relative paths that
+// escape the title directory via ".." are rejected. All file sinks that take a
+// script-provided filename (OpenF, GetIni*/WriteIni*, PlayMIDI/PlayWAVE) go
+// through here, so fixing this single function closes every path.
+//
+// When titlePath is unset (e.g. some tests/dev contexts with no title root),
+// the filename is returned unchanged for backward compatibility.
+func (vm *VM) resolveFilePath(filename string) (string, error) {
+	if vm.titlePath == "" {
+		return filename, nil
+	}
+
 	if filepath.IsAbs(filename) {
-		return filename
+		return "", fmt.Errorf("absolute file paths are not allowed: %q", filename)
 	}
 
-	// If titlePath is set, join with it
-	if vm.titlePath != "" {
-		return filepath.Join(vm.titlePath, filename)
+	base, err := filepath.Abs(vm.titlePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve title path %q: %w", vm.titlePath, err)
 	}
 
-	// Otherwise, return as-is (relative to current directory)
-	return filename
+	joined := filepath.Join(base, filename)
+
+	// Verify the cleaned path stays within base.
+	rel, err := filepath.Rel(base, joined)
+	if err != nil {
+		return "", fmt.Errorf("invalid file path %q", filename)
+	}
+	if rel == ".." || (len(rel) >= 3 && rel[0] == '.' && rel[1] == '.' && rel[2] == byte(filepath.Separator)) {
+		return "", fmt.Errorf("file path %q escapes the title directory", filename)
+	}
+
+	return joined, nil
 }
 
 // StartTimer starts the timer for TIME event generation.

@@ -78,6 +78,11 @@ func (r *RealFS) IsEmbedded() bool {
 func (r *RealFS) resolvePath(name string) string {
 	// 先頭の "/" や "\" を除去
 	cleanName := strings.TrimPrefix(strings.TrimPrefix(name, "/"), "\\")
+	// パストラバーサル防止: 先頭にセパレータを付けて Clean することで、
+	// basePath より上位へ抜ける ".." を root で吸収して無害化する
+	// （例: "../../etc/passwd" → "etc/passwd"）。正当な内部相対パスは保たれる。
+	sep := string(filepath.Separator)
+	cleanName = strings.TrimPrefix(filepath.Clean(sep+cleanName), sep)
 	if r.basePath != "" {
 		return filepath.Join(r.basePath, cleanName)
 	}
