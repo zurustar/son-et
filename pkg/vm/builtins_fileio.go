@@ -56,7 +56,10 @@ func (vm *VM) registerOpenF() {
 		}
 
 		filename := toString(args[0])
-		fullPath := v.resolveFilePath(filename)
+		fullPath, resolveErr := v.resolveFilePath(filename)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("OpenF: %w", resolveErr)
+		}
 
 		// Default: read-only (1 arg)
 		mode := int64(FileAccessReadOnly)
