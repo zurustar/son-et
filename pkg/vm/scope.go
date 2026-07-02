@@ -71,15 +71,18 @@ func (s *Scope) Set(name string, value any) {
 		return
 	}
 
-	// Check if variable exists in parent scope (without lock since parent.Set will lock)
+	// Check if variable exists in a parent scope, and if so update it there.
+	//
+	// We keep s.mu held while calling into the parent: parent methods lock the
+	// parent's own mutex, and lookups always go child→parent (never the reverse),
+	// so the lock ordering is consistent and cannot deadlock. Previously s.mu was
+	// unlocked/relocked around these calls, which opened a race window where
+	// another goroutine could create `name` in this scope concurrently.
 	if s.parent != nil {
-		s.mu.Unlock()
 		if _, exists := s.parent.Get(name); exists {
 			s.parent.Set(name, value)
-			s.mu.Lock()
 			return
 		}
-		s.mu.Lock()
 	}
 
 	// Create in current scope

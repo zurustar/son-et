@@ -99,6 +99,14 @@ func New(l *lexer.Lexer) *Parser {
 	tokens, _ := l.Tokenize()
 	p.tokens = tokens
 
+	// Surface non-token lexical errors (unterminated string/comment) as parser
+	// errors so they are not silently discarded. ILLEGAL characters are not
+	// included here; they surface during parsing via noPrefixParseFnError, so
+	// adding them would double-count.
+	for _, le := range l.Errors() {
+		p.addError(le.Message, le.Line, le.Column)
+	}
+
 	// Register prefix parse functions
 	p.registerPrefix(lexer.TOKEN_IDENT, p.parseIdentifier)
 	p.registerPrefix(lexer.TOKEN_INT, p.parseIntegerLiteral)

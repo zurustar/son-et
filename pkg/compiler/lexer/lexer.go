@@ -14,6 +14,18 @@ type Lexer struct {
 	ch           byte   // current character
 	line         int    // current line number (1-indexed)
 	column       int    // current column number (1-indexed)
+
+	// errors accumulates non-token lexical errors detected while scanning
+	// (e.g. unterminated string/comment). ILLEGAL characters are reported
+	// separately via TokenizeWithErrors, so they are NOT added here to avoid
+	// double-counting when the parser surfaces these.
+	errors []*LexerError
+}
+
+// Errors returns the lexical errors accumulated during scanning
+// (unterminated string/comment). Valid input yields an empty slice.
+func (l *Lexer) Errors() []*LexerError {
+	return l.errors
 }
 
 // New creates a new Lexer for the given input source code.
@@ -69,6 +81,9 @@ func (l *Lexer) skipSingleLineComment() {
 // skipMultiLineComment skips a multi-line comment starting with /*.
 // Requirement 2.10: Multi-line comments (/* */) skip until closing */.
 func (l *Lexer) skipMultiLineComment() {
+	startLine := l.line
+	startColumn := l.column
+
 	// Skip the /* characters
 	l.readChar() // skip /
 	l.readChar() // skip *
@@ -77,6 +92,7 @@ func (l *Lexer) skipMultiLineComment() {
 	for {
 		if l.ch == 0 {
 			// End of file reached without closing comment
+			l.errors = append(l.errors, NewLexerError("unterminated multi-line comment", startLine, startColumn))
 			break
 		}
 		if l.ch == '*' && l.peekChar() == '/' {
@@ -174,11 +190,25 @@ func (l *Lexer) readHexNumber(startLine, startColumn int) Token {
 	l.readChar()
 
 	// Read hex digits
+	digitCount := 0
 	for isHexDigit(l.ch) {
 		l.readChar()
+		digitCount++
 	}
 
 	literal := l.input[startPos:l.position]
+
+	// "0x" with no following hex digits is not a valid integer literal.
+	// Return ILLEGAL here so it's reported at the lexer stage rather than
+	// producing an INT token that only fails later in the parser.
+	if digitCount == 0 {
+		return Token{
+			Type:    TOKEN_ILLEGAL,
+			Literal: literal,
+			Line:    startLine,
+			Column:  startColumn,
+		}
+	}
 
 	return Token{
 		Type:    TOKEN_INT,
@@ -366,6 +396,9 @@ func (l *Lexer) readString() Token {
 	// Skip the closing double quote (if present)
 	if l.ch == '"' {
 		l.readChar()
+	} else {
+		// Reached EOF without a closing quote.
+		l.errors = append(l.errors, NewLexerError("unterminated string literal", startLine, startColumn))
 	}
 
 	return Token{
@@ -598,6 +631,10 @@ func (l *Lexer) TokenizeWithErrors() ([]Token, []*LexerError) {
 			break
 		}
 	}
+
+	// Include non-token lexical errors (unterminated string/comment) accumulated
+	// during scanning.
+	errors = append(errors, l.errors...)
 
 	return tokens, errors
 }

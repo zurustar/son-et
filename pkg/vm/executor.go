@@ -311,17 +311,15 @@ func (vm *VM) executeCall(op opcode.OpCode) (any, error) {
 		return result, nil
 	}
 
-	// Check for case-insensitive built-in function match
+	// Check for case-insensitive built-in function match (O(1) via lowercase index).
 	funcNameLower := strings.ToLower(funcName)
-	for name, builtin := range vm.builtins {
-		if strings.ToLower(name) == funcNameLower {
-			result, err := builtin(vm, args)
-			if err != nil {
-				vm.log.Error("Built-in function error", "function", funcName, "error", err)
-				return int64(0), nil
-			}
-			return result, nil
+	if builtin, ok := vm.builtinsLower[funcNameLower]; ok {
+		result, err := builtin(vm, args)
+		if err != nil {
+			vm.log.Error("Built-in function error", "function", funcName, "error", err)
+			return int64(0), nil
 		}
+		return result, nil
 	}
 
 	// Check for user-defined function
@@ -329,11 +327,9 @@ func (vm *VM) executeCall(op opcode.OpCode) (any, error) {
 		return vm.callUserFunction(userFunc, args)
 	}
 
-	// Check for case-insensitive user function match
-	for name, userFunc := range vm.functions {
-		if strings.EqualFold(name, funcName) {
-			return vm.callUserFunction(userFunc, args)
-		}
+	// Check for case-insensitive user function match (O(1) via lowercase index).
+	if userFunc, ok := vm.functionsLower[funcNameLower]; ok {
+		return vm.callUserFunction(userFunc, args)
 	}
 
 	// 未定義関数が呼ばれた場合はエラーで終了
