@@ -16,6 +16,7 @@ import (
 	"image/color"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,9 +77,13 @@ type VM struct {
 
 	// User-defined functions
 	functions map[string]*FunctionDef
+	// Lowercased-name index for case-insensitive user function lookup (O(1)).
+	functionsLower map[string]*FunctionDef
 
 	// Built-in functions
 	builtins map[string]BuiltinFunc
+	// Lowercased-name index for case-insensitive builtin lookup (O(1)).
+	builtinsLower map[string]BuiltinFunc
 
 	// Event system
 	eventQueue      *EventQueue
@@ -283,7 +288,9 @@ func New(opcodes []opcode.OpCode, opts ...Option) *VM {
 		localScope:      nil,
 		callStack:       make([]*StackFrame, 0, 64),
 		functions:       make(map[string]*FunctionDef),
+		functionsLower:  make(map[string]*FunctionDef),
 		builtins:        make(map[string]BuiltinFunc),
+		builtinsLower:   make(map[string]BuiltinFunc),
 		eventQueue:      NewEventQueue(),
 		handlerRegistry: NewHandlerRegistry(),
 		currentHandler:  nil,
@@ -338,6 +345,8 @@ func (vm *VM) RegisterBuiltinFunction(name string, fn BuiltinFunc) {
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
 	vm.builtins[name] = fn
+	// Maintain a lowercase index for O(1), deterministic case-insensitive lookup.
+	vm.builtinsLower[strings.ToLower(name)] = fn
 }
 
 // registerEventTypeConstants registers event type constants in the global scope.
@@ -604,11 +613,14 @@ func (vm *VM) registerFunction(op opcode.OpCode) error {
 		return fmt.Errorf("function body must be []OpCode, got %T", op.Args[2])
 	}
 
-	vm.functions[name] = &FunctionDef{
+	def := &FunctionDef{
 		Name:       name,
 		Parameters: params,
 		Body:       body,
 	}
+	vm.functions[name] = def
+	// Maintain a lowercase index for O(1), deterministic case-insensitive lookup.
+	vm.functionsLower[strings.ToLower(name)] = def
 
 	vm.log.Debug("Function registered", "name", name, "params", len(params))
 	return nil

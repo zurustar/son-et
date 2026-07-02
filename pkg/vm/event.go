@@ -180,9 +180,13 @@ func (eq *EventQueue) Push(event *Event) {
 	// Add the event
 	eq.events = append(eq.events, event)
 
-	// Sort by timestamp (ascending)
+	// Sort by timestamp (ascending). Use a STABLE sort so that events sharing the
+	// same timestamp keep their insertion (arrival/registration) order — TIME
+	// events pushed in a burst can collapse to the same time.Now() below clock
+	// resolution, and FIFO among them must be preserved.
 	// Requirement 1.1: System provides event queue that stores events in chronological order.
-	sort.Slice(eq.events, func(i, j int) bool {
+	// Requirement 1.5: Handlers execute in registration order.
+	sort.SliceStable(eq.events, func(i, j int) bool {
 		return eq.events[i].Timestamp.Before(eq.events[j].Timestamp)
 	})
 }
